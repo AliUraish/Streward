@@ -1,0 +1,22 @@
+{
+  "name": "steward-local",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "bash backend/run.sh",
+    "dev:mcp": "npm --prefix mcp-runtime run dev",
+    "dev:agents": "npm --prefix agent-runtime run dev",
+    "build": "npm --prefix frontend run build",
+    "build:agents": "npm --prefix agent-runtime run build",
+    "build:mcp": "npm --prefix mcp-runtime run build",
+    "demo:mcp": "npm --prefix mcp-runtime run demo",
+    "test": "bash scripts/test.sh",
+    "test:backend": "backend/.venv/bin/python -m pytest backend/tests -q",
+    "test:agents": "agent-runtime/node_modules/node/bin/node --test agent-runtime/tests/scope.test.mjs",
+    "cli:insforge": "node scripts/cli.mjs insforge",
+    "cli:manufact": "node scripts/cli.mjs manufact",
+    "cli:eve": "node scripts/cli.mjs eve"
+  }
+}

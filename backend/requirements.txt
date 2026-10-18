@@ -1,0 +1,9 @@
+fastapi==0.115.14
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20
+pypdf==5.7.0
+reportlab==4.4.2
+httpx==0.28.1
+pytest==8.4.1
+python-dotenv==1.1.1
+inkbox==0.7.19

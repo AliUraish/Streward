@@ -1,0 +1,304 @@
+{
+  "application": "STEWARD",
+  "endpoint": "http://127.0.0.1:8002/mcp",
+  "mode": "read-only",
+  "clients": [
+    {
+      "library": "@mcp-use/client",
+      "version": "2.4.4",
+      "tools": [
+        "list_properties",
+        "get_property_context",
+        "list_components",
+        "inspect_component",
+        "search_requirements",
+        "search_documents",
+        "run_inspection",
+        "get_job",
+        "get_activity",
+        "recall_memory",
+        "export_report",
+        "get_integrations"
+      ],
+      "properties": {
+        "properties": [
+          {
+            "id": "cedar",
+            "name": "Cedar House",
+            "address": "1840 Cedar Street, San Francisco",
+            "jurisdiction": "California / demonstration project",
+            "phase": "Commissioning",
+            "readiness": 80,
+            "componentCount": 24,
+            "openIssues": 2,
+            "updatedAt": "2026-10-17T22:42:21.530755Z"
+          },
+          {
+            "id": "harbor",
+            "name": "Harbor Works",
+            "address": "68 Harbor Way, Oakland",
+            "jurisdiction": "California / demonstration project",
+            "phase": "Fit-out",
+            "readiness": 75,
+            "componentCount": 24,
+            "openIssues": 2,
+            "updatedAt": "2026-10-17T22:42:21.572392Z"
+          },
+          {
+            "id": "juniper",
+            "name": "Juniper Residence",
+            "address": "215 Juniper Avenue, San Jose",
+            "jurisdiction": "California / demonstration project",
+            "phase": "Handover",
+            "readiness": 77,
+            "componentCount": 24,
+            "openIssues": 5,
+            "updatedAt": "2026-10-17T22:42:21.612119Z"
+          }
+        ],
+        "mode": "local"
+      },
+      "context": {
+        "property": {
+          "id": "cedar",
+          "name": "Cedar House",
+          "address": "1840 Cedar Street, San Francisco",
+          "jurisdiction": "California / demonstration project",
+          "phase": "Commissioning",
+          "readiness": 80,
+          "componentCount": 24,
+          "openIssues": 2,
+          "updatedAt": "2026-10-17T22:42:21.530755Z"
+        },
+        "stats": {
+          "verified": 77,
+          "pending": 17,
+          "issue": 2,
+          "unknown": 0,
+          "total": 96
+        },
+        "agents": [
+          {
+            "id": "portfolio",
+            "name": "Steward Coordinator",
+            "role": "Steward portfolio coordinator",
+            "status": "idle",
+            "identity": "local://steward/agents/portfolio",
+            "lastAction": "Portfolio checks finished.",
+            "tools": [
+              "list_properties",
+              "get_portfolio",
+              "run_inspection",
+              "get_job",
+              "export_report"
+            ]
+          },
+          {
+            "id": "agent-cedar",
+            "name": "Steward Cedar",
+            "role": "Cedar House property agent",
+            "status": "idle",
+            "identity": "local://steward/agents/cedar",
+            "lastAction": "Checked 24 components against project specifications. Property totals: 77/96 verified records, 17 pending, 2 issues, 0 unknown. Results concern original demo evidence, not site certification.",
+            "tools": [
+              "inspect_component",
+              "search_requirements",
+              "search_documents",
+              "assess_evidence",
+              "recall_memory",
+              "save_memory",
+              "export_report"
+            ]
+          },
+          {
+            "id": "agent-harbor",
+            "name": "Steward Harbor",
+            "role": "Harbor Works property agent",
+            "status": "idle",
+            "identity": "local://steward/agents/harbor",
+            "lastAction": "Checked 24 components against project specifications. Property totals: 72/96 verified records, 22 pending, 2 issues, 0 unknown. Results concern original demo evidence, not site certification.",
+            "tools": [
+              "inspect_component",
+              "search_requirements",
+              "search_documents",
+              "assess_evidence",
+              "recall_memory",
+              "save_memory",
+              "export_report"
+            ]
+          },
+          {
+            "id": "agent-juniper",
+            "name": "Steward Juniper",
+            "role": "Juniper Residence property agent",
+            "status": "idle",
+            "identity": "local://steward/agents/juniper",
+            "lastAction": "Checked 24 components against project specifications. Property totals: 74/96 verified records, 17 pending, 5 issues, 0 unknown. Results concern original demo evidence, not site certification.",
+            "tools": [
+              "inspect_component",
+              "search_requirements",
+              "search_documents",
+              "assess_evidence",
+              "recall_memory",
+              "save_memory",
+              "export_report"
+            ]
+          }
+        ],
+        "activeJob": null,
+        "mode": "local"
+      }
+    },
+    {
+      "library": "@modelcontextprotocol/client",
+      "version": "2.3.1",
+      "tools": [
+        "list_properties",
+        "get_property_context",
+        "list_components",
+        "inspect_component",
+        "search_requirements",
+        "search_documents",
+        "run_inspection",
+        "get_job",
+        "get_activity",
+        "recall_memory",
+        "export_report",
+        "get_integrations"
+      ],
+      "properties": {
+        "properties": [
+          {
+            "id": "cedar",
+            "name": "Cedar House",
+            "address": "1840 Cedar Street, San Francisco",
+            "jurisdiction": "California / demonstration project",
+            "phase": "Commissioning",
+            "readiness": 80,
+            "componentCount": 24,
+            "openIssues": 2,
+            "updatedAt": "2026-10-17T22:42:21.530755Z"
+          },
+          {
+            "id": "harbor",
+            "name": "Harbor Works",
+            "address": "68 Harbor Way, Oakland",
+            "jurisdiction": "California / demonstration project",
+            "phase": "Fit-out",
+            "readiness": 75,
+            "componentCount": 24,
+            "openIssues": 2,
+            "updatedAt": "2026-10-17T22:42:21.572392Z"
+          },
+          {
+            "id": "juniper",
+            "name": "Juniper Residence",
+            "address": "215 Juniper Avenue, San Jose",
+            "jurisdiction": "California / demonstration project",
+            "phase": "Handover",
+            "readiness": 77,
+            "componentCount": 24,
+            "openIssues": 5,
+            "updatedAt": "2026-10-17T22:42:21.612119Z"
+          }
+        ],
+        "mode": "local"
+      },
+      "context": {
+        "property": {
+          "id": "cedar",
+          "name": "Cedar House",
+          "address": "1840 Cedar Street, San Francisco",
+          "jurisdiction": "California / demonstration project",
+          "phase": "Commissioning",
+          "readiness": 80,
+          "componentCount": 24,
+          "openIssues": 2,
+          "updatedAt": "2026-10-17T22:42:21.530755Z"
+        },
+        "stats": {
+          "verified": 77,
+          "pending": 17,
+          "issue": 2,
+          "unknown": 0,
+          "total": 96
+        },
+        "agents": [
+          {
+            "id": "portfolio",
+            "name": "Steward Coordinator",
+            "role": "Steward portfolio coordinator",
+            "status": "idle",
+            "identity": "local://steward/agents/portfolio",
+            "lastAction": "Portfolio checks finished.",
+            "tools": [
+              "list_properties",
+              "get_portfolio",
+              "run_inspection",
+              "get_job",
+              "export_report"
+            ]
+          },
+          {
+            "id": "agent-cedar",
+            "name": "Steward Cedar",
+            "role": "Cedar House property agent",
+            "status": "idle",
+            "identity": "local://steward/agents/cedar",
+            "lastAction": "Checked 24 components against project specifications. Property totals: 77/96 verified records, 17 pending, 2 issues, 0 unknown. Results concern original demo evidence, not site certification.",
+            "tools": [
+              "inspect_component",
+              "search_requirements",
+              "search_documents",
+              "assess_evidence",
+              "recall_memory",
+              "save_memory",
+              "export_report"
+            ]
+          },
+          {
+            "id": "agent-harbor",
+            "name": "Steward Harbor",
+            "role": "Harbor Works property agent",
+            "status": "idle",
+            "identity": "local://steward/agents/harbor",
+            "lastAction": "Checked 24 components against project specifications. Property totals: 72/96 verified records, 22 pending, 2 issues, 0 unknown. Results concern original demo evidence, not site certification.",
+            "tools": [
+              "inspect_component",
+              "search_requirements",
+              "search_documents",
+              "assess_evidence",
+              "recall_memory",
+              "save_memory",
+              "export_report"
+            ]
+          },
+          {
+            "id": "agent-juniper",
+            "name": "Steward Juniper",
+            "role": "Juniper Residence property agent",
+            "status": "idle",
+            "identity": "local://steward/agents/juniper",
+            "lastAction": "Checked 24 components against project specifications. Property totals: 74/96 verified records, 17 pending, 5 issues, 0 unknown. Results concern original demo evidence, not site certification.",
+            "tools": [
+              "inspect_component",
+              "search_requirements",
+              "search_documents",
+              "assess_evidence",
+              "recall_memory",
+              "save_memory",
+              "export_report"
+            ]
+          }
+        ],
+        "activeJob": null,
+        "mode": "local"
+      }
+    }
+  ],
+  "validation": {
+    "invalidPropertyRejected": true,
+    "recoveredPropertyId": "cedar"
+  },
+  "disclosure": "Actual local API/MCP results. This is a two-library interoperability demo, not an LLM conversation, physical inspection, statutory certification or external action."
+}

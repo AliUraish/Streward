@@ -1,0 +1,19 @@
+{
+  "name": "steward-agents",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "STEWARD_AGENT_RUNTIME_DIR=\"$PWD\" PATH=\"$PWD/node_modules/node/bin:$PATH\" eve dev --no-ui --no-default-extensions --host 127.0.0.1 --port 2000",
+    "build": "PATH=\"$PWD/node_modules/node/bin:$PATH\" eve build"
+  },
+  "dependencies": {
+    "ai": "latest",
+    "eve": "latest",
+    "just-bash": "3.6.0",
+    "node": "^24.0.0",
+    "zod": "^4.0.0"
+  }
+}

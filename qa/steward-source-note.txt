@@ -1,0 +1,5 @@
+Steward — project handover note
+
+Original demonstration source for Cedar House, equipment P-101.
+Keep the commissioning record linked to the exact property, equipment tag, and project requirement.
+This note verifies local document ingestion and search. It does not record a site inspection or provide statutory approval.

@@ -1,0 +1,9 @@
+{
+  "propertyId": "cedar",
+  "componentId": "pump-01",
+  "tag": "P-101",
+  "requirementId": "cedar-pump-01-doc",
+  "outcome": "pass",
+  "synthetic": true,
+  "note": "Original synthetic commissioning record used to verify the local upload workflow. This is not a physical inspection."
+}

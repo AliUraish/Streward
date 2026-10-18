@@ -1,0 +1,12 @@
+import { copyFile,cp,mkdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+const require=createRequire(import.meta.url);
+const pdfRoot=path.dirname(require.resolve('pdfjs-dist/package.json'));
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const target=path.join(root,'public','pdfjs');
+await mkdir(target,{recursive:true});
+await copyFile(path.join(pdfRoot,'build','pdf.worker.min.mjs'),path.join(target,'pdf.worker.min.mjs'));
+await cp(path.join(pdfRoot,'standard_fonts'),path.join(target,'standard_fonts'),{recursive:true});
+await copyFile(path.join(pdfRoot,'LICENSE'),path.join(target,'LICENSE'));

@@ -1,0 +1,8 @@
+{
+  "name": "steward-local-tooling",
+  "private": true,
+  "dependencies": {
+    "@insforge/cli": "latest",
+    "@mcp-use/cli": "latest"
+  }
+}

@@ -1,0 +1,441 @@
+{
+  "room": {
+    "width": 13,
+    "depth": 12,
+    "height": 4.6
+  },
+  "components": [
+    {
+      "id": "pump-01",
+      "tag": "P-101",
+      "name": "Primary circulation pump",
+      "kind": "pump",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "pending",
+      "position": [
+        -3.1,
+        0,
+        -0.6
+      ],
+      "description": "Primary circulation pump in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "pump-02",
+      "tag": "P-102",
+      "name": "Secondary circulation pump",
+      "kind": "pump",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "verified",
+      "position": [
+        -1.2,
+        0,
+        -0.6
+      ],
+      "description": "Secondary circulation pump in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "pump-03",
+      "tag": "P-103",
+      "name": "Standby circulation pump",
+      "kind": "pump",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "issue",
+      "position": [
+        0.7,
+        0,
+        -0.6
+      ],
+      "description": "Standby circulation pump in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "tank-01",
+      "tag": "TK-201",
+      "name": "Expansion vessel",
+      "kind": "tank",
+      "system": "Mechanical",
+      "subsystem": "Pressure management",
+      "status": "verified",
+      "position": [
+        4.1,
+        0,
+        -3.6
+      ],
+      "description": "Expansion vessel in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "tank-02",
+      "tag": "TK-202",
+      "name": "Thermal buffer vessel",
+      "kind": "tank",
+      "system": "Mechanical",
+      "subsystem": "Thermal storage",
+      "status": "pending",
+      "position": [
+        4.1,
+        0,
+        -0.7
+      ],
+      "description": "Thermal buffer vessel in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "exchanger-01",
+      "tag": "HX-301",
+      "name": "Plate heat exchanger",
+      "kind": "exchanger",
+      "system": "Mechanical",
+      "subsystem": "Heat exchange",
+      "status": "verified",
+      "position": [
+        -0.7,
+        0,
+        -4.7
+      ],
+      "description": "Plate heat exchanger in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "exchanger-02",
+      "tag": "HX-302",
+      "name": "Domestic heat exchanger",
+      "kind": "exchanger",
+      "system": "Mechanical",
+      "subsystem": "Heat exchange",
+      "status": "pending",
+      "position": [
+        1.8,
+        0,
+        -4.7
+      ],
+      "description": "Domestic heat exchanger in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "panel-01",
+      "tag": "DB-401",
+      "name": "Main distribution panel",
+      "kind": "panel",
+      "system": "Electrical",
+      "subsystem": "Power distribution",
+      "status": "verified",
+      "position": [
+        -5.8,
+        0.7,
+        -3.6
+      ],
+      "description": "Main distribution panel in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "panel-02",
+      "tag": "CP-402",
+      "name": "Pump control cabinet",
+      "kind": "panel",
+      "system": "Electrical",
+      "subsystem": "Controls",
+      "status": "pending",
+      "position": [
+        -5.8,
+        0.7,
+        -1.5
+      ],
+      "description": "Pump control cabinet in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "valve-01",
+      "tag": "V-501",
+      "name": "Primary isolation valve",
+      "kind": "valve",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "verified",
+      "position": [
+        -3.1,
+        2.45,
+        -0.6
+      ],
+      "description": "Primary isolation valve in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "valve-02",
+      "tag": "V-502",
+      "name": "Secondary isolation valve",
+      "kind": "valve",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "verified",
+      "position": [
+        -1.2,
+        2.45,
+        -0.6
+      ],
+      "description": "Secondary isolation valve in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "valve-03",
+      "tag": "V-503",
+      "name": "Standby isolation valve",
+      "kind": "valve",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "pending",
+      "position": [
+        0.7,
+        2.45,
+        -0.6
+      ],
+      "description": "Standby isolation valve in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "valve-04",
+      "tag": "V-504",
+      "name": "Supply manifold valve",
+      "kind": "valve",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "issue",
+      "position": [
+        2.3,
+        3.0,
+        -0.6
+      ],
+      "description": "Supply manifold valve in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "valve-05",
+      "tag": "V-505",
+      "name": "Return manifold valve",
+      "kind": "valve",
+      "system": "Mechanical",
+      "subsystem": "Hydronic distribution",
+      "status": "verified",
+      "position": [
+        2.3,
+        3.0,
+        1.0
+      ],
+      "description": "Return manifold valve in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "gauge-01",
+      "tag": "PG-601",
+      "name": "Primary pressure gauge",
+      "kind": "gauge",
+      "system": "Mechanical",
+      "subsystem": "Instrumentation",
+      "status": "verified",
+      "position": [
+        -3.1,
+        1.75,
+        -0.1
+      ],
+      "description": "Primary pressure gauge in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "gauge-02",
+      "tag": "PG-602",
+      "name": "Secondary pressure gauge",
+      "kind": "gauge",
+      "system": "Mechanical",
+      "subsystem": "Instrumentation",
+      "status": "verified",
+      "position": [
+        -1.2,
+        1.75,
+        -0.1
+      ],
+      "description": "Secondary pressure gauge in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "gauge-03",
+      "tag": "PG-603",
+      "name": "Standby pressure gauge",
+      "kind": "gauge",
+      "system": "Mechanical",
+      "subsystem": "Instrumentation",
+      "status": "pending",
+      "position": [
+        0.7,
+        1.75,
+        -0.1
+      ],
+      "description": "Standby pressure gauge in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "duct-01",
+      "tag": "AHU-701",
+      "name": "Supply air duct",
+      "kind": "duct",
+      "system": "Mechanical",
+      "subsystem": "Ventilation",
+      "status": "verified",
+      "position": [
+        -2.0,
+        3.75,
+        -3.7
+      ],
+      "description": "Supply air duct in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "duct-02",
+      "tag": "AHU-702",
+      "name": "Extract air duct",
+      "kind": "duct",
+      "system": "Mechanical",
+      "subsystem": "Ventilation",
+      "status": "pending",
+      "position": [
+        2.0,
+        3.75,
+        -3.7
+      ],
+      "description": "Extract air duct in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "sensor-01",
+      "tag": "TS-801",
+      "name": "Supply temperature sensor",
+      "kind": "sensor",
+      "system": "Mechanical",
+      "subsystem": "Instrumentation",
+      "status": "verified",
+      "position": [
+        -4.1,
+        2.85,
+        -0.6
+      ],
+      "description": "Supply temperature sensor in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "sensor-02",
+      "tag": "TS-802",
+      "name": "Return temperature sensor",
+      "kind": "sensor",
+      "system": "Mechanical",
+      "subsystem": "Instrumentation",
+      "status": "verified",
+      "position": [
+        -4.1,
+        2.85,
+        1.0
+      ],
+      "description": "Return temperature sensor in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "light-01",
+      "tag": "L-901",
+      "name": "Emergency luminaire",
+      "kind": "light",
+      "system": "Electrical",
+      "subsystem": "Lighting",
+      "status": "pending",
+      "position": [
+        -5.5,
+        3.3,
+        3.9
+      ],
+      "description": "Emergency luminaire in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 2
+    },
+    {
+      "id": "fire-01",
+      "tag": "FE-1001",
+      "name": "Fire extinguisher",
+      "kind": "fire",
+      "system": "Fire protection",
+      "subsystem": "Portable equipment",
+      "status": "verified",
+      "position": [
+        5.6,
+        0.6,
+        3.6
+      ],
+      "description": "Fire extinguisher in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    },
+    {
+      "id": "door-01",
+      "tag": "D-1101",
+      "name": "Plant room access door",
+      "kind": "door",
+      "system": "Architectural",
+      "subsystem": "Access and egress",
+      "status": "verified",
+      "position": [
+        0,
+        0,
+        5.2
+      ],
+      "description": "Plant room access door in the central plant room. Linked to project requirements, inspection observations and source evidence.",
+      "confidence": 0.94,
+      "requirementCount": 4,
+      "verifiedCount": 4
+    }
+  ]
+}

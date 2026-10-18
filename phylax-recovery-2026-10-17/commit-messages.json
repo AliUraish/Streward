@@ -1,0 +1,68 @@
+[
+  {
+    "oid": "c231cbf51bc863b8d23cc8f2838efb55341f53bf",
+    "subject": "Scaffold the Next.js + FastAPI app with subscription-first Claude",
+    "message": "Scaffold the Next.js + FastAPI app with subscription-first Claude\r\n\r\nNext.js App Router frontend and FastAPI backend modeled on\r\nrequirements-management without its app-specific code. backend/run.sh\r\nopens the SSH tunnel to the Phylax database on the Swivel RDS server.\r\nClaude calls go through the Claude Agent SDK on the Claude subscription,\r\nwith ANTHROPIC_API_KEY as an auth-failure fallback only. A system/status\r\nfeature exercises every layer. Adds AGENTS.md/CLAUDE.md guidance, scoped\r\nClaude and Codex rules, /prime, and the shared agent skills.\r\n\r\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>",
+    "url": "https://github.com/charlie-robison/phylax/commit/c231cbf51bc863b8d23cc8f2838efb55341f53bf"
+  },
+  {
+    "oid": "6be8efde58aa71d741b2008dd93b4720bba970a6",
+    "subject": "Add scene survey with stored component coordinates and station-wall tour",
+    "message": "Add scene survey with stored component coordinates and station-wall tour\r\n\r\nDetect with Grounding DINO on Modal and classify crops with the Decisions\r\nAPI; rebuild the tour as a wall of fixed camera stations. Add a scene survey\r\nthat walks the whole scan, lifts every classified box into scene coordinates\r\nthrough the committed voxel occupancy, and stores sightings and merged\r\nobjects in wapp.scene_observation and wapp.scene_object, with a line-of-sight\r\nobjects endpoint for rendering them from any view.\r\n\r\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "url": "https://github.com/charlie-robison/phylax/commit/6be8efde58aa71d741b2008dd93b4720bba970a6"
+  },
+  {
+    "oid": "6be6739b9c4338683330c489656c7fad0ce1f9f0",
+    "subject": "Connect live inspection callers to deployed requirement matching",
+    "message": "Connect live inspection callers to deployed requirement matching",
+    "url": "https://github.com/charlie-robison/phylax/commit/6be6739b9c4338683330c489656c7fad0ce1f9f0"
+  },
+  {
+    "oid": "cc6cfdf391407b6c271ca1829fc9a121a6e1536b",
+    "subject": "Add Phylax Hermes bot profile, skills, and read-only MCP server",
+    "message": "Add Phylax Hermes bot profile, skills, and read-only MCP server\r\n\r\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "url": "https://github.com/charlie-robison/phylax/commit/cc6cfdf391407b6c271ca1829fc9a121a6e1536b"
+  },
+  {
+    "oid": "fac4f39d1458c334e1854576ea07981cf9613887",
+    "subject": "Merge remote-tracking branch 'origin/main' into inspection-visuals-ui",
+    "message": "Merge remote-tracking branch 'origin/main' into inspection-visuals-ui\r\n\r\n# Conflicts:\r\n#\tbackend/src/features/inspection/steps/scene_objects/models.py\r\n#\tbackend/src/features/inspection/steps/scene_objects/repository.py\r\n#\tbackend/src/features/inspection/steps/scene_objects/service.py\r\n#\tfrontend/src/app/inspection-tour/wall.tsx",
+    "url": "https://github.com/charlie-robison/phylax/commit/fac4f39d1458c334e1854576ea07981cf9613887"
+  },
+  {
+    "oid": "73aa83e578f23abb19c128ac9760a46c16833595",
+    "subject": "Add validated requirements linking service and live survey replay",
+    "message": "Add validated requirements linking service and live survey replay",
+    "url": "https://github.com/charlie-robison/phylax/commit/73aa83e578f23abb19c128ac9760a46c16833595"
+  },
+  {
+    "oid": "36efb2a4e75829da1a60c9a3e819f696374acd38",
+    "subject": "Hermes bot: README and installer updates",
+    "message": "Hermes bot: README and installer updates\r\n\r\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "url": "https://github.com/charlie-robison/phylax/commit/36efb2a4e75829da1a60c9a3e819f696374acd38"
+  },
+  {
+    "oid": "ad01a88d9dc9ef596afa063ab973941e8b981aa3",
+    "subject": "Grant Amplify deployment resource access",
+    "message": "Grant Amplify deployment resource access",
+    "url": "https://github.com/charlie-robison/phylax/commit/ad01a88d9dc9ef596afa063ab973941e8b981aa3"
+  },
+  {
+    "oid": "c50d32affb136911e08502754399755a80049b4e",
+    "subject": "Trust immutable GitHub OIDC subject for deployments",
+    "message": "Trust immutable GitHub OIDC subject for deployments",
+    "url": "https://github.com/charlie-robison/phylax/commit/c50d32affb136911e08502754399755a80049b4e"
+  },
+  {
+    "oid": "1b3eaf19544ea83bf4887a38ca325b6d02dce079",
+    "subject": "Merge origin/main into splat-component-classify",
+    "message": "Merge origin/main into splat-component-classify\r\n\r\nKeep both sides: the station wall, scene survey, and detector routes from\r\nthis branch alongside main's room memory, requirements linking, and codes\r\nlibrary. The walking tour that main extended with the memory panel moves to\r\n/inspection-tour/walk with its own scene module, since scene.ts now\r\ndescribes the station wall.\r\n\r\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>",
+    "url": "https://github.com/charlie-robison/phylax/commit/1b3eaf19544ea83bf4887a38ca325b6d02dce079"
+  },
+  {
+    "oid": "41aa4c9e72b42824de8b2fbff3c57043e51bf1b5",
+    "subject": "Refine 3x inspection walkthrough and add AWS deployment",
+    "message": "Refine 3x inspection walkthrough and add AWS deployment",
+    "url": "https://github.com/charlie-robison/phylax/commit/41aa4c9e72b42824de8b2fbff3c57043e51bf1b5"
+  }
+]
