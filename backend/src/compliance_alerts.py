@@ -71,7 +71,11 @@ SPOKEN = ((r"\bregs\.? ", "regulations "), (r"\breg\. ", "regulation "), (r"\bar
 PAIRS = {"pressure": (("myer-plant", "bristol-pumps"),),
          "fire": (("myer-plant", "bristol-pumps"), ("myer-plant", "tomioka-mill")),
          "hotwork": (("myer-plant", "bristol-pumps"), ("myer-plant", "tomioka-mill")),
+         "lighting": (("myer-plant", "bristol-pumps"), ("myer-plant", "tomioka-mill")),
+         "drill": (("myer-plant", "tomioka-mill"), ("myer-plant", "bristol-pumps")),
+         "maintenance": (("myer-plant", "bristol-pumps"),),
          "heritage": (("bristol-pumps", "tomioka-mill"),),
+         "structure": (("bristol-pumps", "tomioka-mill"),),
          "humidity": (("bristol-pumps", "tomioka-mill"),),
          "route": (("bristol-pumps", "tomioka-mill"),)}
 # What each kind of finding means, what the walker does now, the manager's next step, and what the other site shares.
@@ -90,6 +94,34 @@ CATEGORIES = {
         question="how do you run your extinguisher and hydrant inspections so none of them lapse?",
         help="I'll send our inspection checklist and the service firm's contact; they keep a reminder list, so nothing lapses again.",
         practice="Every unit has a signed tag and a monthly visual check, and the service firm does the periodic service and records it."),
+    "lighting": dict(
+        risk="an emergency light that has not passed its discharge test may not light the way out in a power cut",
+        hold="check {tag} on its test switch every shift and keep a torch station by the exit until the discharge test is done",
+        step="book the electrical contractor for the 90-minute discharge test on {day} morning",
+        question="how do you run your emergency lighting discharge tests and keep the logbook current?",
+        help="I'll send our discharge-test sheet and the logbook page we use, with the contractor's contact.",
+        practice="Our electrical contractor runs the 90-minute discharge test every six months on a booked date, and the result goes into the logbook the same day."),
+    "drill": dict(
+        risk="staff and visitors have not practised the way out, and the exits and guide lights have not been checked",
+        hold="walk {tag} and the exit route every morning and keep both exits clear and unlocked",
+        step="run the evacuation drill with the fire prevention manager on {day} morning, before the visitors arrive",
+        question="how do you schedule evacuation drills so they don't slip in your busy season?",
+        help="I'll send our drill plan and the sign-off sheet we use.",
+        practice="We run the evacuation drill every six months on a fixed weekday morning before opening, and the exits and emergency lights are checked the same morning."),
+    "maintenance": dict(
+        risk="equipment that is not kept in good repair puts the site, and the people on it, at risk",
+        hold="keep the standby on duty and check {tag} every shift until the repair is done",
+        step="take the contractor's first free slot, or bring in a second contractor on {day}",
+        question="who do you use for valve and gland work when your usual contractor has no slot?",
+        help="I'll send you our second contractor's details and the gland-repack method statement.",
+        practice="We keep a second contractor on the approved list for when the usual one is booked up, and every repair goes into the plant record."),
+    "structure": dict(
+        risk="the repair alters protected fabric, so it cannot start until the permission is granted",
+        hold="keep the floor under {tag} closed to visitors and check the split joint every day",
+        step="ask the board of education for a decision date on {day} and keep the area under {tag} closed meanwhile",
+        question="how do you handle structural repairs on protected fabric while the consent is pending?",
+        help="I'll email our temporary-works method statement and the weekly defect log template.",
+        practice="We close the area, photograph the defect every week, and agree a temporary support with the conservation officer that fixes nothing permanently."),
     "hotwork": dict(
         risk="hot work without a valid permit and fire watch puts the plant at risk of fire",
         hold="hold the hot work at {tag} and keep a checked extinguisher within reach",
@@ -163,6 +195,18 @@ PRACTICE = {
                                "route before it reopens.",
     ("bristol-pumps", "humidity"): "We log the engine-house humidity every hour and run a dehumidifier when it climbs; the restoration lead checks the "
                                    "1907 metalwork for corrosion every week.",
+    ("myer-plant", "lighting"): "L-901 and the exit signs get a monthly function check and a six-monthly 90-minute discharge test, logged as essential "
+                                "safety measures for the annual report under regulation 223 of the Victorian Building Regulations 2018.",
+    ("bristol-pumps", "lighting"): "Our walkway luminaire L-901 gets a monthly function check and a three-hour duration test every year, and the visitor "
+                                   "lead keeps the log.",
+    ("myer-plant", "drill"): "We run the evacuation drill every six months on a fixed Tuesday before opening, and the exit signs and emergency lights are "
+                             "checked the same morning.",
+    ("tomioka-mill", "drill"): "Our fire prevention manager runs the drill under the fire defence plan, as article 8 of the Fire Service Act requires, and "
+                               "books the next one before the visitor season starts.",
+    ("myer-plant", "maintenance"): "We keep a second valve contractor on the approved list for when Delta Valve Services is booked up, and every gland "
+                                   "repack goes into the plant record.",
+    ("bristol-pumps", "structure"): "We close the area, photograph the defect every week, and agree a temporary support with the conservation officer "
+                                    "that fixes nothing permanently to the 1907 fabric.",
 }
 
 
@@ -259,14 +303,22 @@ def categorize(obligation: dict) -> tuple[str, str]:
         return "pressure", "Steam demonstration permit"
     if "expansion vessel" in title:
         return "pressure", "Expansion vessel inspection"
+    if "pipework" in title and ("steam" in title or "written scheme" in title or "examination" in title):
+        return "pressure", "Steam pipework examination"
     if any(word in title for word in ("pressure", "receiver", "vessel", "written-scheme", "written scheme", "examination")):
         return "pressure", "Pressure vessel examination"
+    if "luminaire" in title or "emergency light" in title or "discharge test" in title:
+        return "lighting", "Emergency lighting discharge test"
+    if "evacuation drill" in title or ("drill" in title and "exit" in title):
+        return "drill", "Evacuation drill and exit check"
     if "hydrant" in title:
         return "fire", "Fire hydrant inspection"
     if "extinguisher" in title:
         return "fire", "Fire extinguisher inspection"
     if "humidity" in title or "mould" in title:
         return "humidity", "Humidity watch"
+    if "truss" in title or "structural survey" in title or "tie-beam" in title:
+        return "structure", "Truss survey and strap repair"
     if "mounting" in title:
         return "heritage", "Heritage mounting and route-closure method"
     if any(word in title for word in ("alter", "national treasure", "permission")):
@@ -275,6 +327,8 @@ def categorize(obligation: dict) -> tuple[str, str]:
         return "route", "Walkway pre-opening check"
     if any(word in title for word in ("distribution board", "rcd", "electrical")):
         return "electrical", "Electrical periodic inspection"
+    if any(word in title for word in ("spindle", "gland", "repack", "repair")):
+        return "maintenance", ("Valve repair" if "valve" in title else "Repair")
     text = (obligation.get("title") or "Obligation").strip()
     return "generic", (text if len(text) <= 60 else text[:57].rsplit(" ", 1)[0] + "...")
 
@@ -350,19 +404,42 @@ def ascii_only(text: str) -> str:
     return " ".join(without_japanese(text).encode("ascii", "ignore").decode().split())
 
 
-def first_sentence(text: str, limit: int = 280) -> str:
-    """The first sentence; past `limit` it is cut at the last clause break (semicolon, then comma) and closed."""
-    text = " ".join((text or "").split())
+def first_sentence(text: str, limit: int = 280, english: bool = False) -> str:
+    """The first sentence; past `limit` it is cut at the last clause break outside parentheses (semicolon, then comma) and
+    closed. `english` drops the parenthesised Japanese references first."""
+    text = " ".join((without_japanese(text) if english else (text or "")).split())
     match = re.search(r"(?<!\b[A-Z])(?<!\barts)(?<!\bart)(?<!\breg)(?<!\bregs)(?<!\bSch)(?<!\bpp)(?<!\bNo)\.(\s|$)", text)
     sentence = text[:match.start() + 1] if match else text
     if len(sentence) <= limit:
         return sentence
-    head = sentence[:limit]
-    for mark in ("; ", ", "):
-        cut = head.rfind(mark)
-        if cut > limit // 3:
-            return head[:cut].rstrip(" ,;") + "."
-    return head.rsplit(" ", 1)[0] + "..."
+    depth, breaks = 0, {";": [], ",": []}
+    for index, char in enumerate(sentence[:limit]):
+        if char in "(（":
+            depth += 1
+        elif char in ")）":
+            depth = max(0, depth - 1)
+        elif char in breaks and depth == 0 and sentence[index + 1:index + 2] == " ":
+            breaks[char].append(index)
+    for mark in (";", ","):
+        cuts = [i for i in breaks[mark] if i > limit // 3]
+        if cuts:
+            return sentence[:cuts[-1]].rstrip(" ,;") + "."
+    return sentence[:limit].rsplit(" ", 1)[0] + "..."
+
+
+def primary_regulation(obligation: dict, known: dict[str, dict]) -> dict | None:
+    """The regulation an obligation's finding is about: for a blocked one, the provision its block names ("art. 43"),
+    else the first binding id it cites."""
+    records = [known[rid] for rid in obligation.get("regulationIds") or [] if rid in known]
+    if not records:
+        return None
+    blocked = " ".join(str(obligation.get(key) or "") for key in ("blockedBy", "blockedReason"))
+    if blocked.strip():
+        for record in records:
+            head = re.match(r"((?:art|reg|s|regs|arts)\.?\s*[\d-]+)", (record.get("provision") or "").strip())
+            if head and re.search(re.escape(head.group(1)) + r"(?![\d-])", blocked):
+                return record
+    return records[0]
 
 
 def sentence(text: str) -> str:
@@ -471,10 +548,16 @@ class ComplianceAlertService:
         return alert
 
     def recent(self, obligation_id: str, hours: float = DEDUPE_HOURS) -> dict | None:
-        """The latest alert for this obligation raised in the last `hours` (later walkthroughs reuse it)."""
+        """The latest alert for this obligation raised in the last `hours` that did not fail (later walkthroughs reuse it)."""
         cutoff = utcnow() - timedelta(hours=hours)
-        matches = [a for a in self.store.all("owner_alert") if a.get("obligationId") == obligation_id and (parse_time(a.get("at")) or cutoff) > cutoff]
+        matches = [a for a in self.store.all("owner_alert") if a.get("obligationId") == obligation_id and a.get("state") != "failed"
+                   and (parse_time(a.get("at")) or cutoff) > cutoff]
         return max(matches, key=lambda a: a["at"]) if matches else None
+
+    def would_send(self, site_id: str, origin: str) -> bool:
+        """Every gate holds now for an alert of this origin on at least one channel (caps aside)."""
+        probe = dict(siteId=site_id, origin=origin)
+        return not self.gate(probe, "email") or not self.gate(probe, "call")
 
     # ---- open --------------------------------------------------------------------------------------------
 
@@ -483,17 +566,22 @@ class ComplianceAlertService:
         """Create the alert for one bad obligation (queued; `run` plays it), or return the one raised for the same obligation in
         the last 24 h. Returns (alert, reused)."""
         with self.lock:
-            if reuse:
-                existing = self.recent(obligation["id"])
-                if existing:
-                    return existing, True
+            existing = self.recent(obligation["id"]) if reuse else None
+            # Reuse the alert of the last 24 h while it plays, once it reached the owner or hit the cap, and while live messaging is
+            # still off. An alert that was only a dry run gives way when every gate now holds, so switching live messaging on and
+            # walking the site really emails and calls the owner (the cap and the one-per-obligation rule still apply).
+            if existing and (existing.get("state") in ("queued", "running") or existing.get("liveAt") or existing.get("cappedReason")
+                             or not self.would_send(site_id, origin)):
+                return existing, True
             status = "blocked" if obligation.get("status") == "blocked" else "overdue"
             days = overdue_days(obligation)
             category, noun = categorize(obligation)
             state = state_phrase(obligation)
-            regulation_ids = list(obligation.get("regulationIds") or [])
             known = self.service.regulations.by_id()
-            first = next((known[rid] for rid in regulation_ids if rid in known), None)
+            first = primary_regulation(obligation, known)
+            regulation_ids = list(obligation.get("regulationIds") or [])
+            if first and first["id"] in regulation_ids:  # the provision the finding is about leads the list
+                regulation_ids = [first["id"]] + [rid for rid in regulation_ids if rid != first["id"]]
             crew = self.store.get("crew_member", obligation.get("ownerId") or "", site_id) if obligation.get("ownerId") else None
             frame_ids = [f for f in [label.get("frameId")] if f]
             alert = dict(id=uid("oal"), siteId=site_id, siteName=self.service.require_property(site_id)["name"], obligationId=obligation["id"],
@@ -558,8 +646,13 @@ class ComplianceAlertService:
         manager, compliance, walker = manager_id(site), compliance_id(site), alert["walker"]
         partner = alert.get("partnerSiteId") or partner_site(site, alert.get("category") or "generic")
         day = plan_day(site)
-        owner = alert.get("ownerName") or "the duty engineer"
-        role = alert.get("ownerRole") or "duty engineer"
+        role = alert.get("ownerRole") or "Duty engineer"
+        name = re.sub(r"\s*\(you\)\s*$", "", alert.get("ownerName") or "").strip()
+        crew = self.store.get("crew_member", alert["ownerCrewId"], site) if alert.get("ownerCrewId") else None
+        plain = not name or name.casefold() == role.casefold() or (crew or {}).get("contact") == "user"  # the duty engineer is the user
+        owner = f"the {role.lower()}" if plain else name
+        owner_intro = owner if plain else f"{name}, the {lower_first(role)},"
+        owner_label = owner if plain else f"{name} ({role})"
         values = dict(tag=alert.get("assetTag") or "the site", day=day.strftime("%A"), owner=owner)
         frames = [self.store.get("eye_frame", fid, site) for fid in alert.get("frameIds") or []]
         frames = [f for f in frames if f]
@@ -575,11 +668,11 @@ class ComplianceAlertService:
         return dict(site=site, site_name=alert.get("siteName") or self.service.require_property(site)["name"], short=short_site(site), place=place_of(site),
                     tag=alert.get("assetTag") or "the site", asset=(alert.get("assetName") or "asset"), noun=alert["noun"], state=alert["statePhrase"],
                     blocked=blocked, block_reason=reason, status_line=status_line, regulations=regulations, first=first,
-                    cite=cite_short(first), cite_spoken=cite_spoken(first), rule=without_japanese(first_sentence((first or {}).get("summary") or "")),
+                    cite=cite_short(first), cite_spoken=cite_spoken(first), rule=first_sentence((first or {}).get("summary") or "", english=True),
                     rule_full=first_sentence((first or {}).get("summary") or ""), reg_title=without_japanese((first or {}).get("title") or ""),
                     reg_title_full=(first or {}).get("title") or "", risk=category["risk"], hold=category["hold"].format(**values),
                     step=category["step"].format(**values), question=category["question"], help=category["help"],
-                    practice=PRACTICE.get((partner, alert.get("category"))) or category["practice"], owner=owner, owner_role=role,
+                    practice=PRACTICE.get((partner, alert.get("category"))) or category["practice"], owner=owner, owner_role=role, owner_intro=owner_intro, owner_label=owner_label,
                     manager=manager, manager_name=display_name(manager), compliance=compliance, compliance_name=display_name(compliance),
                     walker=walker, walker_name=display_name(walker), partner=partner, partner_short=short_site(partner),
                     walker_role=role_title(walker).lower(), manager_role=role_title(manager), manager_role_l=role_title(manager).lower(),
@@ -646,14 +739,14 @@ class ComplianceAlertService:
                           f"{seen}, and {c['status_line']}."),
             (c["compliance"], f"That one is {c['cite_spoken']}" + (f", {lower_first(c['reg_title'])}" if c["reg_title"] else "") + "."
                               + (f" {c['rule']}" if c["rule"] else "")),
-            (c["walker"], f"{c['owner']}, the {lower_first(c['owner_role'])}, owns it on our crew table. I've attached {evidence} to the issue, with my label."),
+            (c["walker"], sentence(f"{c['owner_intro']} owns it on our crew table") + f" I've attached {evidence} to the issue, with my label."),
             (c["compliance"], f"Thanks. I'm raising it as {c['severity']} and putting the file and your evidence in one pack for the owner. I'll ask "
                               f"{c['partner_short']}'s compliance officer how they handle it, then take it to the {c['manager_role_l']} for a decision."),
             (c["walker"], sentence(f"Good. Meanwhile I'll {c['hold']}")),
         ]
         summary = dict(headline=f"{c['tag']}: {lower_first(c['noun'])} {c['state']}; owner alert being prepared",
                        points=[sentence(f"{c['tag']}: {c['status_line']}"), f"Why it matters: {c['cite']}" + (f" ({c['reg_title']})." if c["reg_title"] else "."),
-                               f"Owner on the crew table: {c['owner']} ({c['owner_role']})."],
+                               sentence(f"Owner on the crew table: {c['owner_label']}")],
                        decisions=[f"Raise a {c['severity']} compliance issue and prepare the owner alert."],
                        actions=[dict(owner=c["compliance_name"], task="Put the file and the evidence together for the owner", due="now"),
                                 dict(owner=c["walker_name"], task=sentence(c["hold"]).rstrip("."), due="until it is put right")])
@@ -685,17 +778,18 @@ class ComplianceAlertService:
         turns = [
             (c["compliance"], f"{c['manager_role']}, I need a decision on {c['tag']}. Its {lower_first(c['noun'])} is {c['state']}"
                               + (f" ({lower_first(c['block_reason'])})" if c["blocked"] and c["block_reason"] else "")
-                              + f", and {c['risk']}. It falls under {c['cite']}. I have the file and {frames} ready for the owner."),
-            (c["manager"], f"Approved: tell the owner now. {c['owner']} owns it, and I'm assigning it to them. The {c['walker_role']} will {c['hold']}. "
+                              + f". In plain words, {c['risk']}. It falls under {c['cite']}. I have the file and {frames} ready for the owner."),
+            (c["manager"], f"Approved: tell the owner now. " + sentence(f"{c['owner']} owns it, and I'm assigning it to them")
+                           + f" The {c['walker_role']} will {c['hold']}. "
                            f"Next step: {c['step']}."),
             (c["compliance"], f"Understood. I'll email the owner the file and the evidence, then the dispatch line calls to ask: shall we {c['step']}?"),
         ]
         summary = dict(headline=f"{c['manager_name']} approves telling the owner about {c['tag']}",
                        points=[sentence(f"{c['tag']}: {c['noun']} {c['state']}"), f"Applies: {c['cite']}."],
-                       decisions=["Tell the owner now.", f"Assign {c['owner']} ({c['owner_role']}).", sentence(f"Next step: {c['step']}")],
+                       decisions=["Tell the owner now.", sentence(f"Assign {c['owner_label']}"), sentence(f"Next step: {c['step']}")],
                        actions=[dict(owner=c["compliance_name"], task="Email the owner the file and the evidence", due="now"),
                                 dict(owner="Steward Dispatch Line", task="Call the owner for the decision", due="after the email"),
-                                dict(owner=c["owner"], task=sentence(c["step"]).rstrip("."), due=c["day_name"])])
+                                dict(owner=c["owner"][:1].upper() + c["owner"][1:], task=sentence(c["step"]).rstrip("."), due=c["day_name"])])
         conversation = self._call(alert, "manager_decision", c["compliance"], c["manager"], f"Decision: tell the owner about {c['tag']}", turns, summary, [c["site"]])
         assigned = None
         if alert.get("issueId") and alert.get("ownerCrewId"):
@@ -710,7 +804,7 @@ class ComplianceAlertService:
                                      nextStep=c["step"], ask=f"Shall we {c['step']}?", at=now())
             self._save(fresh)
         self._step(alert["id"], "manager_decision", f"{c['manager_name']} approved telling the owner"
-                   + (f", assigned {c['owner']} ({c['owner_role']})" if assigned else "") + f"; next step: {c['step']}.",
+                   + (f", assigned {c['owner_label']}" if assigned else "") + f"; next step: {c['step']}.",
                    conversationId=conversation["id"], crewMemberId=assigned)
 
     # ---- gates ----------------------------------------------------------------------------------------------
@@ -817,7 +911,7 @@ class ComplianceAlertService:
                  f"Obligation: {alert['obligationId']}: {obligation.get('title') or alert.get('obligationTitle')}",
                  f"Status: {alert['statePhrase']}; due {(obligation.get('dueAt') or alert.get('dueAt') or '')[:10]}"
                  + (f"; blocked: {alert['blockedReason']}" if alert.get("blockedReason") and alert["obligationStatus"] == "blocked" else ""),
-                 f"Owner: {c['owner']} ({c['owner_role']})",
+                 f"Owner: {c['owner_label']}",
                  f"Issue: {alert.get('issueId') or '-'}",
                  f"Walkthrough: {alert.get('patrolId') or '-'} by {alert['walkerName']}", ""]
         if label:
@@ -862,7 +956,7 @@ class ComplianceAlertService:
                 + (" Also: " + "; ".join(extra[:3]) + "." if extra else ""))
         why = f"{c['cite_spoken'][:1].upper() + c['cite_spoken'][1:]}" + (f" ({c['reg_title_full']})" if c["reg_title_full"] else "") + (
             f": {c['rule_full']}" if c["rule_full"] else ".")
-        who = (f"{c['owner']} ({c['owner_role']}) owns it on the {c['short']} crew table. The compliance officer is handling it, and the "
+        who = (sentence(f"{c['owner_label']} owns it on the {c['short']} crew table") + " The compliance officer is handling it, and the "
                f"{c['manager_role_l']} approved telling you" + (" and assigned it." if decision.get("assignedTo") else "."))
         attribution = [r["attribution"] for r in refs if r.get("attribution")]
         attribution = list(dict.fromkeys(attribution))
@@ -941,9 +1035,10 @@ class ComplianceAlertService:
         c = self.context(alert)
         rule = ascii_only(c["rule"])
         parts = [f"Hello, this is the Steward Dispatch Line calling for the compliance team at {ascii_only(c['site_name'])}.",
-                 sentence(f"The {lower_first(c['noun'])} for {c['tag']}, the {lower_first(ascii_only(c['asset']))}, is {c['state']}"),
+                 sentence(f"The {lower_first(c['noun'])} for {c['tag']}"
+                          + ("" if c["asset"].casefold() in c["noun"].casefold() else f", the {lower_first(ascii_only(c['asset']))},") + f" is {c['state']}"),
                  sentence(f"Under {ascii_only(c['cite_spoken'])}, {lower_first(c['risk'])}"),
-                 sentence(f"{ascii_only(c['owner'])}, the {lower_first(c['owner_role'])}, owns it, and the {c['manager_role_l']} has approved telling you"),
+                 sentence(f"{ascii_only(c['owner_intro'])} owns it, and the {c['manager_role_l']} has approved telling you"),
                  "The compliance officer has emailed you the file and the evidence from today's walkthrough.",
                  f"Decision needed: shall we {c['step']}? Please say yes or no, or reply to the email."]
         text = " ".join(parts)

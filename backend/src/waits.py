@@ -9,7 +9,8 @@ match fires the wait (persisted, so a fired wait survives a reconnect) and wakes
 Event mapping: `work_item.resolved` (Change `work_item` whose item is resolved), `issue.changed` (`issue`),
 `reply.received` (`reply`), `board.resolved` (a meeting `conversation` that ended), `scenario.step` (`scenario`),
 `conversation.ended`, `fix.step` (fix workflow steps), `eye.frame` (an agent-eye frame landed), `tool.changed` (a Tool Forge step),
-`tool.published` (a forged tool was published), `any` (every Change). `filter` keys match the Change fields and the event extras (assetTag, issueId, kind, status,
+`tool.published` (a forged tool was published), `any` (every Change, except a scenario's own step rows unless the filter
+says type "scenario"). `filter` keys match the Change fields and the event extras (assetTag, issueId, kind, status,
 scenarioId, runId, workItemId, ...), case-sensitively.
 """
 from __future__ import annotations
@@ -29,7 +30,7 @@ MAX_TIMEOUT_SECONDS = 300
 WAIT_TTL = timedelta(hours=6)
 # Lost wake-up guard: a wait whose filter names one specific thing (a run, work item, issue, tool, fix, conversation)
 # first replays recent Changes, so "wait until X" fires at once when X already happened before the wait was created.
-REPLAY_KEYS = ("runId", "workItemId", "issueId", "toolId", "fixId", "conversationId", "meetingId", "requestId", "frameId")
+REPLAY_KEYS = ("runId", "workItemId", "issueId", "toolId", "fixId", "conversationId", "meetingId", "requestId", "frameId", "patrolId", "alertId")
 REPLAY_WINDOW = timedelta(minutes=30)
 REPLAY_MAX = 5000
 
@@ -117,6 +118,10 @@ class WaitHub:
     @staticmethod
     def matches(wait: dict, change: dict, names: list[str], payload: dict) -> bool:
         if wait["event"] not in names:
+            return False
+        # `any` skips a scenario's own step rows unless the wait asks for them (filter type "scenario": the eval harness), so
+        # an agent's wait fires on the issue, fact or conversation Change the step emits instead.
+        if wait["event"] == "any" and change.get("type") == "scenario" and (wait.get("filter") or {}).get("type") != "scenario":
             return False
         if wait.get("siteId") and change.get("propertyId") != wait["siteId"]:
             return False

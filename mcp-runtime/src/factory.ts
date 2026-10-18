@@ -17,6 +17,7 @@ import {
   WaitOutSchema, type SEVERITIES,
 } from './schemas3.js';
 import { holdWait, MAX_WAIT_SECONDS, WAIT_EVENTS } from './waits.js';
+import { harnessAllowed, isScenarioRow } from './harness.js';
 import { estimateTokens } from './telemetry.js';
 import { FACTORY_VIEW, FACTORY_VIEW_CSP, FACTORY_VIEW_URI, PLAYCANVAS_URL, factorySummary } from './widget.js';
 
@@ -204,8 +205,10 @@ export function registerFactoryTools(deps: FactoryDeps) {
   // ---- what is going on ----
 
   tool('get_overview', 'Every site (Myer, Bristol, Tomioka) at a glance in under ~600 tokens: open issues by severity, compliance counts (ok / due_soon / overdue / blocked), crew on shift, each agent\'s current task and what it waits on, and the last 10 changes. Call it first in a session or when you come back after waiting. Free, read-only, one request. NEXT: list_issues(siteId) for the issues behind a count, get_agent_activity(agentId) for one agent.',
-    z.strictObject({}), OverviewSchema, async () => {
+    z.strictObject({}), OverviewSchema, async (_input, call) => {
       const raw = obj(await backend.json('/api/overview', ANY));
+      // Scenario step rows (type scenario) are the eval harness's; the backend's overview already leaves them out.
+      const harness = harnessAllowed(config, call.ctx);
       const counts = (value: unknown, keys: string[]) => Object.fromEntries(keys.map(key => [key, num(obj(value)[key]) ?? 0]));
       const siteKey = (entry: Json) => str(entry.siteId) ?? str(entry.id) ?? '';
       const sites = list(raw, 'sites').filter(entry => inScope(siteKey(entry))).map(entry => ({
@@ -221,6 +224,7 @@ export function registerFactoryTools(deps: FactoryDeps) {
         activeScenario: null,
         // A restricted endpoint shows only its own sites' changes (site-less changes stay).
         changes: (list(raw, 'changes').length ? list(raw, 'changes') : list(raw, 'lastChanges'))
+          .filter(change => harness || !isScenarioRow(change))
           .map(change => ({ at: str(change.at), siteId: str(change.siteId) ?? str(change.propertyId) ?? SHORT_SITE[str(change.site) ?? ''] ?? null, type: str(change.type), summary: clip(str(change.summary), summaryMax) ?? '' }))
           .filter(change => !change.siteId || inScope(change.siteId)).slice(0, 10),
       });
@@ -414,10 +418,15 @@ export function registerFactoryTools(deps: FactoryDeps) {
       filter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe('Exact-match fields on the event, e.g. {"issueId":"iss-…"} or {"workItemId":"wi-…"}.'),
       waitId: idString.optional().describe('The waitId from a still_waiting result, to keep waiting on the same wait.'),
       timeoutSeconds: z.number().int().min(1).max(MAX_WAIT_SECONDS).optional().describe(`Hold window in seconds (default ${config.waitDefaultSeconds ?? 50}). Above ~55 s some clients time out; Claude Code keeps the call alive on progress.`),
-    }), WaitOutSchema, async ({ event, siteId: id, filter, waitId, timeoutSeconds }, call) => holdWait(
-      { event, ...(id ? { siteId: id } : {}), ...(filter ? { filter } : {}), ...(waitId ? { waitId } : {}), timeoutSeconds: timeoutSeconds ?? config.waitDefaultSeconds ?? 50 },
-      { backend, signal: call.ctx.signal, progressIntervalMs: config.waitProgressMs, report: async (progress, total, message) => (await call.ctx.reportProgress?.(progress, total, message)) ?? false },
-    ), READ_ONLY);
+    }), WaitOutSchema, async ({ event, siteId: id, filter, waitId, timeoutSeconds }, call) => {
+      // Scenario step rows are the eval harness's (the backend's `any` skips them unless the filter names them); an agent's
+      // wait fires on the issue, fact or conversation Change the step emits.
+      if (filter?.type === 'scenario' && !harnessAllowed(config, call.ctx)) throw new AdapterError('INVALID_ARGUMENT', 'filter type "scenario" is not available on this endpoint.', 'Wait on the issue, fact, conversation or tool Changes instead, e.g. filter {"type":"issue"} or {"issueId":"…"}.');
+      return holdWait(
+        { event, ...(id ? { siteId: id } : {}), ...(filter ? { filter } : {}), ...(waitId ? { waitId } : {}), timeoutSeconds: timeoutSeconds ?? config.waitDefaultSeconds ?? 50 },
+        { backend, signal: call.ctx.signal, progressIntervalMs: config.waitProgressMs, report: async (progress, total, message) => (await call.ctx.reportProgress?.(progress, total, message)) ?? false },
+      );
+    }, READ_ONLY);
 
   const decisionSchema = (options: string[]) => ({ type: 'object', properties: { choice: { type: 'string', title: 'Decision', enum: options }, note: { type: 'string', title: 'Note (optional)', maxLength: 300 } }, required: ['choice'] });
   tool('decide', 'Ask a human to choose between options about an issue. If this MCP client supports elicitation, the question appears in the client and the answer is recorded on the issue; otherwise the question is routed to the issue\'s owner by SMS through the site\'s field technician and the Steward Dispatch Line (dry-run unless live messages are enabled) and you get a waitId for the reply. Use it when a person, not an agent, must decide (accept a reading, stop a demonstration, evacuate a walkway). Not idempotent when routed. NEXT: decided → act on the answer; routed → wait_for(event "reply.received", waitId).',
@@ -487,8 +496,8 @@ export function registerFactoryTools(deps: FactoryDeps) {
   return { loadScene, openIssues };
 }
 
-/** The site's slice of /api/overview plus its open issues, for steward://sites/{siteId}/overview. */
-export async function siteOverview(backend: Backend, id: PropertyId) {
+/** The site's slice of /api/overview plus its open issues, for steward://sites/{siteId}/overview (scenario step rows only for the eval harness). */
+export async function siteOverview(backend: Backend, id: PropertyId, includeScenario = false) {
   let overview: Json = {};
   try { overview = obj(await backend.json('/api/overview', ANY)); } catch { overview = {}; }
   const entry = list(overview, 'sites').find(row => (row.siteId ?? row.id) === id) ?? null;
@@ -496,7 +505,7 @@ export async function siteOverview(backend: Backend, id: PropertyId) {
   try { issues = list(await backend.json(backend.propertyPath(id, 'issues'), ANY), 'issues').map(raw => normaliseIssue(raw, id)).filter(isOpen); } catch { issues = []; }
   return {
     siteId: id, name: SITE_SCANS[id].name, overview: entry, openIssues: issues.slice(0, 10).map(issue => ({ id: issue.id, assetTag: issue.assetTag, severity: issue.severity, summary: issue.summary, status: issue.status })),
-    changes: (list(overview, 'changes').length ? list(overview, 'changes') : list(overview, 'lastChanges')).filter(change => (change.siteId ?? change.propertyId ?? SHORT_SITE[str(change.site) ?? '']) === id).slice(0, 5),
+    changes: (list(overview, 'changes').length ? list(overview, 'changes') : list(overview, 'lastChanges')).filter(change => (change.siteId ?? change.propertyId ?? SHORT_SITE[str(change.site) ?? '']) === id && (includeScenario || !isScenarioRow(change))).slice(0, 5),
     subscribe: 'resources/subscribe (2025 clients) or subscriptions/listen (2026-07-28 clients) on this URI: notifications/resources/updated fires on every change for the site.',
   };
 }

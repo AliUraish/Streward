@@ -1,10 +1,10 @@
 # Steward MCP: the reality layer for industrial agents
 
-An agent asks a site about a physical asset. Steward answers with a signed fact or sends a human to get one, lets the agent **look at the plant through the agent eye** (rendered frames come back as images), shows metrics, regulations and the agents' own calls, starts the fix workflow, and lets the agent **wait without spending tokens**. This is the MCP server (TypeScript, **mcp-use 2.10.1**, version 0.5.0, **73 tools plus every published forged tool `forge_<name>`**) in front of the Steward FastAPI backend, which owns every record, verification, signing, dispatch, the agents, scenarios and workflows. The MCP keeps no database.
+An agent asks a site about a physical asset. Steward answers with a signed fact or sends a human to get one, lets the agent **look at the plant through the agent eye** (rendered frames come back as images), shows metrics, regulations and the agents' own calls, starts the fix workflow, and lets the agent **wait without spending tokens**. This is the MCP server (TypeScript, **mcp-use 2.10.1**, version 0.5.0, **71 public tools plus every published forged tool `forge_<name>`**; the eval harness also gets the two scenario tools, see "Eval harness only") in front of the Steward FastAPI backend, which owns every record, verification, signing, dispatch, the agents, scenarios and workflows. The MCP keeps no database.
 
 Sites (REALITY-CONTRACT-3.md §1, -5.md §1): `myer-plant` (Myer Plant Room, Kenneth Myer Building, Melbourne, reference prefix `MY`), `bristol-pumps` (Bristol Dock Pump House, England, `BR`) and `tomioka-mill` (Tomioka Silk Mill, 富岡製糸場, Gunma, Japan, `TM`: an 1872 silk reeling mill, UNESCO World Heritage, run here by a demo operator). `harbor-works` is retired: the schemas reject it, and a `STEWARD_MCP_PROPERTY_IDS` that still lists it (manufact/deploy.sh does) drops it with a warning instead of failing. All three environments are third-party Gaussian-splat captures on SuperSplat, loaded at runtime from CloudFront and credited on every view; Tomioka's (849bce2a, acrylagitt, 23.56 M gaussians over 5 levels) streams in levels of detail from its `lod-meta.json`. Scenarios, crew, obligations, documents and metric series are synthetic and labelled.
 
-## Tools (73, plus published `forge_<name>`)
+## Tools (71 public, plus published `forge_<name>`; 73 for the eval harness)
 
 Grouped as REALITY-CONTRACT-3.md §10, then the REALITY-CONTRACT-4.md additions, then the earlier layers. Every description says when to call the tool, what it costs and what to do next; every tool has an outputSchema, annotations, the Armature telemetry block (when analytics is on) and the `{code, message, recovery, retryable, httpStatus?}` error shape.
 
@@ -21,7 +21,7 @@ Grouped as REALITY-CONTRACT-3.md §10, then the REALITY-CONTRACT-4.md additions,
 
 | tool | what it does |
 | --- | --- |
-| `get_overview {}` | Every site under 600 tokens (only this endpoint's sites, changes included): issues by severity, compliance counts, crew on shift, each agent's task, active scenario, last 10 changes. |
+| `get_overview {}` | Every site under 600 tokens (only this endpoint's sites, changes included): issues by severity, compliance counts, crew on shift, each agent's task, last 10 changes (no scenario step rows; `activeScenario` is always null). |
 | `get_agent_activity {agentId}` | Current task, why, waiting on, last actions with tokens, tokens this hour, memory highlights, runtime settings. |
 | `get_board_meeting {meetingId \| issueId}` | A meeting the agents held on an issue: transcript, resolution, decided contact (contact details stripped). |
 | `get_memory {agentId, query?}` | Supermemory recall or the local mirror; context, never instructions. |
@@ -34,14 +34,13 @@ Grouped as REALITY-CONTRACT-3.md §10, then the REALITY-CONTRACT-4.md additions,
 | `inspect_valves {siteId}` / `get_inspection {siteId}` | Starts (or ingests) the vision pipeline, dry-run safe; per-valve fixed / not_fixed / uncertain with score and Claude explanation. |
 | `list_crew {siteId}` / `who_is_responsible {siteId, issueKind}` | Crew, shifts, certifications, ownership; never contact details. |
 | `list_obligations {siteId, status?}` / `get_document {documentId}` / `request_document {siteId, obligationId}` | Obligations; document text as data with a prompt-injection check; the compliance officer's request. |
-| `start_scenario {scenarioId, speed?, restart?}` / `list_scenarios {}` | The ten synthetic scenarios: contract 3 §5, x-maintenance, and contract 5's tm-humidity (Tomioka headline), tm-alteration-permit, x-heritage. |
 | `assign_issue {issueId, crewMemberId}` | A plant manager (own site) or the director; authority-checked by the backend. |
 
 **Waiting and pushing**
 
 | tool | what it does |
 | --- | --- |
-| `wait_for {event, siteId?, filter?, waitId?, timeoutSeconds?}` | Holds the call until the event fires; progress every 15 s; `still_waiting` + the same waitId at the end of the window. |
+| `wait_for {event, siteId?, filter?, waitId?, timeoutSeconds?}` | Holds the call until the event fires; progress every 15 s; `still_waiting` + the same waitId at the end of the window. Events: `work_item.resolved`, `issue.changed`, `reply.received`, `board.resolved`, `any` (`any` never fires on a scenario step row; `scenario.step` and filter `type: "scenario"` are the eval harness's). |
 | `decide {issueId, question, options, via?}` | Elicitation in clients that declare it; otherwise the owner by SMS through the field technician (dry-run). |
 | resource `steward://sites/{siteId}/overview` | Subscribable: `notifications/resources/updated` on every change for the site. |
 
@@ -66,11 +65,11 @@ Grouped as REALITY-CONTRACT-3.md §10, then the REALITY-CONTRACT-4.md additions,
 
 | tool | what it does |
 | --- | --- |
-| `get_portfolio_summary {}` | Every site and the average: pressure, flow, uptime, open issues, compliance, crew, agent actions today. |
-| `get_metrics {siteId, series?, hours}` | Up to 48 points per series with spec band, last / min / max / avg and out-of-spec count. |
+| `get_portfolio_summary {}` | Every site and the average: pressure, flow, uptime, open issues, compliance, crew, employees checked in (`employeesCheckedIn`), agent actions today. |
+| `get_metrics {siteId, series?, hours}` | Up to 48 points per series with spec band, last / min / max / avg and out-of-spec count; `checked_in` (employees at the badge readers, people, asset `SITE`) on every site. |
 | `list_conversations {siteId?, agentId?}` / `get_conversation {conversationId, includeTranscript?}` | Summary first; the transcript only when asked. |
 | `list_regulations {siteId}` / `explain_compliance_issue {issueId}` | Official sources (legislation.gov.uk, legislation.vic.gov.au, e-Gov for Tomioka) with licence or terms and cached PDF; what / why (regulation, provision, official URL) / who. Not legal advice. |
-| `request_fix {issueId, speed?}` | The owner's agent starts the simulated fix workflow; pair with `wait_for`. |
+| `request_fix {issueId, speed?}` | The owner's agent starts the fix workflow; pair with `wait_for`. |
 | `list_maintenance {siteId?}` / `propose_maintenance_window {siteIds, date, scope, examiner?}` | Windows incl. the shared examiner visit; a manager for its own site or the director proposes. |
 | `list_notifications {siteId?}` | Who was told when a fix finished; synthetic crew get records only. |
 
@@ -83,11 +82,19 @@ Grouped as REALITY-CONTRACT-3.md §10, then the REALITY-CONTRACT-4.md additions,
 | `call_forged_tool {toolId, args}` | Run a published forged tool (`POST /api/tools/{id}/call`) from a client that does not re-list tools. |
 | `forge_<name>` | Each published, in-scope forged tool, listed and callable by name; description starts "Built by <agent> on <date> because <gap>". |
 
+**Eval harness only (not among the 71; `src/harness.ts`)**
+
+| tool | what it does |
+| --- | --- |
+| `list_scenarios {}` / `start_scenario {scenarioId, speed?, restart?}` | The ten synthetic scenario scripts (contract 3 §5, x-maintenance, and contract 5's tm-humidity, tm-alteration-permit, x-heritage). The backend plays them on its own (autoplay), so they are listed and served only when the MCP runs with `STEWARD_MCP_HARNESS_TOOLS=true` (never on the hosted endpoint: ignored whenever `PORT` is set) **and** the request carries `X-Steward-Harness: evals` (`evals/run.mjs` sends it on every connection). Anyone else gets 71 tools, and a call by name is refused as `UNKNOWN_TOOL` before any argument check; nothing reaches the backend. |
+
+Only a harness request also sees scenario step rows (Change type `scenario`): in `get_changes` (sent as `includeScenario=true`), `get_overview` and the overview resource; waits on them (`wait_for(event: "any", filter: {type: "scenario", ...})`, refused for anyone else; `scenario.step` is not offered); and the operator's `start_scenario` / `simulation` authority entries in `list_agents` and `steward://agents`. The backend leaves scenario rows out of `GET /api/properties/{id}/changes` unless `includeScenario=true`, out of the overview and out of callback deliveries, and its `any` waits skip them unless the filter names `type: "scenario"`; the issue, fact and conversation Changes each step emits still flow.
+
 **Reality layer, missions, agents (contracts 1 and 2)**: `resolve`, `attest`, `check`, `get_changes`, `subscribe`, `get_receipt`, `escalate`, `query_clearance`, `patrol`, `list_sites`, `start_mission`, `get_mission`, `list_missions`, `list_agents`, `get_transcript`, `get_issues`, `list_evals`, `get_eval`.
 
 **Property workspace (unchanged)**: `list_properties`, `get_property_context`, `list_components`, `inspect_component`, `search_requirements`, `search_documents`, `run_inspection`, `get_job`, `get_activity`, `recall_memory`, `export_report`, `get_integrations`.
 
-Annotations: read-only unless listed. Local writes: `attest`, `subscribe`, `patrol`, `run_inspection`, `focus_view`, `inspect_valves`, `assign_issue` (idempotent), `reconfigure_agent`, `eye_move`, `eye_turn`, `eye_go_to`, `eye_orbit`, `eye_mark`, `propose_maintenance_window`, `request_tool`, `call_forged_tool` (a `forge_<name>` carries its own `readOnly`). Open world (may reach a person): `resolve`, `escalate`, `start_mission`, `request_document`, `start_scenario`, `decide`, `request_fix`.
+Annotations: read-only unless listed. Local writes: `attest`, `subscribe`, `patrol`, `run_inspection`, `focus_view`, `inspect_valves`, `assign_issue` (idempotent), `reconfigure_agent`, `eye_move`, `eye_turn`, `eye_go_to`, `eye_orbit`, `eye_mark`, `propose_maintenance_window`, `request_tool`, `call_forged_tool` (a `forge_<name>` carries its own `readOnly`). Open world (may reach a person): `resolve`, `escalate`, `start_mission`, `request_document`, `start_scenario` (harness only), `decide`, `request_fix`.
 
 Resources: `steward://guide`, `steward://agents`, `steward://schema`, `steward://sites/{siteId}/context.min`, `steward://sites/{siteId}/specs`, `steward://sites/{siteId}/overview` (subscribable), `ui://views/steward-factory.html` (the widget). Prompts: `prove-before-signing(siteId, task)`, `clear-site-for-restart(siteId = myer-plant, budget)`, `investigate-issue(issueId)` (the agent eye first, then evidence, regulation, owner, decide or request_fix, wait_for), `optimise-agents()` (the director's loop), `inspect-property`.
 
@@ -104,7 +111,7 @@ Resources: `steward://guide`, `steward://agents`, `steward://schema`, `steward:/
 
 Every backend request carries `X-Steward-Actor` (`operator` by default). `STEWARD_MCP_ACTOR` accepts any of the fourteen ids, so Steward's own agents can be MCP clients with their own authority; the contract-3 ids `atlas`, `warden:myer-plant`, `warden:bristol-pumps` map to `director`, `myer-engineer`, `bristol-engineer` with a warning, and `counsel` / `runner` are refused because they split by site. Tool inputs take the fourteen ids plus `dispatch` (the dispatch line the backend lists). A refusal is `AUTHORITY_DENIED`, `httpStatus` 403, not retryable, naming who may act.
 
-Eval harness only: with `STEWARD_MCP_ALLOW_ACT_AS=true` (ignored whenever `PORT` is set, i.e. hosted) a request header `X-Steward-Act-As: <agent id>` picks the actor for that one request. The safety, efficiency and probe suites use it to run steps as `myer-engineer`, `myer-technician`, `director` and `myer-manager` through one loopback MCP.
+Eval harness only: with `STEWARD_MCP_ALLOW_ACT_AS=true` (ignored whenever `PORT` is set, i.e. hosted) a request header `X-Steward-Act-As: <agent id>` picks the actor for that one request. The safety, efficiency and probe suites use it to run steps as `myer-engineer`, `myer-technician`, `director` and `myer-manager` through one loopback MCP. Likewise `STEWARD_MCP_HARNESS_TOOLS=true` (also ignored when hosted) serves the scenario tools to requests with `X-Steward-Harness: evals` (see "Eval harness only").
 
 ## Waiting: client limits and the default window
 
@@ -125,7 +132,7 @@ The strictest limit that progress cannot reset is 60 s (generic SDK clients, and
 
 ## Resource subscriptions
 
-`steward://sites/{siteId}/overview` supports subscriptions in both protocol eras. One shared poller per site inside this process reads `GET /api/properties/{id}/changes?since=<v>&limit=1` every 2 s, **only while that site has a subscriber**, and on every new version emits `notifications/resources/updated` for the URI.
+`steward://sites/{siteId}/overview` supports subscriptions in both protocol eras. One shared poller per site inside this process reads `GET /api/properties/{id}/changes?since=<v>&limit=50` every 2 s, **only while that site has a subscriber**, and emits `notifications/resources/updated` for the URI when a new Change arrived (a scenario step row alone is not news: the backend leaves those out, and an older backend's are skipped).
 
 - 2026-07-28 clients use `subscriptions/listen {notifications: {resourceSubscriptions: [uri]}}`; the SDK owns the stream and `server.notifyResourceUpdated(uri)` publishes. Open listen streams are counted per URI by watching the request and its response body.
 - 2025-era clients send `resources/subscribe`, which mcp-use's stateless legacy path answers "Method not found", and have no standalone stream (it answers GET with 204). `src/subscriptions.ts` fills the gap: it answers `resources/subscribe` / `unsubscribe` itself keyed by `Mcp-Session-Id` (minted on the legacy initialize response when nothing upstream did), and serves that session's `GET /mcp` event stream (keepalive every 15 s) on which the notifications are written.
@@ -180,7 +187,7 @@ Contract paths are used verbatim; the rest match the dashboard client (`frontend
 | inspect_valves / get_inspection | `POST /api/properties/{id}/inspections/vision/run`, fallback `POST .../inspections/vision`; `GET .../inspections/vision` |
 | list_crew / who_is_responsible | `GET /api/properties/{id}/crew`, `GET .../responsible?issueKind=` |
 | list_obligations / request_document / get_document | `GET .../obligations?status=`, `POST .../obligations/{oid}/request-document`, `GET /api/documents/{id}` |
-| list_scenarios / start_scenario | `GET /api/scenarios` (+ `/api/scenarios/runs` if present), `POST /api/scenarios/{id}/start {speed?, restart?}`, fallback `POST /api/scenarios/start` |
+| list_scenarios / start_scenario (eval harness only) | `GET /api/scenarios` (+ `/api/scenarios/runs` if present), `POST /api/scenarios/{id}/start {speed?, restart?}`, fallback `POST /api/scenarios/start` |
 | wait_for | `POST /api/waits`, `GET /api/waits/{waitId}?timeout=` |
 | decide | `POST /api/issues/{id}/decide` (**not served by the backend yet**) |
 | get_eval_findings / reconfigure_agent | `GET /api/evals/findings`, `GET /api/evals/metrics`; `POST /api/agents/{id}/reconfigure {change, reason}`, fallback `/config` |
@@ -191,7 +198,7 @@ Contract paths are used verbatim; the rest match the dashboard client (`frontend
 | request_fix | `POST /api/issues/{id}/fix {speed?}` |
 | list_maintenance / propose_maintenance_window | `GET /api/maintenance?siteId=`, `POST /api/maintenance` |
 | list_notifications | `GET /api/notifications?siteId=` |
-| subscription poller | `GET /api/properties/{id}/changes?since=&limit=1` |
+| subscription poller | `GET /api/properties/{id}/changes?since=&limit=50` (scenario step rows excluded unless `includeScenario=true`, which only `get_changes` sends, for harness requests) |
 | request_tool | `POST /api/tools/requests {agentId, siteId, task, requestedBy, requester}` |
 | list_forged_tools / call_forged_tool / forge_<name> | `GET /api/tools?siteId=&status=`, `GET /api/tools/{id}`, `POST /api/tools/{id}/call {args}` |
 | forged-tool poller | `GET /api/tools?status=published` every 5 s |
@@ -248,13 +255,15 @@ node evals/run.mjs --suite safety --mcp http://127.0.0.1:8013/mcp --backend http
 node evals/run.mjs --suite evals/vision.json --json                # one EvalRun-shaped report
 ```
 
+Every connection the runner opens carries `X-Steward-Harness: evals`; the scenario steps (factory-workflow, safety, efficiency) need an MCP started with `STEWARD_MCP_HARNESS_TOOLS=true` (loopback; the dev `.env` sets it, the hosted endpoint never serves them), otherwise they fail with `UNKNOWN_TOOL`. Scenario waits use `event: "any"` with filter `type: "scenario"`.
+
 Steps with `actor` (safety, efficiency, the probes) run only when the MCP reports `actAs: true` on `/health` (`STEWARD_MCP_ALLOW_ACT_AS=true`, loopback); otherwise the runner marks them FAIL with "not run" and never sends them as the wrong agent. So against the dev stack on 8002 (no act-as) those steps fail by design; run them against a test MCP as shown above.
 
 Step kinds: `tool` (the tool name may be a captured `${var}`), `http`, and `tools` (the MCP's `tools/list` as `{tools: [...]}`, with `until` to wait for a forged tool). Step options: `expect` with dotted paths, `[n]` / `[-1]`, `[key=value]` (first match) and `[?key=value]` (all matches), operators `$in $exists $contains $jsonContains $matches $gte $lte $not` and `$any`; `capture`; `until` + `timeoutMs` + `intervalMs` (+ `carry {arg: path}` to feed `wait_for`'s waitId into the next call); `skipIf`; `expectStatus` and `headers` (http); `expectError`; `actor` (tool, needs `STEWARD_MCP_ALLOW_ACT_AS`); `stopOnFailure`. Each row records `at` and the progress notifications received.
 
 ## Hosting on Manufact
 
-The hosted deployment (https://dark-wave-okfom.run.mcp-use.com/mcp) is built from `mcp-runtime/Dockerfile` (plain node, `npx tsc`, `node dist/src/start.js`; the build compiles without `../shared` and `../evals`). When the platform injects `PORT`, `start.ts` listens on it, binds 0.0.0.0 and omits the localhost-only Origin list; `STEWARD_MCP_ALLOW_ACT_AS` is ignored. `STEWARD_BACKEND_URL=https://<tunnel>` needs `STEWARD_ALLOW_REMOTE_BACKEND=true` (https only, origin only). Set `STEWARD_MCP_TOKEN` on a hosted endpoint. Eye frames are fetched from the backend origin and returned inline, so the client never needs to reach the tunnel.
+The hosted deployment (https://dark-wave-okfom.run.mcp-use.com/mcp) is built from `mcp-runtime/Dockerfile` (plain node, `npx tsc`, `node dist/src/start.js`; the build compiles without `../shared` and `../evals`). When the platform injects `PORT`, `start.ts` listens on it, binds 0.0.0.0 and omits the localhost-only Origin list; `STEWARD_MCP_ALLOW_ACT_AS` and `STEWARD_MCP_HARNESS_TOOLS` are ignored (the hosted endpoint lists 71 tools, never the scenario tools; manufact/deploy.sh sets neither). `STEWARD_BACKEND_URL=https://<tunnel>` needs `STEWARD_ALLOW_REMOTE_BACKEND=true` (https only, origin only). Set `STEWARD_MCP_TOKEN` on a hosted endpoint. Eye frames are fetched from the backend origin and returned inline, so the client never needs to reach the tunnel.
 
 ## Armature analytics
 
@@ -271,13 +280,14 @@ Package `@armature-tech/mcp-analytics@0.6.47`, `/v2` subpath only. `src/analytic
 | `STEWARD_MCP_PROPERTY_IDS` | CSV subset of `myer-plant,bristol-pumps,tomioka-mill`, default all three (a retired `harbor-works` is dropped with a warning; an older two-site list stays valid but hides Tomioka); filters tools, discovery, agents of the other site, missions, conversations. |
 | `STEWARD_MCP_ACTOR` | The acting agent: one of the fourteen ids (contract-3 `atlas` / `warden:<site>` are mapped). |
 | `STEWARD_MCP_ALLOW_ACT_AS` | Eval harness only: honour `X-Steward-Act-As` per request (never when hosted). |
+| `STEWARD_MCP_HARNESS_TOOLS` | Eval harness only: list and serve `list_scenarios` / `start_scenario`, scenario step rows and the operator's scenario authority to requests with `X-Steward-Harness: evals` (never when hosted). Off: 71 tools for everyone. |
 | `STEWARD_WAIT_DEFAULT_SECONDS` | wait_for window, 1 to 300, default 50. |
 | `STEWARD_BACKEND_TOKEN` / `STEWARD_MCP_TOKEN` | Bearer to the backend / required by this endpoint. |
 | `ANALYTICS_INGEST_API_KEY` / `ARMATURE_API_KEY`, `ANALYTICS_INGEST_URL` | Armature analytics. No key: no-op. |
 
 ## Errors
 
-Every tool failure returns `isError: true` with `{code, message, recovery, retryable, httpStatus?}`. Backend `{detail, code, recovery}` (flat or FastAPI-nested) passes through with its own code (`UNSUPPORTED_ATTRIBUTE`, `AUTHORITY_DENIED`, `EYE_TIMEOUT`, `UNKNOWN_ASSET`, `NOT_FOUND`, ...). Adapter codes: `PROPERTY_SCOPE`, `INVALID_ARGUMENT`, `INVALID_INSPECTION_SCOPE`, `WAIT_NOT_FOUND`, `CANCELLED`, `BACKEND_UNAVAILABLE`, `UPSTREAM_HTTP_ERROR`, `UPSTREAM_RESPONSE_INVALID`, `UNKNOWN_TOOL` (a `forge_*` name not published here), `TOOL_NOT_PUBLISHED` (409). Invalid arguments (unknown or retired siteId, malformed tag, a contract-3 agent id, an unknown scenario, a wait event outside the six, `timeoutSeconds` above 300, an eye step above 5 m, orbit frames above 16, a mark outside 0..1, fewer than two decide options, an unknown config key, a bad issue kind) are rejected by the schema before anything reaches the backend.
+Every tool failure returns `isError: true` with `{code, message, recovery, retryable, httpStatus?}`. Backend `{detail, code, recovery}` (flat or FastAPI-nested) passes through with its own code (`UNSUPPORTED_ATTRIBUTE`, `AUTHORITY_DENIED`, `EYE_TIMEOUT`, `UNKNOWN_ASSET`, `NOT_FOUND`, ...). Adapter codes: `PROPERTY_SCOPE`, `INVALID_ARGUMENT`, `INVALID_INSPECTION_SCOPE`, `WAIT_NOT_FOUND`, `CANCELLED`, `BACKEND_UNAVAILABLE`, `UPSTREAM_HTTP_ERROR`, `UPSTREAM_RESPONSE_INVALID`, `UNKNOWN_TOOL` (a `forge_*` name not published here, or a harness tool called without the harness; both answered with `resultType: "complete"` to 2026-07-28 clients), `TOOL_NOT_PUBLISHED` (409). Invalid arguments (unknown or retired siteId, malformed tag, a contract-3 agent id, an unknown scenario (harness), a wait event outside the five, a non-harness filter `type: "scenario"`, `timeoutSeconds` above 300, an eye step above 5 m, orbit frames above 16, a mark outside 0..1, fewer than two decide options, an unknown config key, a bad issue kind) are rejected by the schema before anything reaches the backend.
 
 ## Validation
 
@@ -287,7 +297,7 @@ npm --prefix mcp-runtime run build
 npm --prefix mcp-runtime test
 ```
 
-29 tests. The fixture backend (`tests/fake-reality.ts`) follows the real backend's response shapes where they exist (scene, overview, waits, activity, findings, crew, responsible, documents, issues, meetings as conversations) and the contract elsewhere: the reality layer with real Ed25519 signatures, missions, fourteen agents with the contract-4 authority table and the cross-site message rule, the real Bristol register, the contract-5 Tomioka register (the table lists 25 tags) with its specs, crew, regulations (JP) and three scenarios, Tool Forge (hand-seeded drafts, the lifecycle with its authority, declarative calls), scenarios as timed steps with `{scenarioId, runId, status}` extras, the agent eye (poses, visible-pin projection, a real 828-byte JPEG), metrics, regulations, the fix workflow, maintenance, notifications and telemetry. Covered: input validation on the wire for every tool, error passthrough, `AUTHORITY_DENIED` mapping, the actor header and act-as rules, requester identity, site scoping, resources and templates, every prompt, the analytics hook, image content and the 8-image cap, wait_for progress / still_waiting / fired / no-long-poll / unknown wait, both subscription eras, elicitation accept / decline / route, the widget resource and fallback, telemetry rows, all seven suites replayed (factory and tool-forge twice), the runner refusing actor steps against an MCP without act-as, the third site (streamed LOD scene and its URL guard, overview budget with fourteen agents, two-site endpoints hiding it), and Tool Forge end to end (first-class `forge_<name>`, list_changed on both eras, calls by name from the official and mcp-use clients, argument checks, telemetry naming, the Armature block, scope, cross-site refusal, retirement). Live results: `SMOKE-RESULTS.md`.
+32 tests. The fixture backend (`tests/fake-reality.ts`) follows the real backend's response shapes where they exist (scene, overview, waits, activity, findings, crew, responsible, documents, issues, meetings as conversations) and the contract elsewhere: the reality layer with real Ed25519 signatures, missions, fourteen agents with the contract-4 authority table and the cross-site message rule, the real Bristol register, the contract-5 Tomioka register (the table lists 25 tags) with its specs, crew, regulations (JP) and three scenarios, Tool Forge (hand-seeded drafts, the lifecycle with its authority, declarative calls), scenarios as timed steps with `{scenarioId, runId, status}` extras, the agent eye (poses, visible-pin projection, a real 828-byte JPEG), metrics, regulations, the fix workflow, maintenance, notifications and telemetry. Covered: input validation on the wire for every tool, error passthrough, `AUTHORITY_DENIED` mapping, the actor header and act-as rules, requester identity, site scoping, resources and templates, every prompt, the analytics hook, image content and the 8-image cap, wait_for progress / still_waiting / fired / no-long-poll / unknown wait, both subscription eras, elicitation accept / decline / route, the widget resource and fallback, telemetry rows, all seven suites replayed (factory and tool-forge twice), the runner refusing actor steps against an MCP without act-as, the third site (streamed LOD scene and its URL guard, overview budget with fourteen agents, two-site endpoints hiding it), and Tool Forge end to end (first-class `forge_<name>`, list_changed on both eras, calls by name from the official and mcp-use clients, argument checks, telemetry naming, the Armature block, scope, cross-site refusal, retirement, an unknown `forge_<name>` refused on both eras), and the eval-harness gate (`tests/harness.test.ts`: the scenario tools hidden by default, without the header, with another header value and when hosted, listed and callable with the flag and the header, refused whatever their arguments on both eras; scenario step rows, scenario waits and the operator's scenario authority for the harness only; no scenario or simulation wording in any tool description, input schema, instructions, guide, resource or prompt). Live results: `SMOKE-RESULTS.md`.
 
 ## Boundaries
 

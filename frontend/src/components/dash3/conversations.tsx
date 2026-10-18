@@ -1,15 +1,14 @@
 "use client";
 
 /* /app/conversations: every call, meeting and message between agents. Summary first (headline, points, decisions,
-   actions), then the transcript, then Listen. A call is an Inkbox A2A conversation presented as a call; the voices
-   are the browser's text-to-speech, and there are no phone calls between agents on the current plan. */
+   actions), then the transcript, then Listen, each agent in its own voice (lib/speech.ts). */
 import { useEffect, useMemo, useState } from "react";
 import type { Remote } from "@/lib/reality";
 import { meetingAsConversation } from "@/lib/api-3";
 import { useBoardMeetings, useConversations } from "@/lib/hooks-3";
 import { SITES3, agentName, siteList } from "@/lib/sites-3";
 import type { Conversation } from "@/lib/types-3";
-import { LISTEN_NOTE, useSpeaker } from "./agent-detail";
+import { useSpeaker } from "./agent-detail";
 import { Btn, PageHead, Reveal, State, SynthTag, ago, when } from "./ui3";
 
 const KIND: Record<string, string> = { call: "Call", meeting: "Meeting", message: "Message" };
@@ -75,8 +74,8 @@ function ConversationView({ c, speaker }: { c: Conversation; speaker: ReturnType
       <ol className="thread3">{c.transcript.map((t, i) => <li key={i} className={playing && speaker.line === i + offset ? "speaking" : ""}><strong>{agentName(t.speaker)}</strong><span>{t.text}</span></li>)}</ol>
     </section>
     <div className="cv-listen">
-      {speaker.available === false ? <span className="meta">This browser has no speech synthesis, so there is nothing to listen to.</span>
-        : <>{playing ? <Btn quiet small onClick={speaker.stop}>Stop</Btn> : <Btn small arrow disabled={!lines.length} onClick={() => speaker.play(key, lines)}>Listen</Btn>}<span className="meta">{LISTEN_NOTE}, one voice per agent{c.transport === "inkbox" ? "; the call itself ran as an Inkbox A2A conversation" : ""}</span></>}
+      {speaker.available === false ? <span className="meta">This browser has no voices, so there is nothing to listen to.</span>
+        : playing ? <Btn quiet small onClick={speaker.stop}>Stop</Btn> : <Btn small arrow disabled={!lines.length} onClick={() => speaker.play(key, lines)}>Listen</Btn>}
     </div>
   </Reveal>;
 }

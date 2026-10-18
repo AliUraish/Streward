@@ -44,3 +44,22 @@ def test_replay_never_matches_a_different_run(tmp_path):
     later, later_extra = scenario_change("srun-2", "completed", version=2)
     h.on_change(later, None, later_extra)
     assert h.get(wait["id"])["status"] == "fired"
+
+
+def test_any_skips_scenario_step_rows_unless_the_filter_asks_for_them(tmp_path):
+    """An agent's `any` wait fires on the issue, fact or conversation Change a step emits, never on the step row itself;
+    the eval harness asks for step rows with filter type "scenario"."""
+    h = hub(tmp_path)
+    agent = h.create("any", "myer-plant", {})
+    harness = h.create("any", None, {"type": "scenario", "runId": "srun-1"})
+    change, extra = scenario_change("srun-1", "step")
+    h.on_change(change, None, extra)
+    assert h.get(agent["id"])["status"] == "waiting"
+    assert h.get(harness["id"])["status"] == "fired" and h.get(harness["id"])["firedEvent"]["name"] == "scenario.step"
+    issue = dict(version=2, type="issue", propertyId="myer-plant", refId="iss-1", summary="PG-601 above its circuit limit", at="2026-10-18T07:48:26Z")
+    h.on_change(issue, None, dict(issueId="iss-1", status="open"))
+    fired = h.get(agent["id"])
+    assert fired["status"] == "fired" and fired["firedEvent"]["change"]["type"] == "issue"
+    # the replay guard follows the same rule
+    assert h.create("any", None, {"runId": "srun-1"})["status"] == "waiting"
+    assert h.create("any", None, {"type": "scenario", "runId": "srun-1"})["status"] == "fired"

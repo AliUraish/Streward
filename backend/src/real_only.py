@@ -10,11 +10,16 @@ real Inkbox traffic. Conversations and agent memories carry `origin`:
 - `run`: written by a scenario run (`runId`);
 - `workflow`: written while the system runs by a fix workflow, walkthrough, compliance alert, maintenance planner,
   mission, eval, decision or tool request, the simulator, or any other agent action;
-- `inkbox`: real external traffic carried by Inkbox (A2A over Inkbox, email, SMS and calls with a provider reference).
+- `inkbox`: real external traffic carried by Inkbox (A2A over Inkbox, email, SMS and calls with a provider reference);
+- `system`: machine chatter, not a call or a text: the simulator's status checks and sensor-feed checks, keep-alives and
+  pings, threads whose every message is an acknowledgement with no content ("Noted.", "ok"), and the fix workflow's
+  automatic resolution broadcast acknowledged with "Noted." (each broadcast is still listed by `GET /api/notifications`).
 
 New records get `origin` where they are created (`ConversationService._new`, `MemoryStore.write`); records written
-earlier are backfilled once (`migrate_origins`, meta `steward_origin_version`). An origin that is already set is never
-overwritten and nothing is deleted: read endpoints hide `seed` by default and `?include=all` returns everything.
+earlier are backfilled once per version (`migrate_origins`, meta `steward_origin_version`). An origin that is already
+set is never overwritten, except that version 2 turns an auto-assigned `workflow` into `system` for machine chatter, and
+nothing is deleted: read endpoints hide `seed` and `system` by default; `?include=all` returns everything and
+`origin=` asks for one origin explicitly.
 
 **Real texts** (`real_texts`): every email, SMS, iMessage and call actually sent or received through Inkbox becomes a
 read-only conversation of kind `message` (`id: conv-msg-<source>-<recordId>`, `origin: "inkbox"`, `channel`,
@@ -31,10 +36,16 @@ from .agents import DIRECTOR, DISPATCH, OWNER, compliance_id, display_name, is_k
 from .providers import EMAIL_RE, clean_env
 from .sites import SITE_BY_ID
 
-ORIGINS = ("seed", "run", "workflow", "inkbox")
+ORIGINS = ("seed", "run", "workflow", "inkbox", "system")
+HIDDEN_ORIGINS = ("seed", "system")  # hidden by default; ?include=all (or origin=) shows them
 ORIGIN_META = "steward_origin_version"
-ORIGIN_VERSION = "1"
+ORIGIN_VERSION = "2"  # 2: machine chatter becomes `system`
 INCLUDE_ALL = "all"
+# A2A task kinds that are machine chatter, never a conversation: the simulator's status check and keep-alive pings.
+SYSTEM_KINDS = ("status_check", "keepalive", "keep_alive", "heartbeat", "ping", "health_check", "sensor_check", "feed_check")
+# Messages with no content beyond an acknowledgement (compared without punctuation or case).
+ACK_TEXTS = frozenset(("", "noted", "ok", "okay", "k", "ack", "acknowledged", "received", "roger", "understood", "thanks", "thank you",
+                       "got it", "end of call"))
 # Fields that mark a conversation (or notification) as produced by a workflow while the system runs.
 WORKFLOW_KEYS = ("workflowId", "patrolId", "alertId", "ownerAlertId", "missionId", "toolRequestId", "maintenanceId", "maintenanceWindowId",
                  "evalRunId", "evalId", "decisionRequestId", "planId")
@@ -45,6 +56,47 @@ TEXT_PREFIX = "conv-msg-"
 
 def include_all(include: str | None) -> bool:
     return str(include or "").strip().casefold() == INCLUDE_ALL
+
+
+def hidden_origins(include: str | None, wanted=()) -> set:
+    """The origins a read hides: `seed` and `system`, unless `include=all` or the caller asks for that origin."""
+    if include_all(include):
+        return set()
+    return {origin for origin in HIDDEN_ORIGINS if origin not in set(wanted or ())}
+
+
+# ---- machine chatter ----------------------------------------------------------------------------------------------
+
+def content_free(text) -> bool:
+    return re.sub(r"[^\w\s]", "", str(text or "")).strip().casefold() in ACK_TEXTS
+
+
+def _parts_text(parts) -> str:
+    return " ".join(str(p.get("text")) for p in parts or [] if isinstance(p, dict) and p.get("text")).strip()
+
+
+def tasks_are_system(tasks: list[dict]) -> bool:
+    """A2A tasks that are machine chatter: all from the simulator, all pings (SYSTEM_KINDS), every message content-free,
+    or an automatic notification answered only by acknowledgements ("Noted.")."""
+    if not tasks:
+        return False
+    kinds = [(t.get("steward") or {}).get("kind") for t in tasks]
+    if all(t.get("simulated") for t in tasks) or all(kind in SYSTEM_KINDS for kind in kinds):
+        return True
+    messages = [m for t in tasks for m in t.get("messages") or []]
+    if messages and all(content_free(_parts_text(m.get("parts"))) for m in messages):
+        return True
+    replies = [m for m in messages if m.get("role") == "agent"]
+    return all(kind == "notification" for kind in kinds) and bool(replies) and all(content_free(_parts_text(m.get("parts"))) for m in replies)
+
+
+def conversation_is_system(record: dict, tasks_by_id: dict | None = None) -> bool:
+    """A stored conversation that is machine chatter: every transcript line content-free, or its A2A tasks are."""
+    lines = record.get("transcript") or []
+    if lines and all(content_free(line.get("text")) for line in lines):
+        return True
+    tasks = [tasks_by_id[t] for t in record.get("a2aTaskIds") or [] if tasks_by_id and t in tasks_by_id]
+    return tasks_are_system(tasks)
 
 
 def _seed_conversation_ids() -> frozenset:
@@ -74,17 +126,19 @@ def memory_creation_origin(refs: dict | None, origin: str | None = None) -> str:
     return creation_origin(dict(origin=origin, runId=refs.get("runId") or refs.get("scenarioId")))
 
 
-def conversation_origin(record: dict) -> str:
+def conversation_origin(record: dict, tasks_by_id: dict | None = None) -> str:
     """Classify a stored conversation (backfill and records written without `origin`). An explicit origin wins."""
     explicit = record.get("origin")
     if explicit in ORIGINS:
         return explicit
     if record.get("runId"):
         return "run"
-    if any(record.get(key) for key in WORKFLOW_KEYS):
-        return "workflow"
     if record.get("generator") or record.get("id") in _seed_conversation_ids():
         return "seed"
+    if conversation_is_system(record, tasks_by_id):
+        return "system"
+    if any(record.get(key) for key in WORKFLOW_KEYS):
+        return "workflow"
     if not record.get("a2aTaskIds"):
         return "seed"  # never went over the bus: it did not happen in this running system
     if record.get("transport") == "inkbox" and record.get("providerTaskIds"):
@@ -128,23 +182,37 @@ def conversation_origins(store) -> dict:
 
 
 def migrate_origins(store) -> dict:
-    """Backfill `origin` on conversations and agent memories once (meta `steward_origin_version`). Idempotent: an
-    origin already set is kept, nothing is deleted, and a re-run classifies the same records the same way."""
+    """Backfill `origin` on conversations and agent memories once per version (meta `steward_origin_version`).
+    A missing origin is classified; an origin already set is kept, except that an auto-assigned `workflow` becomes
+    `system` for machine chatter (version 2). Idempotent and never deletes: a re-run classifies the same way."""
     if store.meta(ORIGIN_META) == ORIGIN_VERSION:
         return {}
     counts = dict(conversations=0, memories=0)
+    tasks_by_id = {t["id"]: t for t in store.all("a2a_task")}
     origins = {}
     for record in store.all("conversation", ""):
-        origin = conversation_origin(record)
+        current = record.get("origin")
+        if current not in ORIGINS:
+            origin = conversation_origin(record, tasks_by_id)
+        elif current == "workflow" and conversation_is_system(record, tasks_by_id):
+            origin = "system"
+        else:
+            origin = current
         origins[record["id"]] = origin
-        if record.get("origin") != origin:
+        if current != origin:
             store.put("conversation", dict(record, origin=origin), "")
             counts["conversations"] += 1
     for record in store.all("agent_memory", ""):
-        if record.get("origin") in ORIGINS:
+        current = record.get("origin")
+        if current not in ORIGINS:
+            origin = memory_origin(record, origins)
+        elif current == "workflow" and origins.get((record.get("refs") or {}).get("conversationId")) == "system":
+            origin = "system"
+        else:
             continue
-        store.put("agent_memory", dict(record, origin=memory_origin(record, origins)), "")
-        counts["memories"] += 1
+        if current != origin:
+            store.put("agent_memory", dict(record, origin=origin), "")
+            counts["memories"] += 1
     store.meta(ORIGIN_META, ORIGIN_VERSION)
     return counts
 

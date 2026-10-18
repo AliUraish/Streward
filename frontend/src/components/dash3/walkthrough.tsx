@@ -31,11 +31,16 @@ export function tally(labels: WalkLabel[]) {
   return { good, bad: labels.length - good, at: labels.reduce((m, l) => (l.at > m ? l.at : m), "") };
 }
 
-/* "Pressure Systems Safety Regulations 2000, reg. 8" for eng-pssr-2000-reg-8; the id itself when the pack lacks it. */
+/* "Pressure Systems Safety Regulations 2000, reg. 8" for eng-pssr-2000-reg-8: the instrument without its trailing
+   citation in brackets ("(SI 2000/128)"), and the provision's first part without its notes in brackets ("(第43条…)",
+   "(guidance, not law)"; "(1)" and "(17)" stay); the id itself when the pack lacks it. */
+const instrumentName = (s: string) => s.replace(/\s+\([^()]*\)\s*$/, "").replace(/\s+\([^()]*\)\s*$/, "").trim();
+const provisionName = (s: string) => s.split(";")[0].replace(/\s*\((?=[^()]*[\s　-鿿＀-￯])[^()]*\)/g, "").replace(/[\s,;:]+$/, "").trim();
 export function regulationName(id: string): string {
   const r = REGULATIONS_PACK.find(x => x.id === id);
   if (!r) return id;
-  return `${(r.instrument ?? "").replace(/\s*\(.*$/, "")}${r.provision ? `, ${r.provision.replace(/\s*\(.*$/, "")}` : ""}` || r.title || id;
+  const provision = r.provision ? provisionName(r.provision) : "";
+  return `${instrumentName(r.instrument ?? "")}${provision ? `, ${provision}` : ""}` || r.title || id;
 }
 export const labelText = (l: WalkLabel) => (l.verdict === "bad" && l.reasons[0] ? `${l.title}: ${l.reasons[0]}` : l.title);
 /* The label as the viewer draws it: the chip's words, and the sentence the dot's accessible name reads. */

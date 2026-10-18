@@ -814,8 +814,11 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         return public(reality(request).latest_facts(property_id, assetTag or None, attribute or None))
 
     @app.get("/api/properties/{property_id}/changes")
-    def changes(property_id: str, request: Request, since: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000)):
-        return public(reality(request).changes(property_id, since, limit))
+    def changes(property_id: str, request: Request, since: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000),
+                includeScenario: bool = Query(default=False)):
+        # Scenario step rows only with includeScenario=true (the eval harness); people and agents get the issue, fact and
+        # conversation Changes each step emits.
+        return public(reality(request).changes(property_id, since, limit, include_scenario=includeScenario))
 
     @app.post("/api/properties/{property_id}/subscriptions", status_code=201)
     def subscribe(property_id: str, body: SubscriptionRequest, request: Request):
@@ -1057,9 +1060,10 @@ def create_app(data_directory: Path | None = None, start_workers=True):
 
     @app.get("/api/notifications")
     def notifications(request: Request, siteId: str = "", include: str = ""):
-        from .real_only import include_all, notification_origin  # seed notifications only with ?include=all
+        from .real_only import hidden_origins, notification_origin  # seed (and system) notifications only with ?include=all
         records = [dict(n, origin=notification_origin(n)) for n in service(request).fixes.notifications(siteId or None)]
-        return public(records if include_all(include) else [n for n in records if n["origin"] != "seed"])
+        hide = hidden_origins(include)
+        return public([n for n in records if n["origin"] not in hide])
 
     @app.post("/api/issues/{issue_id}/assign")
     def assign_issue(issue_id: str, body: AssignRequest, request: Request):
@@ -1338,6 +1342,16 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     def approve_maintenance(window_id: str, request: Request):
         actor = parse_actor(request.headers.get("x-steward-actor"))
         return public(service(request).maintenance.approve(window_id, actor))
+
+    @app.get("/api/maintenance-planner")
+    def maintenance_planner(request: Request):
+        """The planner that books maintenance on its own: state, pacing and, per site, what it does with each due obligation."""
+        return public(service(request).maintenance_planner.status())
+
+    @app.get("/api/compliance/drift")
+    def compliance_drift(request: Request):
+        """Seeded compliance gaps and the drift that lets the next obligation fall due when a site has none."""
+        return public(service(request).compliance_gaps.status())
 
     @app.post("/api/waits", status_code=201)
     def create_wait(body: WaitRequest, request: Request):

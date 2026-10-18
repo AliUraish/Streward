@@ -1,4 +1,4 @@
-# Pin placement on the two splat scans (PINS stream, 2026-10-17)
+# Pin placement on the splat scans (PINS stream, 2026-10-17 and 2026-10-18)
 
 Every placed pin below was found by driving the site engineer's agent eye (`POST /api/eye/{site}/act`, actor
 `myer-engineer` / `bristol-engineer`), written with `PUT /api/properties/{site}/assets/{tag}/pin {x, y, z, source: "placed"}`
@@ -7,18 +7,19 @@ renderer reloaded pins (it refreshes `/scene` every 20 s). Coordinates are the v
 
 ## How the world points were obtained (read this first)
 
-- **`mark` does not return a world point.** The renderer posts the depth-picked point as `mark: {x, y, world, hit, note}` in the
-  frame body (`frontend/src/components/splat/viewer.tsx`), but the backend `FrameRequest` only accepts `annotation`
-  (`backend/src/main.py`), so `mark` is dropped and every eye annotation has `world: null`. Two survey marks on Myer
-  (`eya-be9d2605e97446c6`, `eya-d7f1c51abf004c19`, no issue) confirmed this. Fix: send `annotation: {world, hit, x, y}` from the
-  renderer, or accept `mark` in the backend. No code was changed.
+- **Myer and Bristol (Oct 17): `mark` did not return a world point.** The renderer posted the depth-picked point as `mark` in the
+  frame body but the backend only read `annotation`, so every annotation had `world: null` (survey marks
+  `eya-be9d2605e97446c6`, `eya-d7f1c51abf004c19`). **Fixed since** (the renderer now sends both and the act returns `world` and
+  `hit`); the Tomioka section below uses `mark` world points directly.
 - Instead each point was **triangulated from 2 to 4 eye frames** using the `camera` returned with each frame (vertical fov 75°,
   640×400, rig yaw/pitch conventions from `camera-rig.ts`). The projection model reproduces the renderer's own `visiblePins`
   to 0.02 px mean (0.03 px max over 48 pins), so the geometry is exact; picks were made by eye on zoomed frames, or by
   patch-NCC sweeps along the ray for stereo pairs (0.3 to 0.8 m baselines). "ray miss" is the residual between the rays.
 - Floors: Myer y ≈ −1.55, Bristol y ≈ 0.03 (checked by stereo on the floor).
-- `go_to` and `orbit` frame the pin from the camera's *current* side at 1.8 m, so every verification and baseline depends on
-  the pose before the call. Start poses are recorded below.
+- Myer and Bristol (Oct 17): `go_to` and `orbit` framed the pin from the camera's *current* side at 1.8 m, so verifications and
+  baselines depended on the pose before the call (start poses recorded below). Now `go_to`/`orbit` start from the asset's stored
+  `viewPose`, or a fixed approach from the site's start camera when there is none. Tomioka pins all carry a `viewPose`; Myer and
+  Bristol pins do not yet (they use the fixed approach).
 
 Verification frames are in the backend (`http://127.0.0.1:8001/api/eye/frames/<frameId>.jpg`, pin at frame centre) and, with the
 pin dots drawn from `visiblePins`, in the scratchpad: `<scratch>/myer/frames/<name>_ov.jpg`, `<scratch>/bristol/frames/<name>_ov.jpg`,
@@ -98,3 +99,52 @@ Captured with `vision/.venv/bin/python vision/capture.py <site> --source eye --o
 - Caveats: V-502's orbit passes through the brick wall at f08 (blank frame); V-504 sits low inside the pump cage, so parts of
   its orbit are occluded. Inspection runs must also use `--source eye` (jepa refuses mixed sources or sizes) and should start
   from the same pose, because the orbit starts from the camera's current side.
+
+## Tomioka Silk Mill (`tomioka-mill`): 19 placed, 6 estimated (2026-10-18)
+
+Method: every survey act used `params.purpose: "survey"` (hidden by `GET /feed?excludeSurvey=true`) with
+`X-Steward-Actor: tomioka-engineer`. Camera placement used `go_to` with an explicit `params.viewPose`, so the eye goes to an
+absolute pose. World points come from `mark` (the depth-picked splat surface returned as `world`, `hit: true` for every
+point used), cross-checked by projecting them into other frames. Each pin was stored with `PUT …/assets/{tag}/pin
+{x, y, z, source: "placed", viewPose: {position, target, fov}}` (actor `operator`). Each was then verified with a plain
+`go_to {assetTag}`: the renderer flew to the stored pose and the pin dot sat at frame centre on the object, unoccluded.
+Montage: `<scratch>/tomioka/verify_all.jpg`; frames with dots drawn: `<scratch>/tomioka/frames/<name>_ov.jpg`.
+
+The hall: the scanned section of the Silk Reeling Mill runs about 70 m from the west end door (D-701) to the east exit in the
+brick elevation (D-702). The axis is (−0.578, 0, −0.816) from the start camera, and the floor is at y ≈ −2.0. Two long lines
+of automatic reeling machines run the full length on either side of the visitor walkway (W-801), under white king-post
+roof trusses. Positions in the notes are given as "along" the hall from the start camera (positive toward the west end).
+The left line's top beam carries painted section numbers 1 to 6. They repeat every 2.2 m (along 11.8, 9.6, 7.4, 5.2,
+3.0, 0.8; "12" appears near along −12.4). These numbered sections are what RM-101 to RM-106 mean here.
+
+| tag | kind | object chosen | world point (x, y, z) | viewPose position → target, fov | verify frame | confidence | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| RM-101 | machine | left reeling-machine line, section **1**: top beam where the number is painted | (−41.372, −0.348, −51.475) | (−38.781, −0.198, −52.219) → pin, 50 | `eyf-fcb863c91348404c` | high | Number "1" read on the beam; the pose looks across the walkway at the section |
+| RM-102 | machine | section **2** (number read) | (−40.051, −0.400, −49.725) | (−37.460, −0.250, −50.469) → pin, 50 | `eyf-fefa293f85eb4412` | high | same 2.7 m pose pattern for all six |
+| RM-103 | machine | section **3** (number read) | (−38.817, −0.394, −47.903) | (−36.225, −0.244, −48.647) → pin, 50 | `eyf-aeedf341b2914b0c` | high | |
+| RM-104 | machine | section **4** (number read) | (−37.390, −0.377, −46.205) | (−34.799, −0.227, −46.949) → pin, 50 | `eyf-d37a0b4e4b7f46df` | high | interpretation boards stand in front at the bottom of the frame |
+| RM-105 | machine | section **5** (number read) | (−36.096, −0.351, −44.456) | (−33.505, −0.201, −45.200) → pin, 50 | `eyf-7c97fc2af9324c31` | high | |
+| RM-106 | machine | section **6** (number blurred; cage-row joint at the 2.2 m spacing) | (−34.784, −0.321, −42.713) | (−32.193, −0.171, −43.457) → pin, 50 | `eyf-0ca548e1f7c3425a` | medium-high | position by the regular spacing and the joint, digit not legible |
+| TR-201 | structure | king-post roof truss, tie beam at the hall centreline, along 9.0 (westmost of four consecutive trusses ~3.6 m apart) | (−37.146, 3.538, −51.070) | (−34.169, 0.300, −47.904) → pin, 75 | `eyf-d98ceaab5cee4304` | high | the pose is offset sideways so a pipe does not hide the dot |
+| TR-202 | structure | next truss east, along 5.4 | (−35.024, 3.485, −48.074) | (−32.537, 0.300, −44.563) → pin, 75 | `eyf-0a3e0c434a4046fc` | high | tie beam marked either side of the pipes and interpolated to the centreline |
+| TR-203 | structure | next truss, along 1.8 (above the start camera) | (−32.963, 3.770, −45.164) | (−30.479, 0.300, −41.658) → pin, 75 | `eyf-403f06614662472a` | high | |
+| TR-204 | structure | next truss, along −1.8 | (−30.881, 3.759, −42.225) | (−28.399, 0.300, −38.720) → pin, 75 | `eyf-f25465145cb44198` | high | the trusses continue east; bays 1 to 4 are taken as these four consecutive ones |
+| BW-251 | structure | red-brick infill of the timber-framed **east elevation**, left of the exit, seen from outside | (−1.883, 0.320, −1.052) | (0.029, 0.300, 1.070) → pin, 60 | `eyf-48bfc96a1fb340f5` | high | only brick elevation in the scan; inside the east end the scan is poorly captured |
+| D-701 | door | west-end double doorway (leaves open, extinguisher and sign beside it): lintel centre | (−47.563, −0.178, −54.621) | (−44.246, −0.450, −55.557) → pin, 60 | `eyf-0dbe5618b33c4d1f` | medium-high | the only doorway at the west end; "visitor emergency exit, west" by position |
+| D-702 | door | east exit in the brick elevation (double timber doors, open): header centre | (−0.681, 0.960, −1.911) | (0.029, 0.300, 1.070) → pin, 60 | `eyf-4c788cbf33854ab2` | high | same pose as BW-251, framed on the doorway |
+| W-801 | walkway | visitor walkway floor between the two machine lines, with its black post-and-rope barrier and boards | (−36.242, −1.962, −47.962) | (−33.526, −0.350, −44.402) → pin, 60 | `eyf-4372a1a0e5684f5b` | high | the walkway runs the whole hall; the pin is mid-walkway near the start |
+| FE-501 | fire | red extinguisher on the floor below its 消火器 sign, just inside the west doorway | (−48.600, −2.000, −56.570) | (−45.524, −0.800, −55.632) → pin, 50 | `eyf-2e7d38760aae4ad5` | high | "west end" matches |
+| FE-503 | fire | group of three red extinguishers on the walkway beside the video screen and the red cabinet (along −17) | (−18.829, −1.575, −32.967) | (−19.956, −0.800, −30.608) → pin, 45 | `eyf-634f1de017e24269` | high | "visitor walkway" matches |
+| FH-601 | hydrant | tall red floor-standing cabinet with a red lamp on top, behind the walkway extinguishers | (−18.640, −1.000, −33.080) | (−20.600, −0.600, −32.200) → pin, 50 | `eyf-8aad9781433e476b` | medium | looks like an indoor hydrant cabinet (red body, indicator lamp); no 消火栓 lettering legible |
+| EP-901 | panel | old wooden switchboard with meters and switches on the wall behind FH-601 | (−16.731, 0.022, −33.696) | (−20.228, −0.300, −32.376) → pin, 45 | `eyf-eab35d880d084905` | medium | electrical board; a grey cabinet with two dials stands to its right |
+| CC-1001 | camera | small dark dome on a right-wall column with a cable running to it, about 2.8 m above the floor | (−28.368, 0.831, −48.726) | (−30.626, 0.300, −48.200) → pin, 40 | `eyf-4570e3ed825a4483` | low-medium | shape and cable fit a dome camera; too blurred to see a lens |
+
+Left **estimated** (not found, no reuse):
+- HS-301, HS-302, HS-303 humidity and temperature sensors and VS-401 seismic sensor: none identifiable at the scan's resolution.
+  Small white devices on white columns are not resolved.
+- FE-502 (extinguisher, east end): the inside of the east end is badly captured (dark and blurred); no extinguisher seen.
+- DH-1101 mobile dehumidifier: not seen.
+
+Survey notes: about 280 eye frames, all tagged `survey: true` (verification `go_to`s included). Several machine sections
+are wrapped in clear plastic conservation covers in the capture. Outside the building and above the roof there is only the
+sky-blue background; the east-elevation pose (BW-251 / D-702) is the one good exterior view.

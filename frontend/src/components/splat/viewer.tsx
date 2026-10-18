@@ -286,10 +286,10 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
     const assetTag = typeof p.assetTag === 'string' ? p.assetTag : null;
     let posted = 0;
     let lastError: string | null = null;
-    // orbit may carry a labelled synthetic defect (vision tests); it is removed when the command ends
+    // orbit may carry a defect for the vision tests; it is removed when the command ends. The frame's `synthetic` and
+    // `defect` fields say so; no words are drawn into the pixels (`labelled` stays false).
     const defect: DefectKind = cmd.action === 'orbit' ? parseDefect(typeof p.defect === 'string' ? p.defect : null) : 'none';
-    const keepLabel = !(p.label === false || p.label === 0 || p.label === '0' || p.label === 'false');
-    const burnLabel = defect !== 'none' && keepLabel ? `synthetic defect: ${defect}` : null;
+    const burnLabel: string | null = null;
 
     const pinOrNull = (): Vec3Tuple | null => {
       if (cmd.pin) return cmd.pin;

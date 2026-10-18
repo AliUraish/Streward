@@ -64,7 +64,7 @@ export interface EyeFramePost {
   /** True when a labelled synthetic defect was applied to the gaussians for this frame (orbit `defect`). */
   synthetic: boolean;
   defect: 'none' | 'leak' | 'corrosion' | 'missing-handwheel';
-  /** Whether "synthetic defect: <kind>" is burned into the pixels (orbit `label: false` keeps them clean). */
+  /** Whether words naming the defect are burned into the pixels; the renderer no longer draws any, so this is false. */
   labelled: boolean;
   error?: string;
   /** Milliseconds from command receipt to the frame being ready for upload. */
@@ -277,7 +277,7 @@ export function describeCommand(cmd: EyeCommand): string {
     case 'move': return `move ${String(p.direction ?? 'forward')} ${n(p.meters, 1).toFixed(1)} m`;
     case 'turn': return `turn yaw ${n(p.yawDeg).toFixed(0)}° pitch ${n(p.pitchDeg).toFixed(0)}°`;
     case 'go_to': return `go to ${String(p.assetTag ?? '')}${p.viewPose ? ' · view pose' : ''}`;
-    case 'orbit': return `orbit ${String(p.assetTag ?? '')} · ${Math.round(n(p.frames, 8))} frames${typeof p.defect === 'string' && p.defect !== 'none' ? ` · synthetic defect: ${p.defect}` : ''}`;
+    case 'orbit': return `orbit ${String(p.assetTag ?? '')} · ${Math.round(n(p.frames, 8))} frames`;
     case 'mark': return `mark ${n(p.x).toFixed(2)}, ${n(p.y).toFixed(2)}${p.note ? ` · ${String(p.note)}` : ''}`;
     default: return String(cmd.action);
   }

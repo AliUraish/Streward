@@ -294,3 +294,98 @@ def test_memory_page_aggregates_filters_and_searches(client, monkeypatch):
     assert client.get("/api/memory?siteId=nowhere").status_code == 404
     # The per-agent endpoint keeps working.
     assert [m["id"] for m in client.get("/api/agents/myer-engineer/memory").json()["local"]] == [first["id"]]
+
+
+# ---- machine chatter: origin `system`, hidden like seed -------------------------------------------------------------
+
+def a2a_task(task_id, caller, target, site, kind, texts, transport="local", provider_task_id=None, simulated=False, at="2026-10-18T05:00:00Z"):
+    messages = [dict(role="caller" if i % 2 == 0 else "agent", at=at, parts=[{"text": text}, {"data": {"steward": {"kind": kind}}}]) for i, text in enumerate(texts)]
+    record = dict(id=task_id, contextId=f"ctx-{task_id}", caller=caller, target=target, state="completed", siteId=site, messages=messages,
+                  transport=transport, providerTaskId=provider_task_id, providerContextId=None, steward={"kind": kind, "siteId": site},
+                  createdAt=at, updatedAt=at)
+    if simulated:
+        record.update(simulated=True, steward={"kind": kind, "siteId": site, "simulated": True})
+    return record
+
+
+def test_machine_chatter_is_system_and_hidden_by_default(client):
+    service = svc(client)
+    bus = service.bus
+    def thread_of(task_id):
+        return next(c["id"] for c in client.get("/api/conversations?include=all&kind=message&limit=500").json() if task_id in c.get("a2aTaskIds", []))
+    # The simulator's status check (a ping answered by the sensor feed), and a thread of bare acknowledgements.
+    ping = thread_of(service.simulator.tick_event("a2a_status", site=BR)["refId"])
+    acks = bus.send("bristol-manager", "bristol-engineer", "ok", dict(kind="note"), BR, deliver=False)
+    bus.reply("bristol-engineer", acks["id"], "complete", "Noted.", {}, deliver=False)
+    acks = thread_of(acks["id"])
+    # A simulator ping carried over Inkbox is still chatter, not real traffic.
+    service.store.put("a2a_task", a2a_task("a2a-xping", "director", "myer-engineer", MY, "status_check",
+                                           ["Status check: anything blocking at Myer Plant Room?", "Myer Plant Room: 0 open work item(s)."],
+                                           transport="inkbox", provider_task_id="prov-ping", simulated=True), MY)
+    # Real messages stay: a real question answered "ok", and a document hand-off.
+    question = bus.send("bristol-manager", "bristol-engineer", "Can you check PV-301's gauge before the examiner arrives?", dict(kind="note"), BR, deliver=False)
+    bus.reply("bristol-engineer", question["id"], "complete", "ok", {}, deliver=False)
+    question = thread_of(question["id"])
+    service.store.put("a2a_task", a2a_task("a2a-xboard", "director", "bristol-technician", BR, "board_meeting",
+                                           ["Board meeting on SU-201: your view, Field Technician?", "I can reach the duty engineer by SMS."],
+                                           transport="inkbox", provider_task_id="prov-board"), BR)
+    # A fix workflow: its call stays visible; its automatic resolution broadcast, answered "Noted.", is chatter.
+    run = start_scenario(client, "tm-humidity")
+    workflow = client.get(f"/api/fix-workflows/{run['context']['fixWorkflowId']}").json()
+    agent_notes = [n for n in client.get(f"/api/notifications?siteId={TM}").json() if n["toKind"] == "agent"]
+    assert {n["to"] for n in agent_notes} == {"tomioka-engineer", "tomioka-compliance", "tomioka-technician", "director"}  # the feed keeps them
+    broadcasts = {thread_of(n["a2aTaskId"]) for n in agent_notes}
+    chatter = {ping, acks, "conv-ctx-ctx-a2a-xping"} | broadcasts
+    shown = {c["id"]: c for c in client.get("/api/conversations?limit=500").json()}
+    everything = {c["id"]: c for c in client.get("/api/conversations?include=all&limit=500").json()}
+    assert not chatter & set(shown) and all(everything[c]["origin"] == "system" for c in chatter)
+    assert {c for c, record in everything.items() if record["origin"] == "system"} == chatter
+    assert set(ids(client.get("/api/conversations?origin=system&limit=500"))) == chatter
+    assert shown[question]["origin"] == "workflow" and shown["conv-ctx-ctx-a2a-xboard"]["origin"] == "inkbox"
+    assert shown[workflow["conversationId"]]["origin"] == "workflow" and shown[run["conversationIds"]["cv-tm-humidity"]]["origin"] == "run"
+    assert client.get(f"/api/conversations/{ping}").status_code == 404
+    assert client.get(f"/api/conversations/{ping}?include=all").json()["origin"] == "system"
+    assert client.get(f"/api/conversations/{question}").json()["origin"] == "workflow"
+
+
+def test_backfill_v2_turns_auto_assigned_workflow_chatter_into_system(tmp_path, monkeypatch):
+    monkeypatch.setenv("STEWARD_MODEL_PROVIDER", "local")
+    directory = tmp_path / "chatter"
+    first = PropertyService(directory, start_workers=False)
+    store = first.store
+    store.put("a2a_task", a2a_task("a2a-ping", "director", "bristol-engineer", BR, "status_check",
+                                   ["Status check: anything blocking at Bristol?", "Bristol: 0 open work item(s); sensors reporting on the simulated feed."],
+                                   simulated=True), BR)
+    store.put("a2a_task", a2a_task("a2a-real", "bristol-engineer", "bristol-manager", BR, "call",
+                                   ["PV-301's certificate lapsed yesterday.", "Hold the vessel; I'll book the examiner."]), BR)
+    stored = lambda cid, task, origin, text: dict(id=cid, kind="message", topic=text[:60], convener="director", participants=["director", "bristol-engineer"],  # noqa: E731
+                                                  siteIds=[BR], transport="local", providerTaskIds=[], a2aTaskIds=[task], contextId=f"ctx-{cid}",
+                                                  transcript=[dict(speaker="director", text=text, at="2026-10-18T05:00:00Z")], summary=None, summaryBy=None,
+                                                  startedAt="2026-10-18T05:00:00Z", endedAt="2026-10-18T05:00:01Z", status="ended", synthetic=True, origin=origin)
+    store.put("conversation", stored("conv-ping", "a2a-ping", "workflow", "Status check: anything blocking at Bristol?"), "")  # auto-assigned by version 1
+    store.put("conversation", stored("conv-ping-run", "a2a-ping", "run", "Status check: anything blocking at Bristol?"), "")  # explicit: kept
+    store.put("conversation", stored("conv-acks", "a2a-missing", "workflow", "Noted."), "")
+    store.put("conversation", stored("conv-real", "a2a-real", "workflow", "PV-301's certificate lapsed yesterday."), "")
+    memory = lambda mid, cid: dict(id=mid, agentId="bristol-engineer", container="steward-bristol-engineer", kind="note", content=f"Memory of {cid}",  # noqa: E731
+                                   siteId=BR, refs={"conversationId": cid}, at="2026-10-18T05:00:02Z", synthetic=True, origin="workflow")
+    store.put("agent_memory", memory("amem-ping", "conv-ping"), "")
+    store.put("agent_memory", memory("amem-real", "conv-real"), "")
+    store.meta(ORIGIN_META, "1")  # a database backfilled by version 1
+    first.close()
+    upgraded = PropertyService(directory, start_workers=False)
+    assert upgraded.conversations.origin_backfill == dict(conversations=2, memories=1) and upgraded.store.meta(ORIGIN_META) == "2"
+    origin = lambda kind, record_id: upgraded.store.get(kind, record_id, "")["origin"]  # noqa: E731
+    assert [origin("conversation", c) for c in ("conv-ping", "conv-ping-run", "conv-acks", "conv-real")] == ["system", "run", "system", "workflow"]
+    assert (origin("agent_memory", "amem-ping"), origin("agent_memory", "amem-real")) == ("system", "workflow")
+    upgraded.close()
+    with sqlite3.connect(directory / "steward.sqlite3") as db:
+        db.execute("DELETE FROM meta WHERE key=?", (ORIGIN_META,))
+    again = PropertyService(directory, start_workers=False)
+    assert again.conversations.origin_backfill == dict(conversations=0, memories=0) and len(again.store.all("conversation", "")) == 4
+    again.close()
+    with TestClient(create_app(directory, start_workers=False)) as client:
+        assert set(ids(client.get("/api/conversations"))) == {"conv-ping-run", "conv-real"}
+        assert {"conv-ping", "conv-acks"} <= set(ids(client.get("/api/conversations?include=all")))
+        page = client.get(f"/api/memory?siteId={BR}").json()
+        assert [m["id"] for m in page["items"]] == ["amem-real"] and page["hidden"] == 1
+        assert {m["id"] for m in client.get("/api/memory?include=all").json()["items"]} == {"amem-ping", "amem-real"}

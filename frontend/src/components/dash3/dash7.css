@@ -11,7 +11,10 @@
 
 /* ---- Sidebar: all three sites first, then the site (switch, the site itself, its pages) --------------------- */
 .side3 .fswitch.fs-bar { display: none; }
-.side3 .nav3 a { padding: 6px 8px; }
+/* The nav grows to its content (the sidebar scrolls on a short screen) so no switch is ever squeezed to nothing. */
+.side3 .nav3 { flex: 1 0 auto; gap: 16px; }
+.side3 .nav3 > * { flex-shrink: 0; }
+.side3 .nav3 a { padding: 5px 8px; }
 .nav3 .site-group .fswitch { margin: 0 0 6px; }
 .site-card { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: center; margin: 0 0 6px; padding: 6px; background: var(--s2); }
 .site-card img { width: 72px; height: 45px; object-fit: cover; background: var(--s3); }

@@ -10,6 +10,7 @@ import type { Asset3, Issue3, Obligation, SiteId3, ValveResult } from "@/lib/typ
 import { useModal } from "../ui";
 import { Btn, State, SynthTag, ago, day, fx, words } from "./ui3";
 import { isOpenIssue, pinOf, valveWord } from "./environment";
+import { regulationName } from "./walkthrough";
 
 const obligationWord: Record<Obligation["status"], string> = { ok: "ok", due_soon: "due soon", overdue: "overdue", blocked: "blocked" };
 
@@ -47,21 +48,21 @@ export default function AssetDrawer({ siteId, tag, asset, issues, obligations, v
       <section>
         <h4>Obligations</h4>
         <State remote={obligations} what="obligations" isEmpty={() => mine.length === 0} empty="No obligations attached to this asset.">
-          {() => <ul className="rows3 plain">{mine.map(o => <li key={o.id}><span className="r1"><span className={`sig ${o.status === "ok" ? "ok" : o.status === "due_soon" ? "warn" : "bad"}`} aria-hidden="true" /><strong>{o.title}</strong><SynthTag rec={o} /></span><span className="r2">{obligationWord[o.status]}, due {day(o.dueAt)}; {o.frequency}; demo rule {o.ruleRef}</span>{o.documentId ? <a className="lnk r3" href={api3.documentFileUrl(o.documentId)} target="_blank" rel="noreferrer">Open the document</a> : null}</li>)}</ul>}
+          {() => <ul className="rows3 plain">{mine.map(o => <li key={o.id}><span className="r1"><span className={`sig ${o.status === "ok" ? "ok" : o.status === "due_soon" ? "warn" : "bad"}`} aria-hidden="true" /><strong>{o.title}</strong><SynthTag rec={o} /></span><span className="r2">{obligationWord[o.status]}, due {day(o.dueAt)}; {o.frequency}{o.regulationIds?.[0] ? `; ${regulationName(o.regulationIds[0])}` : ""}</span>{o.documentId ? <a className="lnk r3" href={api3.documentFileUrl(o.documentId)} target="_blank" rel="noreferrer">Open the document</a> : null}</li>)}</ul>}
         </State>
       </section>
 
       {valve || asset?.kind === "valve" ? <section>
         <h4>Valve inspection</h4>
         {valve ? <>
-          <p className={`v-res ${valve.status === "not_fixed" ? "bad" : ""}`}><span className={`sig ${valve.status === "fixed" ? "ok" : valve.status === "not_fixed" ? "bad" : "warn"}`} aria-hidden="true" />{valveWord[valve.status]}, score {fx(valve.score)} against a threshold of {fx(valve.threshold)}{valve.model ? `, ${valve.model}` : ""}{valve.defect && valve.defect !== "none" ? <span className="tg synth">synthetic defect: {words(valve.defect)}</span> : null}</p>
-          {valve.frames?.length ? <div className="v-frames">{valve.frames.slice(0, 16).map((f, i) => <img key={f} src={api3.frameUrl(siteId, tag, f)} alt={`${tag}, orbit frame ${i + 1} rendered from the hosted capture`} loading="lazy" />)}</div> : <p className="st3 empty">No frames for this valve.</p>}
+          <p className={`v-res ${valve.status === "not_fixed" ? "bad" : ""}`}><span className={`sig ${valve.status === "fixed" ? "ok" : valve.status === "not_fixed" ? "bad" : "warn"}`} aria-hidden="true" />{valveWord[valve.status]}, score {fx(valve.score)} against a threshold of {fx(valve.threshold)}{valve.model ? `, ${valve.model}` : ""}</p>
+          {valve.frames?.length ? <div className="v-frames">{valve.frames.slice(0, 16).map((f, i, all) => <img key={f} src={api3.frameUrl(siteId, tag, f)} alt={`Agent eye view of ${tag}, ${i + 1} of ${Math.min(all.length, 16)}`} loading="lazy" />)}</div> : <p className="st3 empty">No frames for this valve.</p>}
           {valve.explanation ? <dl className="kv3">
             <dt>Finding</dt><dd>{valve.explanation.finding}</dd>
             <dt>Evidence</dt><dd>{valve.explanation.evidence}</dd>
             <dt>Confidence</dt><dd>{String(valve.explanation.confidence)}</dd>
             <dt>Action</dt><dd>{valve.explanation.recommendedAction}</dd>
-          </dl> : <p className="st3 empty">{valve.status === "fixed" ? "No explanation needed: the valve sits with its peers." : valve.explainDryRun ? "Dry run: the request to Claude was written, not sent." : "No explanation yet."}</p>}
+          </dl> : <p className="st3 empty">{valve.status === "fixed" ? "No explanation needed: the valve sits with its peers." : "No explanation yet."}</p>}
           <p className="note3">An embedding anomaly score, not a trained defect classifier.</p>
         </> : <p className="st3 empty">This valve has not been inspected yet.</p>}
       </section> : null}

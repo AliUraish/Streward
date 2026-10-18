@@ -4,7 +4,7 @@
 providerTaskIds, a2aTaskIds, contextId, transcript: [{speaker, name, text, at, taskId?, transport?}], summary:
 {headline, points, decisions, actions: [{owner, task, due}]} | null, summaryBy: claude-opus-5-5 | hand-seed | null,
 startedAt, endedAt, synthetic, origin: seed | run | workflow | inkbox, scenarioId?, runId?, issueId?, issueKind?, resolution?,
-contact?}`. Lists hide `origin: seed` records unless `include=all`, and add the real texts (emails, SMS and calls sent
+contact?}`. Lists hide `origin: seed` and `origin: system` (machine chatter) unless `include=all`, and add the real texts (emails, SMS and calls sent
 or received through Inkbox) as derived `message` conversations; see real_only.py.
 
 - A **meeting** is convened by a manager or the director: the convener asks each participant over A2A and the
@@ -24,7 +24,8 @@ from __future__ import annotations
 
 from .agents import DIRECTOR, OPERATOR, display_name, is_known, kind_of, site_of
 from .errors import RealityError
-from .real_only import INCLUDE_ALL, ORIGINS, TEXT_PREFIX, conversation_origin, creation_origin, include_all, migrate_origins, real_texts
+from .real_only import (INCLUDE_ALL, ORIGINS, TEXT_PREFIX, conversation_origin, creation_origin, hidden_origins, migrate_origins, real_texts,
+                        tasks_are_system)
 from .store import now, uid
 
 VOICE_NOTE = "Voice is the browser's text-to-speech reading the transcript; agents talk over Inkbox A2A, not phone calls."
@@ -65,9 +66,11 @@ class ConversationService:
         # Owner, Oct 18: every conversation and agent memory carries `origin` (seed | run | workflow | inkbox); backfill once.
         self.origin_backfill = migrate_origins(self.store)
 
-    @staticmethod
-    def _with_origin(conversation: dict) -> dict:
-        return conversation if conversation.get("origin") in ORIGINS else dict(conversation, origin=conversation_origin(conversation))
+    def _with_origin(self, conversation: dict) -> dict:
+        if conversation.get("origin") in ORIGINS:
+            return conversation
+        tasks = {t: self.store.get("a2a_task", t) for t in conversation.get("a2aTaskIds") or []}
+        return dict(conversation, origin=conversation_origin(conversation, {k: v for k, v in tasks.items() if v}))
 
     # ---- records ------------------------------------------------------------------------------------------
 
@@ -256,9 +259,10 @@ class ConversationService:
             identifier = f"conv-ctx-{context_id}"
             summary = summaries.get(identifier)
             closed = all(t["state"] in ("completed", "failed", "canceled") for t in tasks)
-            # Origin: A2A tasks only exist once sent at run time; Inkbox-carried ones are real external traffic.
+            # Origin: A2A tasks only exist once sent at run time; simulator pings and "Noted." acknowledgements are machine
+            # chatter (`system`, hidden by default), Inkbox-carried ones are real external traffic.
             over_inkbox = [t["providerTaskId"] for t in tasks if t["transport"] == "inkbox" and t.get("providerTaskId")]
-            origin = ("seed" if all(t.get("generator") for t in tasks) else "inkbox" if over_inkbox
+            origin = ("seed" if all(t.get("generator") for t in tasks) else "system" if tasks_are_system(tasks) else "inkbox" if over_inkbox
                       else "run" if any((t.get("steward") or {}).get("runId") for t in tasks) else "workflow")
             derived.append(dict(id=identifier, kind="message", origin=origin, channel="a2a", direction="inbound" if str(tasks[0]["caller"]).startswith("external:") else "internal",
                                 providerRef=over_inkbox[0] if over_inkbox else None,
@@ -279,7 +283,8 @@ class ConversationService:
 
     def list(self, site_id: str | None = None, agent_id: str | None = None, kind: str | None = None, limit: int = 100,
              include: str | None = None, origin: str | None = None) -> list[dict]:
-        """Newest first. Seed records are hidden unless `include` is `all` (owner, Oct 18: real calls and texts only);
+        """Newest first. Seed records and machine chatter (`system`) are hidden unless `include` is `all` (owner, Oct 18:
+        real calls and texts only);
         `origin` (comma-separated, e.g. `inkbox` for real Inkbox traffic only) narrows further."""
         if site_id:
             self.service.require_property(site_id)
@@ -287,8 +292,8 @@ class ConversationService:
         records = [self._with_origin(c) for c in self.store.all("conversation", "")]
         if not kind or kind == "message":
             records += self._derived() + self._texts()
-        if not include_all(include) and "seed" not in wanted:
-            records = [c for c in records if c.get("origin") != "seed"]
+        hide = hidden_origins(include, wanted)  # seed and system, unless include=all or asked for by origin=
+        records = [c for c in records if c.get("origin") not in hide]
         if wanted:
             records = [c for c in records if c.get("origin") in wanted]
         if site_id:
@@ -306,12 +311,13 @@ class ConversationService:
         record = self.store.get("conversation", conversation_id, "")
         if record:
             record = self._with_origin(record)
-            if record["origin"] != "seed" or include_all(include):
+            if record["origin"] not in hidden_origins(include):
                 return record
-            raise RealityError("Conversation not found among real records.", "NOT_FOUND", "It is a seed record; pass ?include=all to read it.", 404)
+            raise RealityError("Conversation not found among real records.", "NOT_FOUND",
+                               f"It is a {record['origin']} record; pass ?include=all to read it.", 404)
         if conversation_id.startswith("conv-ctx-"):
             match = next((c for c in self._derived() if c["id"] == conversation_id), None)
-            if match and (match["origin"] != "seed" or include_all(include)):
+            if match and match["origin"] not in hidden_origins(include):
                 return match
         if conversation_id.startswith(TEXT_PREFIX):
             match = next((c for c in self._texts() if c["id"] == conversation_id), None)
@@ -342,8 +348,9 @@ class ConversationService:
         return [self.as_board_meeting(c) for c in self.list(site_id, kind="meeting", limit=200, include=include)]
 
     def board_meeting(self, meeting_id: str | None = None, issue_id: str | None = None, include: str | None = None) -> dict:
-        """Same rule as the conversations list: seed meetings only with `include=all`."""
-        shown = (lambda c: True) if include_all(include) else (lambda c: c["origin"] != "seed")
+        """Same rule as the conversations list: seed and system meetings only with `include=all`."""
+        hide = hidden_origins(include)
+        shown = lambda c: c["origin"] not in hide  # noqa: E731
         if meeting_id:
             record = self.store.get("conversation", meeting_id, "")
             if record and record["kind"] == "meeting" and shown(self._with_origin(record)):

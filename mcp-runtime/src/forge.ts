@@ -26,7 +26,7 @@ import type { MCPServer } from 'mcp-use';
 import { z } from 'zod';
 import { AGENT_DISPLAY, agentOf, siteOfAgent, type PropertyId, type RuntimeConfig } from './config.js';
 import { AdapterError, type Backend } from './upstream.js';
-import { LOCAL_WRITE, READ_ONLY, WithText, type ToolFn } from './tooling.js';
+import { LOCAL_WRITE, READ_ONLY, WithText, isModernRequest, toolErrorResponse, type ToolFn } from './tooling.js';
 import { list } from './factory.js';
 import type { SubscriptionHub } from './subscriptions.js';
 
@@ -257,7 +257,6 @@ export function registerForgeTools({ tool, backend, config, server, hub, siteId,
   });
 
   // 2. tools/call forge_<name> → call_forged_tool {toolId, args}, re-dispatched into the app with the marker header.
-  const toolError = (id: unknown, code: string, message: string, recovery: string) => new Response(JSON.stringify({ jsonrpc: '2.0', id: id ?? null, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ code, message, recovery, retryable: false }) }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   server.app.use('/mcp', async (context, next) => {
     if (!started) { started = true; registry.start(); }
     const raw = context.req.raw;
@@ -269,7 +268,8 @@ export function registerForgeTools({ tool, backend, config, server, hub, siteId,
     if (!message || !name || !name.startsWith(FORGE_PREFIX)) { await next(); return; }
     let forged = registry.get(name);
     if (!forged) { await registry.sync(); forged = registry.get(name); } // published a moment ago?
-    if (!forged) return toolError(message.id, 'UNKNOWN_TOOL', `No published forged tool named ${name} on this endpoint.`, 'Call list_forged_tools: the tool may be retired, not yet published, or for a site outside this endpoint’s scope.');
+    // Answered here, before mcp-use: resultType "complete" for 2026-07-28 clients, which reject a result without it.
+    if (!forged) return toolErrorResponse(message.id, { code: 'UNKNOWN_TOOL', message: `No published forged tool named ${name} on this endpoint.`, recovery: 'Call list_forged_tools: the tool may be retired, not yet published, or for a site outside this endpoint’s scope.' }, isModernRequest(context.req.header('mcp-protocol-version'), params));
     const { telemetry: block, ...args } = obj(params.arguments);
     const rewritten = { ...message, params: { ...params, name: CALL_FORGED_TOOL, arguments: { toolId: forged.id, args, ...(telemetry && block !== undefined ? { telemetry: block } : {}) } } };
     const headers = new Headers(raw.headers); headers.set(FORGE_CALL_HEADER, forged.mcpName); headers.delete('content-length');

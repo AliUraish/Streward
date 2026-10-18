@@ -183,7 +183,8 @@ class RealityService:
                 listener(change, work_item, extra or {})
             except Exception as error:  # a waiter must never break the write path
                 self.store.event(property_id, "atlas", "listener.failed", f"Change listener failed on {change_type}", type(error).__name__)
-        subscriptions = self.store.all("subscription", property_id)
+        # Callback subscribers are ordinary agents: a scenario's own step rows are not delivered (see changes()).
+        subscriptions = self.store.all("subscription", property_id) if change_type != "scenario" else []
         if subscriptions:
             payload = {"event": "steward.change", "change": change}
             if work_item is not None:
@@ -230,9 +231,13 @@ class RealityService:
         self.store.event(property_id, f"agent-{property_id}", "subscription.created", "Subscription created", f"{requester} → {callback_url}")
         return subscription
 
-    def changes(self, property_id: str, since: int = 0, limit: int = 100) -> dict:
+    def changes(self, property_id: str, since: int = 0, limit: int = 100, include_scenario: bool = False) -> dict:
+        """Changes after `since`. A scenario's own step rows (type `scenario`) are left out unless `include_scenario`: each
+        step's issue, fact and conversation Changes already say what happened, and the eval harness waits on the step rows
+        through the WaitHub, which sees every Change. `version` stays the site's latest, scenario rows included."""
         self.service.require_property(property_id)
-        items = [{k: v for k, v in c.items() if not (k == "assetTag" and v is None)} for c in self.store.all("change", property_id) if c["version"] > since]
+        items = [{k: v for k, v in c.items() if not (k == "assetTag" and v is None)} for c in self.store.all("change", property_id)
+                 if c["version"] > since and (include_scenario or c["type"] != "scenario")]
         items.sort(key=lambda c: c["version"])
         waiting = [w for w in self.store.all("work_item", property_id) if w["state"] in OPEN_STATES]
         return dict(version=self.version(property_id), changes=items[:limit], waiting=waiting)

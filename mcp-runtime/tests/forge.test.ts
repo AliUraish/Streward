@@ -243,3 +243,21 @@ test('contract 6: the tool-forge eval suite replays against the fake upstream (r
     assert.deepEqual(published.map(tool => [tool.name, tool.version]), [['pump_spec_breaches', 2]], 'the second round published v2 and retired v1');
   } finally { await server.close(); await upstream.close(); }
 });
+
+test('contract 6: an unknown forge_<name> is refused as UNKNOWN_TOOL on both protocol eras (2026-07-28 results carry resultType)', async () => {
+  const upstream = await fakeRealityBackend();
+  const server = createStewardServer(config(upstream.url));
+  const listener = await server.listen(0, { host: '127.0.0.1' });
+  const legacy = new Client({ name: 'forge-legacy', version: '1' }, { capabilities: {} });
+  const modern = new Client({ name: 'forge-modern', version: '1' }, { capabilities: {}, versionNegotiation: { mode: 'auto' } } as never);
+  try {
+    await Promise.all([legacy.connect(new StreamableHTTPClientTransport(new URL(listener.url))), modern.connect(new StreamableHTTPClientTransport(new URL(listener.url)))]);
+    for (const [era, client] of [['2025', legacy], ['2026-07-28', modern]] as const) {
+      // A 2026-07-28 client throws on a result without resultType; this one must come back as a tool error.
+      const refused = await client.callTool({ name: 'forge_no_such_tool', arguments: { days: 7 } }) as CallToolResult;
+      assert.equal(refused.isError, true, era); assert.equal(data(refused).code, 'UNKNOWN_TOOL', era);
+      assert.match(data(refused).message, /forge_no_such_tool/, era); assert.match(data(refused).recovery, /list_forged_tools/, era); assert.equal(data(refused).retryable, false, era);
+    }
+    assert(!upstream.state.paths.some(path => path.startsWith('POST /api/tools/') && path.endsWith('/call')), 'nothing was called on the backend');
+  } finally { await Promise.allSettled([legacy.close(), modern.close()]); await server.close(); await upstream.close(); }
+});

@@ -3,7 +3,7 @@
 /* The mission view: the scan fills the screen and the factory team's work floats over it as HUD panels, in the
    dashboard's black and white. Tone-step panels at about 90 percent, no blur, no shadows, Geist; the mono face only
    for asset tags and record ids; white marks what is active, the one issue signal marks what is wrong. It leads with
-   what is ours: the signed proof, the regulation cited, the Inkbox team. Every panel collapses; Hide HUD clears them. */
+   what is ours: the signed proof, the regulation cited, the team. Every panel collapses; Hide HUD clears them. */
 import { useMemo, useState, type ReactNode } from "react";
 import type { Remote } from "@/lib/reality";
 import { api3 } from "@/lib/api-3";
@@ -53,13 +53,13 @@ export default function MissionHud({ siteId, frames, issues, hidden, now, render
     </header>
     {!hidden ? <>
       <div className="mh-left">
-        <Panel title="Agent cameras" meta={frames.length ? `latest ${Math.min(frames.length, 6)} frame${Math.min(frames.length, 6) === 1 ? "" : "s"}` : "capture renders until the eye looks"}><Cameras siteId={siteId} frames={frames} issues={issues} onFocus={onFocus} /></Panel>
+        <Panel title="Agent cameras" meta={frames.length ? `latest ${Math.min(frames.length, 6)} frame${Math.min(frames.length, 6) === 1 ? "" : "s"}` : "views of the site until the eye looks"}><Cameras siteId={siteId} frames={frames} issues={issues} onFocus={onFocus} /></Panel>
         <Panel title="Evals per version" meta="Steward telemetry"><EvalVersions siteId={siteId} /></Panel>
         <Panel title="Changes to the next version" meta="by the Operations Director"><NextChanges siteId={siteId} /></Panel>
       </div>
       <div className="mh-right">
         <Panel title="Alerts" meta={`site time, ${tzOf(siteId).split("/")[1].replace("_", " ")}`}><Alerts siteId={siteId} issues={issues} onFocus={onFocus} /></Panel>
-        <Panel title={`Inkbox team · ${site.short}`} meta="A2A, email, dispatch line"><TeamGraph siteId={siteId} actor={latest?.actor ?? null} /></Panel>
+        <Panel title={`Team · ${site.short}`} meta="calls, email, dispatch line"><TeamGraph siteId={siteId} actor={latest?.actor ?? null} /></Panel>
       </div>
       <LiveLine siteId={siteId} frame={latest} />
     </> : null}
@@ -81,7 +81,7 @@ function Cameras({ siteId, frames, issues, onFocus }: { siteId: SiteId3; frames:
   const site = site3(siteId);
   const openTags = new Set(issues.filter(i => !i.status || i.status !== "resolved").map(i => i.assetTag));
   const tiles = [...frames].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
-  /* Until the eye has looked six times, the empty tiles show capture renders (or the capture's thumbnail where none exist). */
+  /* Until the eye has looked six times, the empty tiles show views of the site (or its overview where none exist). */
   const renders = site.frames.length ? site.frames : [site.thumbnailUrl];
   const fill = Array.from({ length: Math.max(0, 6 - tiles.length) }, (_, i) => renders[i % renders.length]);
   return <ol className="mh-cams">
@@ -96,7 +96,7 @@ function Cameras({ siteId, frames, issues, onFocus }: { siteId: SiteId3; frames:
         </button>
       </li>;
     })}
-    {fill.map((src, i) => <li key={`fill-${i}`} className="fill"><span className="ph"><img src={src} alt="" /><span className="cap"><span className="who">{site.frames.length ? "capture render" : "capture thumbnail"}</span></span></span></li>)}
+    {fill.map((src, i) => <li key={`fill-${i}`} className="fill"><span className="ph"><img src={src} alt="" /><span className="cap"><span className="who">{site.frames.length ? `view ${(i % site.frames.length) + 1}` : "overview"}</span></span></span></li>)}
   </ol>;
 }
 

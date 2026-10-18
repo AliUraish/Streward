@@ -134,7 +134,7 @@ class ComplianceGaps:
 
     def raise_gap(self, obligation: dict, origin: str, reason: str | None = None, moment: datetime | None = None) -> dict:
         """Raise (or update, same id) the open compliance issue for an overdue or blocked obligation."""
-        from .maintenance_planner import citation, days_overdue, overdue_phrase
+        from .maintenance_planner import citation, days_overdue, overdue_phrase, person
         site = obligation["siteId"]
         status = PeopleService.status_of(obligation)
         gap = "blocked" if status == "blocked" else "overdue"
@@ -155,18 +155,23 @@ class ComplianceGaps:
         if cite:
             summary += f" {cite}."
         if owner:
-            summary += f" Owner: {owner['name']} ({owner['role']})."
+            summary += f" Owner: {person(owner)}."
         tag = obligation.get("assetTag")
         if tag and not any(c["tag"] == tag for c in self.store.all("component", site)):
             tag = None
-        extra = dict(regulationIds=regulation_ids, ownerId=obligation.get("ownerId"), dueAt=obligation.get("dueAt"), overdueDays=days,
+        # `kind` too: a reopened issue (same id) follows the obligation from blocked to overdue and back.
+        extra = dict(kind=GAP_KINDS[gap], regulationIds=regulation_ids, ownerId=obligation.get("ownerId"), dueAt=obligation.get("dueAt"), overdueDays=days,
                      obligationTitle=obligation["title"],
                      complianceGap=dict(origin=origin, gap=gap, reason=reason, at=iso(moment or utcnow())))
         if gap == "blocked":
             extra.update(blockedBy=obligation.get("blockedBy"), blockedReason=obligation.get("blockedReason"))
+        # One issue per obligation, the id the compliance alert workflow (compliance_alerts.py) uses too, so a walkthrough reuses it.
+        existing = next((i for i in self.store.all("issue", site) if i.get("status") == "open" and i.get("obligationId") == obligation["id"]
+                         and i.get("kind") in GAP_KINDS.values()), None)
+        issue_id = existing["id"] if existing else f"iss-{site[:2]}-compliance-{obligation['id']}"
         return self.service.issues.raise_issue(site, GAP_KINDS[gap], "high" if days > HIGH_AFTER_DAYS else "medium", summary, asset_tag=tag,
-                                               source="agent", obligation_id=obligation["id"], document_id=obligation.get("documentId"),
-                                               synthetic=True, actor=compliance_id(site), extra=extra)
+                                               issue_id=issue_id, source="agent", obligation_id=obligation["id"],
+                                               document_id=obligation.get("documentId"), synthetic=True, actor=compliance_id(site), extra=extra)
 
     def sync_issues(self) -> list[str]:
         """Resolve the gap issues whose obligation is no longer overdue or blocked."""

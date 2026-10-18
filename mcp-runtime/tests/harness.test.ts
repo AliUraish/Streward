@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MCPClient } from '@mcp-use/client';
 import { Client, StreamableHTTPClientTransport, type CallToolResult } from '@modelcontextprotocol/client';
-import { createStewardServer, GUIDE_URI } from '../src/server.js';
+import { createStewardServer, AGENTS_URI, GUIDE_URI } from '../src/server.js';
 import { loadConfig, PROPERTY_IDS, type RuntimeConfig } from '../src/config.js';
 import { HARNESS_HEADER, HARNESS_HEADER_VALUE, HARNESS_TOOLS } from '../src/harness.js';
 import { WAIT_EVENTS } from '../src/waits.js';
@@ -114,6 +114,41 @@ test('harness gate: hidden by default, with the flag but no header, and when hos
     const done = data(await harness.callTool({ name: 'wait_for', arguments: { event: 'any', siteId: 'bristol-pumps', filter: { type: 'scenario', scenarioId: 'br-sump', runId: run.id, status: 'completed' }, timeoutSeconds: 10 } }) as CallToolResult);
     assert.equal(done.status, 'fired'); assert.equal(done.event.type, 'scenario'); assert.equal(done.event.runId, run.id);
     assert.equal(upstream.state.scenarioRuns.length, 1);
+
+    // Scenario step rows reach only the harness: get_changes, get_overview and the overview resource drop them for everyone else.
+    const rowsFor = async (client: Client) => data(await client.callTool({ name: 'get_changes', arguments: { siteId: 'bristol-pumps', since: 0, limit: 500 } }) as CallToolResult).changes as Data[];
+    assert((await rowsFor(harness)).some(row => row.type === 'scenario'), 'the harness sees the step rows');
+    const agentRows = await rowsFor(ordinary);
+    assert(agentRows.some(row => row.type === 'issue') && !agentRows.some(row => row.type === 'scenario'), 'an agent sees the issue and meeting Changes a step emits, not the step rows');
+    assert(!(data(await ordinary.callTool({ name: 'get_overview', arguments: {} }) as CallToolResult).changes as Data[]).some(row => row.type === 'scenario'));
+    const overviewResource = JSON.parse((await ordinary.readResource({ uri: 'steward://sites/bristol-pumps/overview' })).contents.map(item => ('text' in item ? item.text : '')).join('')) as Data;
+    assert(!(overviewResource.changes as Data[]).some(row => row.type === 'scenario'));
+
+    // The operator's authority: start_scenario and simulation only for the harness, in list_agents and steward://agents.
+    const operatorOf = async (client: Client) => (data(await client.callTool({ name: 'list_agents', arguments: {} }) as CallToolResult).agents as Data[]).find(agent => agent.id === 'operator')!;
+    const publicOperator = await operatorOf(ordinary);
+    assert(publicOperator.authority.includes('start_mission') && !publicOperator.authority.some((entry: string) => MACHINERY.test(entry)), JSON.stringify(publicOperator.authority));
+    const harnessOperator = await operatorOf(harness);
+    assert(harnessOperator.authority.includes('start_scenario') && harnessOperator.authority.includes('simulation'));
+    const agentsText = (await ordinary.readResource({ uri: AGENTS_URI })).contents.map(item => ('text' in item ? item.text : '')).join('');
+    assert(agentsText.includes('"id":"operator"') && agentsText.includes('start_mission') && !MACHINERY.test(agentsText), `steward://agents: ${agentsText.match(MACHINERY)?.[0]}`);
+
+    // An agent's `any` wait never fires on a scenario's own step row: it fires on the issue Change the step emits.
+    setTimeout(() => {
+      upstream.change('scenario', 'myer-plant', 'srun-x', 'Scenario started: Overpressure on PG-601 (synthetic).', undefined, { scenarioId: 'my-overpressure', runId: 'srun-x', status: 'started' });
+      upstream.change('issue', 'myer-plant', 'iss-pg', 'PG-601 reads 4.1 bar on a 3.5 bar circuit', 'PG-601', { issueId: 'iss-pg', status: 'open' });
+    }, 300);
+    const heard = data(await ordinary.callTool({ name: 'wait_for', arguments: { event: 'any', siteId: 'myer-plant', timeoutSeconds: 5 } }) as CallToolResult);
+    assert.equal(heard.status, 'fired'); assert.equal(heard.event.type, 'issue'); assert.equal(heard.event.issueId, 'iss-pg'); assert.notEqual(heard.event.name, 'scenario.step');
+    const asked = await ordinary.callTool({ name: 'wait_for', arguments: { event: 'any', filter: { type: 'scenario' }, timeoutSeconds: 2 } }) as CallToolResult;
+    assert.equal(asked.isError, true); assert.equal(data(asked).code, 'INVALID_ARGUMENT');
+
+    // Bad arguments to a hidden tool get the same refusal (answered before the SDK's input validation), on both eras.
+    for (const [label, client] of [['2025', clients[2]!], ['2026-07-28', clients[3]!]] as const) {
+      const refused = await client.callTool({ name: 'start_scenario', arguments: { scenarioId: 'demolish', speed: -1 } }) as CallToolResult;
+      assert.equal(refused.isError, true, label); assert.equal(data(refused).code, 'UNKNOWN_TOOL', label);
+      assert(!/my-overpressure|br-sump|Invalid option/.test(textOf(refused)), `${label}: the refusal names no scenario`);
+    }
   } finally {
     await Promise.allSettled([...clients.map(client => client.close()), mcpUse.close()]);
     await Promise.all([plain.close(), flagged.close(), hosted.close()]); await upstream.close();

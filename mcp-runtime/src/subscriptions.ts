@@ -83,9 +83,16 @@ export class SubscriptionHub {
     if (!poller || poller.busy) return;
     poller.busy = true;
     try {
-      const result = await this.backend.json(`${this.backend.propertyPath(site as PropertyId, 'changes')}?${new URLSearchParams({ since: String(poller.version ?? 0), limit: '1' })}`, z.looseObject({ version: z.number() }));
-      if (poller.version === null) poller.version = result.version; // first read: baseline, no event
-      else if (result.version > poller.version) { poller.version = result.version; await this.emit(site); }
+      const baseline = poller.version === null;
+      const result = await this.backend.json(`${this.backend.propertyPath(site as PropertyId, 'changes')}?${new URLSearchParams({ since: String(poller.version ?? 0), limit: baseline ? '1' : '50' })}`,
+        z.looseObject({ version: z.number(), changes: z.array(z.looseObject({ type: z.unknown().optional() })).optional() }));
+      if (baseline) poller.version = result.version; // first read: baseline, no event
+      else if (result.version > poller.version!) {
+        poller.version = result.version;
+        // A scenario's own step rows are not news: the backend leaves them out of /changes (an older backend's are skipped
+        // here), so a step notifies through the issue, fact or conversation Change it emits.
+        if (!result.changes || result.changes.some(change => change.type !== 'scenario')) await this.emit(site);
+      }
     } catch { /* backend down: keep the poller, try again next tick */ } finally { poller.busy = false; }
   }
 

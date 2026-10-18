@@ -212,7 +212,8 @@ def test_crew_obligations_and_japanese_regulations(client, monkeypatch, tmp_path
     assert owners["humidity_high"]["agent"] == "tomioka-engineer" and owners["alteration_permit"]["agent"] == "tomioka-compliance"
     assert owners["visitor_route"]["agent"] == "tomioka-compliance" and owners["humidity_high"]["contactPlan"]["reachable"] is False
     obligations = {o["id"]: o for o in client.get(f"/api/properties/{TM}/obligations").json()}
-    assert set(obligations) == {"ob-tm-humidity-watch", "ob-tm-bw251-permit", "ob-tm-fe-inspection", "ob-tm-fh601-inspection", "ob-tm-heritage-mounting"}
+    assert set(obligations) == {"ob-tm-humidity-watch", "ob-tm-bw251-permit", "ob-tm-fe-inspection", "ob-tm-fh601-inspection", "ob-tm-heritage-mounting",
+                                "ob-tm-exit-drill", "ob-tm-tr202-strap"}  # the last two are the seeded compliance gaps (contract 7 §6)
     regulations = {r["id"]: r for r in client.get(f"/api/regulations?siteId={TM}").json()}
     if "jp-cpa-1950-art-43" in regulations:  # the regulations stream's Japanese pack is present
         assert all(r["jurisdiction"] == "JP" for r in regulations.values())
@@ -239,7 +240,8 @@ def test_crew_obligations_and_japanese_regulations(client, monkeypatch, tmp_path
 def test_tm_humidity_raises_calls_contacts_and_the_fix_verifies_under_65(client):
     scenarios = {s["id"]: s for s in client.get("/api/scenarios").json()}
     assert scenarios["tm-humidity"]["headline"] is True and scenarios["tm-humidity"]["siteIds"] == [TM]
-    assert client.get(f"/api/properties/{TM}/issues").json() == []  # nothing fires until started
+    # Nothing fires until started; only the seeded compliance gaps are open (contract 7 §6).
+    assert sorted(i["kind"] for i in client.get(f"/api/properties/{TM}/issues").json()) == ["compliance_blocked", "compliance_overdue"]
     run = start(client, "tm-humidity")
     readings = [f for f in svc(client).store.all("fact", TM) if f["source"] == {"kind": "sensor", "ref": "scenario:tm-humidity"}]
     assert [f["value"] for f in readings] == [79.6, 81.8, 83.9, 85.6, 86.9, 88.0, 88.6] and all(f["synthetic"] is True for f in readings)
@@ -328,7 +330,9 @@ def test_x_heritage_agrees_the_shared_window_on_both_sites(client):
     workflow = fix(client, issue["id"])
     assert client.get(f"/api/issues/{issue['id']}").json()["status"] == "resolved" and workflow["crewMemberId"] == "crew-tm-visitor-safety-lead"
     assert {o["id"]: o for o in client.get(f"/api/properties/{TM}/obligations").json()}["ob-tm-heritage-mounting"]["status"] in ("ok", "due_soon")
-    assert any(c["type"] == "scenario" for c in client.get(f"/api/properties/{BR}/changes?limit=1000").json()["changes"])
+    # The scenario's own step rows reach only the eval harness (includeScenario=true); people and agents get the step's records.
+    assert any(c["type"] == "scenario" for c in client.get(f"/api/properties/{BR}/changes?limit=1000&includeScenario=true").json()["changes"])
+    assert not any(c["type"] == "scenario" for c in client.get(f"/api/properties/{BR}/changes?limit=1000").json()["changes"])
 
 
 # ---- 5. metrics, overview, summaries, eye -------------------------------------------------------------------------------------
@@ -400,7 +404,7 @@ def test_an_existing_two_site_database_gains_the_mill_once_with_a_backup(tmp_pat
     store = upgraded.store
     assert [p["id"] for p in store.all("property")] == [MY, BR, TM] and upgraded.site_additions["added"] == [TM]
     assert len(store.all("component", TM)) == 25 and len(store.all("requirement", TM)) == 100
-    assert len(store.all("crew_member", TM)) == 7 and len(store.all("obligation", TM)) == 5
+    assert len(store.all("crew_member", TM)) == 7 and len(store.all("obligation", TM)) == 7  # 5 plus the 2 seeded compliance gaps
     assert any(f["attribute"] == "serial" for f in store.all("fact", TM))  # identity facts seeded for the new site
     assert {w["id"] for w in upgraded.maintenance.list(TM)} >= {"mw-tm-dh1101-service", "mw-tm-fire-inspection"}
     assert store.get("property", MY)["jurisdiction"] == "VIC-AU" and store.get("property", TM)["environment"]["format"] == "lod"

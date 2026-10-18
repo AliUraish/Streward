@@ -482,7 +482,7 @@ class MaintenancePlanner:
                 continue
             obligation = self.store.get("obligation", window["obligationId"])
             done_at, created = parse_time((obligation or {}).get("lastDoneAt")), parse_time(window.get("createdAt"))
-            if not obligation or not done_at or not created or done_at <= created:
+            if not obligation or not done_at or not created or done_at < created.replace(microsecond=0):  # lastDoneAt has whole seconds
                 continue
             window.update(status="done", doneAt=now(), closedReason=f"{obligation['title'][:160]} closed on {obligation['lastDoneAt'][:10]}.")
             self.service.maintenance._put(window)

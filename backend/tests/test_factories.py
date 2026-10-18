@@ -302,7 +302,8 @@ def test_scenarios_list_and_site_scenarios_produce_facts_issues_and_meetings(cli
     assert [s["id"] for s in scenarios] == ["my-overpressure", "my-extinguisher", "br-sump", "br-vessel-cert", "ops-counsel-tokens", "ops-injection", "x-maintenance",
                                             "tm-humidity", "tm-alteration-permit", "x-heritage"]
     assert all(s["synthetic"] is True and s["generator"] == "hand-seed" and s["lastRun"] is None for s in scenarios)
-    assert client.get("/api/properties/myer-plant/issues").json() == []  # nothing fires until a scenario starts
+    # Nothing fires until a scenario starts; only the seeded compliance gap is open (contract 7 §6).
+    assert [i["kind"] for i in client.get("/api/properties/myer-plant/issues").json()] == ["compliance_overdue"]
     assert client.post("/api/scenarios/br-sump/start", json={"speed": 0}, headers={"X-Steward-Actor": "director"}).status_code == 403
     run = start_scenario(client, "br-sump")
     assert run["log"] and run["siteIds"] == [BR]
@@ -486,6 +487,7 @@ def test_overview_is_compact_and_activity_reports_telemetry(client):
     assert [s["id"] for s in overview["sites"]] == [MY, BR, TM] and overview["sites"][0]["issues"]["high"] >= 1
     assert {"ok", "due_soon", "overdue", "blocked"} == set(overview["sites"][0]["compliance"]) and overview["sites"][0]["crewOnShift"] == 3
     assert len(overview["agents"]) == 14 and len(overview["lastChanges"]) == 10
+    assert not any(c["type"] == "scenario" for c in overview["lastChanges"]), "scenario step rows never reach the overview"
     assert len(json.dumps(overview, separators=(",", ":"))) <= 2400  # ≤ 600 tokens at 4 characters a token
     activity = client.get("/api/agents/myer-manager/activity").json()
     assert activity["tokensThisHour"] > 0 and activity["callsThisHour"] > 0 and activity["telemetrySource"].startswith("Steward telemetry")

@@ -95,7 +95,7 @@ function Transcript({ id, remote, speaker }: { id: string; remote: Remote<Transc
   const speakingId = playing && speaker.line >= 0 ? spoken[speaker.line]?.id : null;
   return <>
     <div className="p-head"><h3>Transcript</h3>
-      <span className="listen">{speaker.available === false ? <span className="meta">This browser has no speech synthesis.</span> : <>{playing ? <Btn quiet small onClick={speaker.stop}>Stop</Btn> : <Btn quiet small disabled={!entries.length} onClick={() => speaker.play(key, lines)}>Listen</Btn>}<span className="meta">{LISTEN_NOTE}</span></>}</span>
+      <span className="listen">{speaker.available === false ? <span className="meta">This browser has no voices.</span> : playing ? <Btn quiet small onClick={speaker.stop}>Stop</Btn> : <Btn quiet small disabled={!entries.length} onClick={() => speaker.play(key, lines)}>Listen</Btn>}</span>
     </div>
     <State remote={remote} what="the transcript" isEmpty={() => entries.length === 0} empty="Nothing said yet.">
       {() => <>

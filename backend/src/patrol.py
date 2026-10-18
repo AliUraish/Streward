@@ -26,7 +26,8 @@ import threading
 import time
 
 from .agents import DIRECTOR, OPERATOR, authorize, display_name, engineer_id, manager_id, parse_actor
-from .compliance_alerts import (BAD_STATUSES, ComplianceAlertService, categorize, cite_short, due_in_days, place_of, plural, state_phrase)
+from .compliance_alerts import (BAD_STATUSES, ComplianceAlertService, categorize, cite_short, due_in_days, place_of, plural, primary_regulation,
+                                state_phrase)
 from .env import env
 from .errors import RealityError
 from .sites import SITE_BY_ID
@@ -471,7 +472,7 @@ class PatrolService:
         obligation_bad, obligation_good, bad_obligations = [], [], []
         for obligation in obligations:
             _, noun = categorize(obligation)
-            first = next((known[rid] for rid in obligation.get("regulationIds") or [] if rid in known), None)
+            first = primary_regulation(obligation, known)
             cite = cite_short(first) if first else (obligation.get("ruleRef") or "site rule pack")
             if obligation.get("status") in BAD_STATUSES:
                 bad_obligations.append(obligation)
@@ -503,7 +504,8 @@ class PatrolService:
         bad = obligation_bad + reading_bad + issue_bad
         good = reading_good + obligation_good + ([] if issues else ["No open issues"])
         if bad_obligations:
-            regulation_ids = list(dict.fromkeys(rid for o in bad_obligations for rid in o.get("regulationIds") or []))
+            leads = [r["id"] for r in (primary_regulation(o, known) for o in bad_obligations) if r]
+            regulation_ids = list(dict.fromkeys(leads + [rid for o in bad_obligations for rid in o.get("regulationIds") or []]))
         elif issues:
             regulation_ids = list(dict.fromkeys(rid for i in issues for rid in self.service.regulations.for_issue(i)))
         else:

@@ -26,7 +26,7 @@ import httpx
 
 from .env import env
 from .providers import clean_env
-from .real_only import ORIGINS, conversation_origins, include_all, memory_creation_origin, memory_origin
+from .real_only import ORIGINS, conversation_origins, hidden_origins, include_all, memory_creation_origin, memory_origin
 from .store import now, uid
 
 BASE_URL = "https://api.supermemory.ai"
@@ -143,8 +143,8 @@ class MemoryStore:
     def local(self, agent_id: str, query: str | None = None, limit: int = 20, include: str | None = None) -> list[dict]:
         """This agent's local memories, newest first (best match first with `query`); seed memories only with `include=all`."""
         records = self._classified([m for m in self.store.all("agent_memory", "") if m.get("agentId") == agent_id])
-        if not include_all(include):
-            records = [m for m in records if m["origin"] != "seed"]
+        hide = hidden_origins(include)  # seed and system memories only with include=all
+        records = [m for m in records if m["origin"] not in hide]
         if query:
             tokens = [t for t in re.findall(r"[a-z0-9.-]+", query.casefold()) if len(t) > 1]
             scored = []
@@ -199,7 +199,8 @@ class MemoryStore:
         records = self._classified(self.store.all("agent_memory", ""))
         hidden = 0
         if not everything:
-            kept = [m for m in records if m["origin"] != "seed"]
+            hide = hidden_origins(include)
+            kept = [m for m in records if m["origin"] not in hide]
             hidden, records = len(records) - len(kept), kept
         if site_id:
             records = [m for m in records if m.get("siteId") == site_id]

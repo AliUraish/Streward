@@ -6,13 +6,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api3 } from "@/lib/api-3";
 import { useEyeFeed, useIssues3, useObligations, useScene, useViewerCommands, useVision } from "@/lib/hooks-3";
-import { agentName, roleOf, site3 } from "@/lib/sites-3";
+import { SITES3, agentName, roleOf, site3 } from "@/lib/sites-3";
 import type { Asset3, EyeFrame, Issue3, PinSeverity, SiteId3, ValveResult, ViewerCommand } from "@/lib/types-3";
 import AssetDrawer from "./asset-drawer";
 import MissionHud from "./mission";
 import { useHudEvents } from "@/lib/live-3";
 import ViewerSlot, { type ViewerFocus, type ViewerPin } from "./viewer-slot";
-import { Btn, JaText, OperatorTag, PageHead, Reveal, State, SynthTag, ago, errorText, fx, useToast, words } from "./ui3";
+import { Btn, OperatorTag, PageHead, Reveal, State, SynthTag, ago, errorText, fx, useToast, words } from "./ui3";
 import type { WalkLabel } from "@/lib/api-7";
 import { useLabels, usePatrols } from "@/lib/hooks-7";
 import { LabelDetail, WalkthroughBar, assessmentOf, followPose, isRunning } from "./walkthrough";
@@ -144,18 +144,18 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
       </div>
     </div>
 
-    <p className="credit3 wide">{site.name}: <JaText text={site.credit} />. {site.scanNote} Scene rendered from a third-party capture hosted on SuperSplat; shown here as the site environment. <a className="lnk" href={site.sceneUrl} target="_blank" rel="noreferrer">superspl.at/scene/{site.splatId}</a></p>
-
     <EyeStrip frames={frames} readiness={eye.readiness} retry={eye.reload} />
     <CaptureStrip siteId={siteId} results={vision.data?.results ?? []} />
 
     {site.valves || (vision.data?.results.length ?? 0) > 0 ? <Reveal className="p3 valves3">
       <div className="p-head"><h3>Valve inspection</h3><span className="meta">{vision.data?.model ?? (vision.data?.results[0]?.model ?? "V-JEPA 2")}{vision.data?.ranAt ? `, ${new Date(vision.data.ranAt).toLocaleString()}` : ""}</span></div>
-      <p className="note3">An embedding anomaly score: distance from the site&apos;s other valves, not a trained defect classifier. Explanations come from Claude only for valves that are not fixed or uncertain.</p>
+      <p className="note3">An anomaly score: each valve&apos;s distance from the site&apos;s other valves, not a trained defect classifier. Valves that are not fixed or uncertain get a written explanation.</p>
       <State remote={vision} what="the valve inspection" isEmpty={v => v.results.length === 0} empty="No valve inspection results for this site yet.">
         {v => <ValveTable results={v.results} onOpen={openAsset} />}
       </State>
     </Reveal> : null}
+
+    <p className="credit3 wide">3-D captures: {SITES3.map(s => s.author).join(", ")} (SuperSplat)</p>
 
     {drawer ? <AssetDrawer siteId={siteId} tag={drawer} asset={drawerAsset} issues={(issues.data ?? []).filter(i => i.assetTag === drawer)} obligations={obligations} valve={vision.data?.results.find(v => v.assetTag === drawer) ?? null} onClose={() => setDrawer(null)} onFocus={a => focusOn(drawer, a)} /> : null}
   </div>;
@@ -181,6 +181,9 @@ export function actionText(f: EyeFrame): string {
   }
 }
 
+/* "Agent eye view of PG-601": what a frame shows, by the asset it was taken for (else the agent and its move). */
+const eyeViewAlt = (f: EyeFrame) => { const tag = (f.params as { assetTag?: unknown } | null)?.assetTag; return typeof tag === "string" && tag ? `Agent eye view of ${tag}` : `Agent eye view: ${agentName(f.actor)} ${actionText(f)}`; };
+
 /* The frames the agent eye returned, newest first. */
 function EyeStrip({ frames, readiness, retry }: { frames: EyeFrame[]; readiness: string; retry: () => void }) {
   return <Reveal as="section" className="p3 eyestrip3" aria-labelledby="eye-h">
@@ -188,7 +191,7 @@ function EyeStrip({ frames, readiness, retry }: { frames: EyeFrame[]; readiness:
     {readiness !== "ready" ? <p className="st3 empty">{readiness === "loading" ? "Loading the eye feed." : <>The eye feed is not available yet. <button type="button" className="retry" onClick={retry}>Retry</button></>}</p>
       : !frames.length ? <p className="st3 empty">No frames yet.</p>
       : <ol className="eye-frames">{frames.slice(0, 8).map(f => <li key={f.id}>
-        <img src={f.frameUrl} alt={`${agentName(f.actor)} ${actionText(f)}: frame rendered from the hosted capture`} loading="lazy" />
+        <img src={f.frameUrl} alt={eyeViewAlt(f)} loading="lazy" />
         <span className="cap"><strong>{agentName(f.actor)}</strong> {actionText(f)}<SynthTag rec={f as unknown as { synthetic?: boolean }} /><small>{ago(f.at)}{f.visiblePins.length ? `, ${f.visiblePins.filter(p => !p.occluded).length} tags in view` : ""}</small></span>
       </li>)}</ol>}
   </Reveal>;
@@ -235,22 +238,20 @@ function PlacePins({ siteId, assets, editMode, setEditMode, pending, clear, onSa
   </div>;
 }
 
-/* Capture pictures: the scan thumbnail, then frames rendered from the hosted capture (vision/frames when the backend
-   serves them, else the four committed renders under public/env/<site>/). */
+/* Views of the site: the overview, then the valve inspection's views of each valve (when the backend serves them), else
+   the four views under public/env/<site>/. */
 function CaptureStrip({ siteId, results }: { siteId: SiteId3; results: ValveResult[] }) {
   const site = site3(siteId);
   const [broken, setBroken] = useState<Set<string>>(new Set());
-  const fromVision = results.flatMap(r => (r.frames ?? []).slice(0, 1).map(f => ({ src: api3.frameUrl(siteId, r.assetTag, f), label: r.assetTag })));
+  const fromVision = results.flatMap(r => (r.frames ?? []).slice(0, 1).map(f => ({ src: api3.frameUrl(siteId, r.assetTag, f), label: r.assetTag, alt: `Agent eye view of ${r.assetTag}` })));
   const usable = fromVision.filter(f => !broken.has(f.src));
-  const frames = usable.length ? usable.slice(0, 7) : site.frames.map((src, i) => ({ src, label: `view ${i + 1}` }));
-  const caption = frames.length ? "frames rendered from the hosted capture" : "the hosted capture's thumbnail; no frames rendered from it yet";
+  const frames = usable.length ? usable.slice(0, 7) : site.frames.map((src, i) => ({ src, label: `view ${i + 1}`, alt: `${site.name}, view ${i + 1}` }));
   return <Reveal as="div" className="cap3">
     <figure>
       <div className={`cap-strip ${frames.length ? "" : "only-thumb"}`}>
-        <div className="frame thumb"><img src={site.thumbnailUrl} alt={`${site.name}, capture thumbnail`} loading="lazy" /><span>thumbnail</span></div>
-        {frames.map(f => <div className="frame" key={f.src}><img src={f.src} alt={`${site.name}, ${f.label}, rendered from the hosted capture`} loading="lazy" onError={() => setBroken(b => new Set(b).add(f.src))} /><span>{f.label}</span></div>)}
+        <div className="frame thumb"><img src={site.thumbnailUrl} alt={`${site.name}, overview`} loading="lazy" /><span>overview</span></div>
+        {frames.map(f => <div className="frame" key={f.src}><img src={f.src} alt={f.alt} loading="lazy" onError={() => setBroken(b => new Set(b).add(f.src))} /><span>{f.label}</span></div>)}
       </div>
-      <figcaption>{caption}</figcaption>
     </figure>
   </Reveal>;
 }
@@ -260,10 +261,10 @@ function ValveTable({ results, onOpen }: { results: ValveResult[]; onOpen: (tag:
   return <div className="tbl3" role="table" aria-label="Valve inspection results">
     <div className="tr head" role="row"><span role="columnheader">Valve</span><span role="columnheader">Result</span><span role="columnheader">Score</span><span role="columnheader">Explanation</span></div>
     {[...results].sort((a, b) => order[a.status] - order[b.status]).map(r => <div className="tr" role="row" key={r.assetTag}>
-      <span role="cell" className="c-tag"><button type="button" className="lnk" onClick={() => onOpen(r.assetTag)}>{r.assetTag}</button>{r.defect && r.defect !== "none" ? <span className="tg synth">synthetic defect: {words(r.defect)}</span> : <SynthTag rec={r} />}</span>
+      <span role="cell" className="c-tag"><button type="button" className="lnk" onClick={() => onOpen(r.assetTag)}>{r.assetTag}</button></span>
       <span role="cell" className={`c-res ${r.status === "not_fixed" ? "bad" : ""}`}><span className={`sig ${r.status === "fixed" ? "ok" : r.status === "not_fixed" ? "bad" : "warn"}`} aria-hidden="true" />{valveWord[r.status]}</span>
       <span role="cell" className="c-score">{fx(r.score)} <small>threshold {fx(r.threshold)}</small></span>
-      <span role="cell" className="c-exp">{r.explanation ? <><strong>{r.explanation.finding}</strong> {r.explanation.recommendedAction}</> : r.status === "fixed" ? "Within the site's normal range." : r.explainDryRun ? "Dry run: the request to Claude was written, not sent." : "No explanation yet."}</span>
+      <span role="cell" className="c-exp">{r.explanation ? <><strong>{r.explanation.finding}</strong> {r.explanation.recommendedAction}</> : r.status === "fixed" ? "Within the site's normal range." : "No explanation yet."}</span>
     </div>)}
   </div>;
 }

@@ -151,8 +151,8 @@ def test_environments_pins_and_issues(client):
         else:
             assert all(abs(c["pin"]["x"]) < 4 and abs(c["pin"]["z"]) < 4 for c in components)  # scattered within a few metres of the scan origin
     assert {c["tag"] for c in client.get(f"/api/properties/{OTHER}/components").json()} >= {"SU-201", "PV-301", "W-1201", "D-1101", "SP-101"}
-    # Issues: nothing open at the demo site to begin with.
-    assert client.get(f"/api/properties/{DEMO}/issues").json() == []
+    # Issues: nothing open at the demo site to begin with but its seeded compliance gap (contract 7 §6).
+    assert [i["kind"] for i in client.get(f"/api/properties/{DEMO}/issues").json()] == ["compliance_overdue"]
     result = resolve(client, DEMO, "P-101", "pressure_bar", budget=5)
     client.post("/api/inbound/local", json={"reference": result["reference"], "body": "Gauge on P-102 reads 2.4 bar"})
     issues = client.get(f"/api/properties/{DEMO}/issues").json()

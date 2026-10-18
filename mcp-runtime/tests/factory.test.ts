@@ -177,7 +177,9 @@ test('addendum 3 tools: scene, viewer, captures, overview, issues, people, compl
     assert(events.some(event => event.tool === 'reconfigure_agent' && event.ok === false && /AUTHORITY_DENIED/.test(String(event.detail))));
 
     // validation on the wire
-    for (const [name, args] of [['get_scene', { siteId: 'harbor-works' }], ['start_scenario', { scenarioId: 'demolish' }], ['wait_for', { event: 'issue.changed', timeoutSeconds: 301 }], ['wait_for', { event: 'lunch' }], ['decide', { issueId: 'iss-1', question: 'Close it?', options: ['yes'] }], ['reconfigure_agent', { agentId: 'bristol-compliance', change: { colour: 'red' }, why: 'nope nope' }], ['get_agent_activity', { agentId: 'owner' }], ['get_agent_activity', { agentId: 'atlas' }], ['who_is_responsible', { siteId: 'myer-plant', issueKind: 'Over-Pressure' }]] as const) {
+    // without the harness header a hidden tool is refused before any argument check (src/harness.ts)
+    assert.match(await raw(listener.url, 'start_scenario', { scenarioId: 'demolish' }), /UNKNOWN_TOOL/);
+    for (const [name, args] of [['get_scene', { siteId: 'harbor-works' }],['wait_for', { event: 'issue.changed', timeoutSeconds: 301 }], ['wait_for', { event: 'lunch' }], ['decide', { issueId: 'iss-1', question: 'Close it?', options: ['yes'] }], ['reconfigure_agent', { agentId: 'bristol-compliance', change: { colour: 'red' }, why: 'nope nope' }], ['get_agent_activity', { agentId: 'owner' }], ['get_agent_activity', { agentId: 'atlas' }], ['who_is_responsible', { siteId: 'myer-plant', issueKind: 'Over-Pressure' }]] as const) {
       assert.match(await raw(listener.url, name, args as Record<string, unknown>), /invalid|enum|too|>=|<=|unrecognized|regex|pattern|option/i, `${name} rejects ${JSON.stringify(args)}`);
     }
   } finally { await Promise.allSettled([client.close(), manager.close()]); await server.close(); await upstream.close(); }
@@ -418,14 +420,14 @@ test('wait_for: progress every interval, still_waiting keeps the waitId, fired o
     const again = data(await connection.callTool('wait_for', { event: 'issue.changed', waitId: first.waitId, timeoutSeconds: 5 }, { timeout: 10000 } as never) as CallToolResult);
     assert.equal(again.status, 'fired'); assert.equal(again.waitId, first.waitId); assert.equal(again.event.issueId, 'iss-x'); assert.equal(again.event.name, 'issue.changed'); assert.equal(again.event.siteId, 'myer-plant');
     assert(again.waitedSeconds < 3);
-    // filters and sites narrow the match (the backend's scenario extras: scenarioId, runId, status)
+    // filters and sites narrow the match (Change fields and the backend's extras: type, issueId, status)
     setTimeout(() => {
-      upstream.change('scenario', 'bristol-pumps', 'run-b', 'other site', undefined, { scenarioId: 'my-overpressure', status: 'completed' });
-      upstream.change('scenario', 'myer-plant', 'run-m', 'wrong status', undefined, { scenarioId: 'my-overpressure', status: 'step' });
-      upstream.change('scenario', 'myer-plant', 'run-m', 'match', undefined, { scenarioId: 'my-overpressure', status: 'completed' });
+      upstream.change('issue', 'bristol-pumps', 'iss-m', 'other site', undefined, { issueId: 'iss-m', status: 'resolved' });
+      upstream.change('issue', 'myer-plant', 'iss-m', 'wrong status', undefined, { issueId: 'iss-m', status: 'open' });
+      upstream.change('issue', 'myer-plant', 'iss-m', 'match', undefined, { issueId: 'iss-m', status: 'resolved' });
     }, 300);
-    const filtered = data(await legacy.callTool({ name: 'wait_for', arguments: { event: 'any', siteId: 'myer-plant', filter: { type: 'scenario', scenarioId: 'my-overpressure', status: 'completed' }, timeoutSeconds: 5 } }) as CallToolResult);
-    assert.equal(filtered.status, 'fired'); assert.equal(filtered.event.status, 'completed'); assert.equal(filtered.event.summary, 'match');
+    const filtered = data(await legacy.callTool({ name: 'wait_for', arguments: { event: 'any', siteId: 'myer-plant', filter: { type: 'issue', issueId: 'iss-m', status: 'resolved' }, timeoutSeconds: 5 } }) as CallToolResult);
+    assert.equal(filtered.status, 'fired'); assert.equal(filtered.event.status, 'resolved'); assert.equal(filtered.event.summary, 'match');
     // a backend without long-poll answers immediately: the MCP re-asks every 2 s inside the same held call
     upstream.state.noLongPoll = true;
     setTimeout(() => upstream.change('reply', 'myer-plant', 'wi-1', 'reply', undefined, { workItemId: 'wi-1' }), 500);
@@ -483,7 +485,12 @@ test('resource subscriptions: subscriptions/listen and legacy resources/subscrib
     assert.deepEqual(ok.result, {});
     assert.equal(hub.subscribers('bristol-pumps'), 1);
     await delay(250);
-    upstream.change('scenario', 'bristol-pumps', 'run-x', 'sump', undefined, { scenarioId: 'br-sump', status: 'step' });
+    // a scenario's own step row is not news (the backend leaves it out of /changes): no notification for it alone
+    const quiet = hub.emitted.get('bristol-pumps') ?? 0;
+    upstream.change('scenario', 'bristol-pumps', 'run-x', 'Scenario started: Sump rising (synthetic).', undefined, { scenarioId: 'br-sump', runId: 'run-x', status: 'started' });
+    await delay(350);
+    assert.equal(hub.emitted.get('bristol-pumps') ?? 0, quiet, 'a scenario step row alone does not notify subscribers');
+    upstream.change('issue', 'bristol-pumps', 'iss-sump', 'Sump 96 % and rising', 'SU-201', { issueId: 'iss-sump', status: 'open' });
     let received = '';
     const until = Date.now() + 2000;
     while (!received.includes('notifications/resources/updated') && Date.now() < until) { const { value, done } = await reader.read(); if (done) break; received += decoder.decode(value); }

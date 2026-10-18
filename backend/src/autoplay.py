@@ -245,13 +245,20 @@ class ScenarioAutoplay:
         self.last_finished = time.monotonic()
         return None
 
+    @staticmethod
+    def _playing(current: dict) -> str:
+        if "route" not in current:  # a scenario run
+            return f"Playing {current['title']}."
+        if current.get("state") == "running":
+            return f"{current.get('line') or 'Walking ' + current['title']}."
+        return f"Compliance alerts from {current['title']} are playing."
+
     def tick(self) -> dict | None:
         """One decision: keep playing, wait, or start the next scenario. Returns the run it started, if any."""
         with self.lock:
             current = self._current()
             if current:
-                self.state, self.reason = "playing", (f"{current['line']}." if current.get("route") and current.get("state") == "running" and current.get("line")
-                                                      else f"Playing {current['title']}.")
+                self.state, self.reason = "playing", self._playing(current)
                 return None
             blocked = self.blocked()
             if blocked:
@@ -274,8 +281,6 @@ class ScenarioAutoplay:
                     return None
                 self.store.meta(f"autoplay:played:{self._today()}", str(self.played_today() + 1))
                 self.current_patrol_id, self.current_run_id = patrol["id"], None
-                if not self.service.patrols.active(patrol):  # played inline (no workers): already done
-                    self.current_patrol_id, self.last_finished = None, time.monotonic()
                 self.state, self.reason = "playing", f"Walking {patrol['place']} ({patrol['agentName']})."
                 return patrol
             run = self.service.scenarios.start(scenario_id, OPERATOR, speed=self.speed(), origin="autoplay")

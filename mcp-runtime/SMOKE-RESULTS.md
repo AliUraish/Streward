@@ -1,5 +1,7 @@
 # Steward MCP verification
 
+> **Since 2026-10-18 (after these runs): the scenario tools are eval-harness only.** The backend plays the demo scenarios on its own, so every client sees **71 public tools**; `list_scenarios` and `start_scenario` are listed and served (73) only when the MCP runs with `STEWARD_MCP_HARNESS_TOOLS=true` (never on the hosted endpoint) and the request carries `X-Steward-Harness: evals`, which `evals/run.mjs` sends. `wait_for` no longer offers `scenario.step` (the harness waits with `event: "any"` and filter `type: "scenario"`), and scenario step rows (Change type `scenario`) reach only harness requests. The tool counts and the `start_scenario` / `scenario.step` rows below are the record of what ran then, through the harness's path.
+
 ## Phase 3 + 4 (contracts 3 and 4): live against the real backend, 2026-10-18 05:04 to 05:07 UTC
 
 What ran: the MCP built from `mcp-runtime/dist` (0.5.0, 70 tools) on **8013**, against a temporary copy of the real FastAPI backend (`backend/src/main.py` as it stood at 05:03 UTC, contract-4 agents already migrated) on **8032** with a fresh scratch data directory. Port 8012 was taken by another stream's process (`node tools/mock-eye.mjs`, PID 75759, started from the shared scratchpad), so the backend used 8032 instead; nothing of the user's dev stack (3000 / 8001 / 8002) or the other stream was touched. Both processes were started and stopped by PID.

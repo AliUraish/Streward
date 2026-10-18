@@ -23,8 +23,8 @@ const SplatViewer = dynamic(() => import("@/components/splat").then(m => m.Splat
 function ViewerPending({ siteId }: { siteId: string }) {
   const site = site3(siteId);
   return <div className="vw-pending" role="status">
-    <img src={site.thumbnailUrl} alt={`${site.name}, the hosted capture's thumbnail`} />
-    <p><strong>The scan of {site.name} is not in the viewer yet.</strong> <span>The viewer is adding its streamed capture; until then this is the capture&apos;s thumbnail, and the agent eye cannot render here.</span></p>
+    <img src={site.thumbnailUrl} alt={`${site.name}, overview`} />
+    <p><strong>The 3-D view of {site.name} is not ready yet.</strong> <span>Until it is, this overview stands in and the agent eye cannot look around here.</span></p>
   </div>;
 }
 

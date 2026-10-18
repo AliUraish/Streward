@@ -63,7 +63,7 @@ const agentFor = (site: string, role: string) => `${SHORT[site]}-${role}`;
 const displayName = (id: string) => { const site = siteOfAgent(id); const base = DISPLAY_BY_ID[id] ?? DISPLAY[roleOf(id)] ?? id; return site ? `${base} · ${SITE_LABEL[site]}` : base; };
 /** Contract 4 §1 authority, enforced here the way the backend does. Returns a refusal reason or null. */
 const AUTHORITY: Record<string, string[]> = {
-  operator: ['read', 'start_mission', 'start_scenario', 'fix', 'decide', 'set_budget', 'resolve', 'dispatch', 'attest', 'escalate', 'owner_decision', 'subscribe', 'eye', 'wait', 'viewer', 'ingest_vision', 'schedule_maintenance'],
+  operator: ['read', 'start_mission', 'start_scenario', 'simulation', 'fix', 'decide', 'set_budget', 'resolve', 'dispatch', 'attest', 'escalate', 'owner_decision', 'subscribe', 'eye', 'wait', 'viewer', 'ingest_vision', 'schedule_maintenance'],
   director: ['read', 'delegate', 'reconfigure', 'approve_maintenance', 'schedule_maintenance', 'assign', 'eye', 'viewer', 'wait', 'escalate_owner', 'resolve'],
   manager: ['read', 'convene', 'assign', 'approve_work_order', 'schedule_maintenance', 'eye', 'viewer', 'wait', 'resolve'],
   engineer: ['read', 'eye', 'ingest_vision', 'resolve', 'attest', 'verify', 'raise_issue', 'viewer', 'wait', 'dispatch', 'escalate'],
@@ -231,6 +231,8 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
     const payload: Json = { ...record, ...Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== null && v !== undefined)) };
     for (const wait of state.waits.values()) {
       if (wait.status !== 'waiting' || !names.includes(wait.event)) continue;
+      // as backend/src/waits.py: `any` skips a scenario's own step rows unless the filter names type scenario (the eval harness)
+      if (wait.event === 'any' && type === 'scenario' && wait.filter.type !== 'scenario') continue;
       if (wait.siteId && propertyId !== wait.siteId) continue;
       if (!Object.entries(wait.filter).every(([key, value]) => payload[key] === value)) continue;
       wait.status = 'fired'; wait.firedAt = now();
@@ -1169,7 +1171,7 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
         });
         const active = state.scenarioRuns.filter(r => r.state === 'running').at(-1);
         return send(200, { at: now(), sites, agents: agentList().map(a => ({ id: a.id, status: a.status, task: a.currentTask })), activeScenario: active ? { id: active.scenarioId, runId: active.id, step: active.stepIndex, of: active.stepCount } : null,
-          lastChanges: state.changes.slice(-10).reverse().map(c => ({ site: c.propertyId.slice(0, 2), type: c.type, summary: c.summary.slice(0, 72), at: c.at.slice(11, 19) })) });
+          lastChanges: state.changes.filter(c => c.type !== 'scenario').slice(-10).reverse().map(c => ({ site: c.propertyId.slice(0, 2), type: c.type, summary: c.summary.slice(0, 72), at: c.at.slice(11, 19) })) });
       }
       if (url.pathname === '/api/waits' && request.method === 'POST') {
         const event = String(body.event);
@@ -1324,7 +1326,9 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
         if (rest === 'changes') {
           const since = Number(url.searchParams.get('since') || '0'); const max = Number(url.searchParams.get('limit') || '100');
           const mine = state.changes.filter(ch => ch.propertyId === propertyId);
-          return send(200, { version: mine.at(-1)?.version ?? 0, changes: mine.filter(ch => ch.version > since).slice(0, max), waiting: [...state.workItems.values()].filter(w => w.propertyId === propertyId && ['waiting', 'dispatched', 'needs_clarification', 'escalated', 'open'].includes(w.state)) });
+          // as the backend: scenario step rows only with includeScenario=true; version stays the site's latest, scenario rows included
+          const includeScenario = url.searchParams.get('includeScenario') === 'true';
+          return send(200, { version: mine.at(-1)?.version ?? 0, changes: mine.filter(ch => ch.version > since && (includeScenario || ch.type !== 'scenario')).slice(0, max), waiting: [...state.workItems.values()].filter(w => w.propertyId === propertyId && ['waiting', 'dispatched', 'needs_clarification', 'escalated', 'open'].includes(w.state)) });
         }
         if (rest === 'subscriptions' && request.method === 'POST') {
           const cb = String(body.callbackUrl || ''); if (!/^https?:\/\//.test(cb)) return fail(400, 'callbackUrl must be http(s).', 'INVALID_CALLBACK', 'Use an http(s) URL.');

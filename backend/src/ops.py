@@ -160,7 +160,8 @@ class OpsService:
             sites.append(dict(id=site_id, name=prop["name"], issues={s: sum(1 for i in issues if i["severity"] == s) for s in severity},
                               compliance={s: sum(1 for o in obligations if o["status"] == s) for s in ("ok", "due_soon", "overdue", "blocked")},
                               crewOnShift=sum(1 for c in crew if c.get("onShift"))))
-            changes += self.service.reality.changes(site_id, max(0, self.service.reality.version(site_id) - 10), 10)["changes"]
+            # Scenario step rows never reach the overview; a wider window keeps ten real changes when a scenario is playing.
+            changes += self.service.reality.changes(site_id, max(0, self.service.reality.version(site_id) - 40), 40, include_scenario=False)["changes"]
         changes.sort(key=lambda c: c["at"], reverse=True)
         infos = [info for info in agent_infos(self.service) if info.get("actor", True)]
         active = self.service.scenarios.active()
