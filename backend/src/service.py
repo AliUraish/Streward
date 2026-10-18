@@ -20,6 +20,8 @@ from .forge import ForgeService
 from .integrations import ModelAdapter, SupermemoryAdapter
 from .issues import IssueService
 from .maintenance import MaintenanceService
+from .maintenance_planner import MaintenancePlanner
+from .compliance_gaps import ComplianceGaps
 from .memory_store import MemoryStore
 from .metrics import MetricsService
 from .missions import MissionEngine
@@ -103,6 +105,10 @@ class PropertyService:
         self.autoplay = ScenarioAutoplay(self)
         self.simulator = Simulator(self)
         self.evals = EvalRunner(self)
+        # Contract 7 §6 and the owner's maintenance ask: seeded compliance gaps (migration runs on every start) with a slow
+        # drift, and the maintenance planner that books windows on its own and coordinates with the other sites.
+        self.compliance_gaps = ComplianceGaps(self)
+        self.maintenance_planner = MaintenancePlanner(self)
         if start_workers:
             self.recover_jobs()
             self.bus.start()
