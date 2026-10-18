@@ -64,8 +64,6 @@
 /* The agent's control node lives inside the factory animation; the illuminated leads carry MCP, not gas. */
 .hero-agent-console { position: absolute; left: 60.6%; top: 67.7%; transform: translate(-50%, -50%); width: clamp(300px, 28vw, 360px); color: var(--ink); }
 .labels .hero-agent-console { left: 0; top: 0; visibility: hidden; }
-.hero-agent-topic { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; font-size: 12px; line-height: 1.3; color: var(--ink-2); }
-.hero-agent-topic > span:last-child { color: var(--muted); white-space: nowrap; }
 .hero-agent-graph { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 18px 12px; padding-bottom: 18px; }
 .hero-agent-network { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .hero-agent-link { stroke: var(--muted); stroke-width: 1; opacity: .35; vector-effect: non-scaling-stroke; }
@@ -306,4 +304,79 @@
   .stage .hero-agent-console { visibility: visible !important; left: 50% !important; top: auto !important; bottom: 8px; transform: translateX(-50%) !important; width: calc(100% - 32px); max-width: 600px; }
   .stage .hero-agent-wires { display: none; }
   .stage .static-hero .plan { height: calc(100% - 270px); bottom: auto; padding: 16px 0; }
+}
+
+/* The physical plant gives way to the agent's working world: mandate, identities, calls and proof. */
+.hero-factory { position: absolute; inset: 0; }
+.hero-factory.is-dissolved { pointer-events: none; }
+.agent-world { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-rows: auto 1fr auto; gap: 18px; padding: 22px var(--margin) 12px; opacity: 0; clip-path: inset(0 100% 0 0); transform: translateY(10px); pointer-events: none; transition: clip-path 1400ms var(--ease-in-out), opacity 1100ms var(--ease-out), transform 1400ms var(--ease-out); }
+.agent-world.is-visible { opacity: 1; clip-path: inset(0); transform: none; pointer-events: auto; transition-delay: 450ms; }
+.agent-world-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.site .agent-world-heading > p { font-size: 28px; letter-spacing: -.025em; line-height: 1.1; }
+.agent-world-workspace { display: grid; grid-template-columns: minmax(200px, .85fr) minmax(330px, 1.45fr) minmax(230px, 1fr); align-items: center; gap: clamp(20px, 3vw, 48px); min-height: 0; }
+.agent-contract { align-self: center; padding: 16px 20px; background: var(--s2); font-size: 13px; line-height: 1.3; }
+.agent-contract-heading { display: flex; align-items: center; gap: 12px; }
+.agent-contract-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.agent-contract-heading strong, .agent-call-heading strong { font-size: 16px; font-weight: 500; }
+.agent-contract-heading span { color: var(--muted); font-size: 12px; }
+.site .agent-contract-goal { font-size: 18px; line-height: 1.25; margin: 14px 0; max-width: 20ch; }
+.agent-contract dl { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.agent-contract dl > div { display: grid; grid-template-columns: 78px 1fr; gap: 8px; font-size: 13px; line-height: 1.3; }
+.agent-contract dt { color: var(--muted); }
+.agent-contract dd { margin: 0; }
+.agent-contract-signature { display: flex; gap: 7px; align-items: center; margin-top: 16px; color: var(--ink-2); font-size: 12px; }
+.agent-check { font-size: 16px; line-height: 1; flex: 0 0 auto; }
+.agent-world-team { min-width: 0; }
+.stage .agent-world .hero-agent-console { position: relative; inset: auto !important; transform: none !important; width: 100%; max-width: none; visibility: visible !important; }
+.agent-world .hero-agent-node { padding: 9px 10px; }
+.site .agent-world .hero-agent-message { font-size: 13px; }
+.agent-world .hero-agent-exchange { padding: 7px 10px; }
+.agent-world-identity { display: flex; justify-content: center; gap: 7px; color: var(--muted); font-size: 12px; margin-top: 12px; }
+.agent-call-stream { min-width: 0; align-self: center; font-size: 13px; line-height: 1.25; }
+.agent-call-heading { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; gap: 8px; }
+.agent-call-heading > span { font-size: 12px; color: var(--muted); }
+.agent-call-stream ol { display: flex; flex-direction: column; gap: 5px; list-style: none; margin: 0; padding: 0; }
+.agent-call-stream li { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background: var(--s1); opacity: .24; transform: translateX(8px); transition: opacity 500ms var(--ease-out), transform 650ms var(--ease-out); transition-delay: var(--call-delay); }
+.agent-call-stream li.is-arrived { opacity: 1; transform: none; }
+.agent-call-name { display: flex; justify-content: space-between; gap: 8px; }
+.site .agent-call-stream code { background: none; padding: 0; font-size: 12px; overflow-wrap: anywhere; }
+.site .agent-call-stream .agent-call-name code { font-size: 14px; color: var(--ink); }
+.agent-call-args, .agent-call-result { color: var(--muted); }
+.agent-call-result { display: none; font-size: 11px; line-height: 1.3; }
+.agent-call-stream li.is-arrived .agent-call-result { display: block; }
+.agent-call-stream li.is-arrived .agent-call-args { display: none; }
+.agent-world-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 40px; padding: 10px 14px; background: var(--s1); }
+.agent-world-result > div { display: flex; align-items: center; gap: 10px; }
+.agent-world-result strong { font-size: 14px; font-weight: 400; }
+.agent-world-result > span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.agent-world-result.is-complete { background: var(--s3); }
+@media (max-width: 1099px) and (min-width: 641px) {
+  .agent-world { gap: 16px; }
+  .agent-world-workspace { grid-template-columns: minmax(200px, .8fr) minmax(300px, 1.2fr); gap: 20px; }
+  .agent-call-stream { grid-column: 1 / -1; }
+  .agent-call-stream ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .agent-call-heading { margin-bottom: 7px; }
+  .agent-call-stream li { padding: 8px; }
+  .agent-call-stream li.is-arrived .agent-call-result { display: none; }
+  .agent-call-stream li.is-arrived .agent-call-args { display: block; }
+  .agent-world .hero-agent-node { padding: 9px 10px; }
+}
+@media (max-width: 640px) {
+  .agent-world { padding: 20px 16px 10px; gap: 14px; }
+  .agent-world-heading { flex-direction: column; gap: 6px; }
+  .site .agent-world-heading > p { font-size: 24px; }
+  .agent-world-workspace { display: block; align-self: center; }
+  .agent-contract { padding: 16px; }
+  .agent-contract dl { gap: 8px; }
+  .agent-contract-signature { margin-top: 12px; }
+  .site .agent-contract-goal { margin: 12px 0; max-width: none; }
+  .agent-world[data-step="1"] .agent-world-team, .agent-world[data-step="1"] .agent-call-stream,
+  .agent-world[data-step="2"] .agent-contract, .agent-world[data-step="2"] .agent-call-stream,
+  .agent-world[data-step="3"] .agent-contract, .agent-world[data-step="3"] .agent-world-team,
+  .agent-world[data-step="4"] .agent-contract, .agent-world[data-step="4"] .agent-call-stream { display: none; }
+  .agent-world .hero-agent-node { padding: 9px 10px; }
+  .agent-world-identity { margin-top: 10px; font-size: 11px; }
+  .agent-world-result { min-height: 42px; padding: 8px 10px; }
+  .agent-world-result strong { font-size: 12px; line-height: 1.35; }
+  .agent-world-result > span { display: none; }
 }

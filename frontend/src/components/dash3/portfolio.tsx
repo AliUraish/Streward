@@ -25,11 +25,10 @@ export default function PortfolioPage() {
   /* Across the sites: the backend's averages, but people checked in as a total, as the other counts are. */
   const liveAverage = useMemo<LiveKpis | null>(() => live.data ? { ...live.data.average, checkedIn: totalOf(live.data.sites.map(x => x.kpis.checkedIn)) } : null, [live.data]);
   return <div className="page3">
-    <PageHead id="portfolio" title="Portfolio" sub="The Myer Plant Room in Melbourne, the Bristol Dock Pump House in England and the Tomioka Silk Mill in Japan: three teams, one Operations Director, one record." />
+    <PageHead id="portfolio" title="Portfolio" />
     <Reveal as="section" className="p3 avg3" aria-labelledby="avg-h">
-      <div className="p-head"><h2 id="avg-h">All three sites</h2>{summary.data && missing.length ? <span className="meta">{siteList(missing.map(x => x.id))} not in the summary yet</span> : live.data ? <span className="meta">live, every 5 s</span> : null}</div>
+      <div className="p-head"><h2 id="avg-h">All three sites</h2>{summary.data && missing.length ? <span className="meta">{siteList(missing.map(x => x.id))} not reporting yet</span> : live.data ? <span className="meta">live, every 5 s</span> : null}</div>
       <Kpis s={average} live={liveAverage} liveAt={live.data?.at} remote={summary as Remote<unknown>} />
-      <p className="note3 under">{summary.data && missing.length ? `Averages across ${siteList(covered)} until the summary includes ${siteList(missing.map(x => x.id))}; counts are totals.` : "Averages across the three sites; pressure, flow and uptime come from the two pumped sites, as the mill has no pumps. Counts are totals across all three."}</p>
     </Reveal>
     <div className="tiles3 three">
       {SITES3.map((s, i) => <FactoryTile key={s.id} site={s} i={i} sum={summary.data?.sites.find(x => x.siteId === s.id) ?? null} summary={summary as Remote<unknown>} live={live.data?.sites.find(x => x.siteId === s.id)?.kpis ?? null} liveAt={live.data?.at ?? null} ov={overview.data?.sites.find(x => x.siteId === s.id) ?? null} overview={overview} />)}
@@ -84,10 +83,10 @@ function FactoryTile({ site, sum, summary, live, liveAt, ov, overview, i }: { si
             <span><span className="sig warn" aria-hidden="true" />{c.due_soon} due soon</span>
             <span className={c.overdue ? "bad" : ""}><span className={`sig ${c.overdue ? "bad" : "off"}`} aria-hidden="true" />{c.overdue} overdue</span>
             <span className={c.blocked ? "bad" : ""}><span className={`sig ${c.blocked ? "bad" : "off"}`} aria-hidden="true" />{c.blocked} blocked</span>
-          </span> : overview.readiness === "ready" ? <span className="st3-inline">Not in the overview yet</span> : <NotYet remote={overview} what="compliance" />}</dd>
+          </span> : overview.readiness === "ready" ? <span className="st3-inline">Not available yet</span> : <NotYet remote={overview} what="compliance" />}</dd>
         </div>
       </dl>
-      <Kpis s={figures ?? (ov ? { siteId: site.id, avgPressure: null, avgFlow: null, uptimePct: null, openIssues: null, compliancePct: null, crewOnShift: typeof ov.crewOnShift === "number" ? ov.crewOnShift : ov.crewOnShift.count, agentActionsToday: null } : null)} live={live} liveAt={liveAt} remote={summary} compact only={site.kpis} missingText={`The metrics summary does not include ${site.short} yet.`} />
+      <Kpis s={figures ?? (ov ? { siteId: site.id, avgPressure: null, avgFlow: null, uptimePct: null, openIssues: null, compliancePct: null, crewOnShift: typeof ov.crewOnShift === "number" ? ov.crewOnShift : ov.crewOnShift.count, agentActionsToday: null } : null)} live={live} liveAt={liveAt} remote={summary} compact only={site.kpis} missingText="No figures yet." />
       <div className="tile-foot">
         <Link className="b3 small" href={`/app/${site.id}`}><span>Open {site.short}</span><span className="arrow" aria-hidden="true">→</span></Link>
       </div>
@@ -96,6 +95,23 @@ function FactoryTile({ site, sum, summary, live, liveAt, ov, overview, i }: { si
 }
 
 /* What is happening right now: the director and the owner's agent, then each factory's team, changes and calls. */
+/* What just happened at one site: its own newest changes, full text, without the raw sensor feed (the KPIs show it). */
+const QUIET_TYPES = new Set(["fact", "attestation", "scenario", "eye"]);
+type SiteChange = { type?: string; summary?: string; at?: string; siteId?: string; site?: string };
+function useSiteChanges(siteId: string) {
+  return usePoll(async () => {
+    const res = await fetch(`/api/properties/${encodeURIComponent(siteId)}/changes?latest=true&limit=60`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`changes ${res.status}`);
+    const body = await res.json() as { changes?: SiteChange[] };
+    return (body.changes ?? []).filter(c => !QUIET_TYPES.has(c.type ?? "")).reverse().slice(0, 4);
+  }, [siteId], 5_000);
+}
+function SiteChanges({ siteId, fallback }: { siteId: string; fallback: SiteChange[] }) {
+  const remote = useSiteChanges(siteId);
+  const mine = remote.data ?? fallback;
+  return mine.length ? <ul className="rows3 plain changes">{mine.map((c, i) => <li key={`${c.at}-${i}`}><span className="r2">{rn(c.summary ?? "")}</span><span className="r3">{c.type ? c.type.replace(/_/g, " ") : ""}{c.at ? `, ${c.at.length <= 8 ? c.at : ago(c.at)}` : ""}</span></li>)}</ul>
+    : <p className="st3 empty">{remote.readiness === "ready" ? "No changes in the last few minutes." : "No changes yet."}</p>;
+}
 function NowBoard({ overview, agents, conversations }: { overview: Remote<Overview>; agents: Remote<AgentInfo[]>; conversations: Conversation[] }) {
   const rows = useNowRows(overview, agents);
   const changes = overview.data?.changes ?? [];
@@ -112,8 +128,8 @@ function NowBoard({ overview, agents, conversations }: { overview: Remote<Overvi
           <h3><Link href={`/app/${s.id}`} className="lnk-plain">{s.name}</Link></h3>
           <ol className="now-strip">{rows.filter(r => r.siteId === s.id).map(r => <NowCell key={r.id} r={r} />)}</ol>
           <div className="now-feed">
-            {call ? <p className="call"><strong>{call.kind === "meeting" ? "Meeting" : call.kind === "call" ? "Call" : "Message"}:</strong> {call.summary?.headline ?? call.title ?? "conversation"} <span className="r3">{ago(call.startedAt)}</span> <Link className="lnk" href={`/app/conversations?id=${encodeURIComponent(call.id)}`}>Read</Link></p> : null}
-            {mine.length ? <ul className="rows3 plain changes">{mine.map((c, i) => <li key={`${c.at}-${i}`}><span className="r2">{rn(c.summary ?? "")}</span><span className="r3">{c.type ? c.type.replace(/_/g, " ") : ""}{c.at ? `, ${c.at.length <= 8 ? c.at : ago(c.at)}` : ""}</span></li>)}</ul> : <p className="st3 empty">{overview.readiness === "ready" ? "No changes in the last few minutes." : "Changes appear here once the overview answers."}</p>}
+            {call ? <p className="call"><strong>{call.kind === "meeting" ? "Meeting" : call.kind === "call" ? "Chat" : "Message"}:</strong> {call.summary?.headline ?? call.title ?? "conversation"} <span className="r3">{ago(call.startedAt)}</span> <Link className="lnk" href={`/app/conversations?id=${encodeURIComponent(call.id)}`}>Read</Link></p> : null}
+            <SiteChanges siteId={s.id} fallback={mine as SiteChange[]} />
           </div>
         </div>;
       })}
@@ -128,7 +144,7 @@ export function useNowRows(overview: Remote<Overview>, agents: Remote<AgentInfo[
     return AGENTS3.map(a => {
       const o = fromOverview.find(x => x.agentId === a.id);
       const l = fromList.find(x => x.id === a.id);
-      return { id: a.id, name: a.name, level: a.level, siteId: a.siteId, status: o?.status ?? l?.status ?? null, task: o?.currentTask ?? l?.currentTask ?? null, why: o?.why ?? l?.why ?? null, waitingOn: o?.waitingOn ?? l?.waitingOn ?? null, since: o?.since ?? l?.lastActivityAt ?? null, known: Boolean(o || l) };
+      return { id: a.id, name: a.name, level: a.level, siteId: a.siteId, status: o?.status ?? l?.status ?? null, task: l?.currentTask ?? o?.currentTask ?? null, why: l?.why ?? o?.why ?? null, waitingOn: l?.waitingOn ?? o?.waitingOn ?? null, since: o?.since ?? l?.lastActivityAt ?? null, known: Boolean(o || l) };
     });
   }, [overview.data, agents.data]);
 }

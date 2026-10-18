@@ -9,6 +9,8 @@ import { AGENT_ANCHOR, AGENT_REPLY, AGENT_REQUEST, GAUGE, START, TOTAL, WORLD_CY
 import { CROSS_AT, Draw, NEEDLE_LEN, TICKS, WHEEL_Y, barAngle, buildFactoryContext, buildFactoryDetails, buildStatic, cross, tick, toArray, wheel } from "./hero-sketch";
 import HeroGas from "./hero-gas";
 import HeroAgent from "./hero-agent";
+import HeroWorkflow from "./hero-workflow";
+import { drawInk, inkGeometry } from "./hero-ink";
 
 export interface HeroControl { nudge: number | null; visible: boolean }
 interface Props { control: MutableRefObject<HeroControl>; attestationId: string; still?: boolean; onProgress?: (p: number) => void }
@@ -34,23 +36,25 @@ function Drawing({ control, still, labels, onBeat, onProgress, topic }: Props & 
   const offset = useRef(0); const lastP = useRef(-1); const beatRef = useRef(-1);
   const proj = useMemo(() => new THREE.Vector3(), []);
   const cameraBaseY = useRef(WORLD_CY);
+  const world = useRef<THREE.Group>(null);
+  const reveal = useRef(0);
 
-  const base = useMemo(() => new THREE.LineSegments(geo(toArray(buildStatic())), mat(0.82)), []);
+  const base = useMemo(() => new THREE.LineSegments(inkGeometry(toArray(buildStatic())), mat(0.82)), []);
   const factoryContext = useMemo(() => {
-    const object = new THREE.LineSegments(geo(toArray(buildFactoryContext())), mat(0.17));
+    const object = new THREE.LineSegments(inkGeometry(toArray(buildFactoryContext())), mat(0.17));
     object.position.z = -0.08; object.renderOrder = -2;
     return object;
   }, []);
   const factoryDetails = useMemo(() => {
-    const object = new THREE.LineSegments(geo(toArray(buildFactoryDetails())), mat(0.44));
+    const object = new THREE.LineSegments(inkGeometry(toArray(buildFactoryDetails())), mat(0.44));
     object.position.z = 0.015;
     return object;
   }, []);
-  const wheels = useMemo(() => [X.v501, X.v504].map(x => { const o = new THREE.LineSegments(geo(segsOf(d => wheel(d))), mat(0.82)); o.position.set(x, WHEEL_Y, 0); return o; }), []);
-  const needleObj = useMemo(() => { const o = new THREE.LineSegments(geo(new Float32Array([-0.08, 0, 0, NEEDLE_LEN, 0, 0])), mat(1)); o.position.set(GAUGE[0], GAUGE[1], 0.01); return o; }, []);
+  const wheels = useMemo(() => [X.v501, X.v504].map(x => { const o = new THREE.LineSegments(inkGeometry(segsOf(d => wheel(d))), mat(0.82)); o.position.set(x, WHEEL_Y, 0); return o; }), []);
+  const needleObj = useMemo(() => { const o = new THREE.LineSegments(inkGeometry(new Float32Array([-0.08, 0, 0, NEEDLE_LEN, 0, 0])), mat(1)); o.position.set(GAUGE[0], GAUGE[1], 0.01); return o; }, []);
   const crossObj = useMemo(() => { const o = new THREE.LineSegments(geo(segsOf(d => cross(d, [0, 0]))), mat(1)); o.position.set(CROSS_AT[0], CROSS_AT[1], 0); o.visible = false; return o; }, []);
   const ticks = useMemo(() => TICKS.map(c => { const o = new THREE.LineSegments(geo(segsOf(d => tick(d, [0, 0]))), mat(1)); o.position.set(c[0], c[1], 0); o.visible = false; return o; }), []);
-  const protocolLinks = useMemo(() => new THREE.LineSegments(geo(segsOf(d => {
+  const protocolLinks = useMemo(() => new THREE.LineSegments(inkGeometry(segsOf(d => {
     d.poly(AGENT_REQUEST); d.poly(AGENT_REPLY);
     for (const [x, y] of [AGENT_REQUEST[AGENT_REQUEST.length - 1], AGENT_REPLY[0]]) d.rect(x - 0.055, y - 0.055, x + 0.055, y + 0.055);
   })), mat(0.26)), []);
@@ -88,6 +92,16 @@ function Drawing({ control, still, labels, onBeat, onProgress, topic }: Props & 
     }
     const b = Math.min(4, Math.floor(p)); const f = p >= 5 ? 1 : p - b;
     const nextBeat = p >= 5 ? 5 : b;
+    const ink = still ? 0 : lt < START[1] ? ease((lt - 0.10) / 2.75) : 1 - ease((lt - START[1]) / 1.35);
+    reveal.current = ink;
+    if (world.current) world.current.visible = ink > 0.0001;
+    drawInk(base.geometry, ink);
+    drawInk(factoryDetails.geometry, clamp01((ink - 0.12) / 0.88));
+    drawInk(factoryContext.geometry, clamp01((ink - 0.18) / 0.82));
+    for (const wheel of wheels) drawInk(wheel.geometry, clamp01((ink - 0.45) / 0.55));
+    drawInk(needleObj.geometry, clamp01((ink - 0.62) / 0.38));
+    drawInk(protocolLinks.geometry, clamp01((ink - 0.75) / 0.25));
+    if (labels.current.layer) labels.current.layer.style.opacity = String(clamp01((ink - 0.72) / 0.28));
     if (nextBeat !== beatRef.current) { beatRef.current = nextBeat; onBeat(nextBeat); }
     if (onProgress && Math.abs(p - lastP.current) > 0.004) { lastP.current = p; onProgress(p); }
 
@@ -131,16 +145,16 @@ function Drawing({ control, still, labels, onBeat, onProgress, topic }: Props & 
     }
   });
 
-  return <>
+  return <group ref={world}>
     <Part obj={factoryContext} />
-    <HeroGas still={still} />
+    <HeroGas still={still} reveal={reveal} />
     <Part obj={base} />
     <Part obj={factoryDetails} />
     <Part obj={protocolLinks} /><Part obj={requestTrace} /><Part obj={replyTrace} />
     {wheels.map((w, i) => <Part key={i} obj={w} />)}
     <Part obj={needleObj} /><Part obj={crossObj} />
     {ticks.map((tk, i) => <Part key={`t${i}`} obj={tk} />)}
-  </>;
+  </group>;
 }
 
 export default function HeroScene({ control, attestationId, still, onProgress }: Props) {
@@ -164,10 +178,11 @@ export default function HeroScene({ control, attestationId, still, onProgress }:
   }, [control, still]);
   const shown = still ? 4 : beat;
   return <>
+  <div className={`hero-factory${shown > 0 ? " is-dissolved" : ""}`} aria-hidden={shown > 0}>
   <Canvas orthographic frameloop={frameloop} dpr={[1, 1.5]} gl={{ antialias: true, alpha: false, powerPreference: "low-power" }} camera={{ position: [0, WORLD_CY, 10], near: 0.1, far: 50, zoom: 60 }} onCreated={({ gl }) => { gl.setClearColor("#000000", 1); }} style={{ position: "absolute", inset: 0 }}>
     <Drawing control={control} attestationId={attestationId} still={still} onProgress={onProgress} labels={labels} onBeat={updateBeat} topic={topic} />
   </Canvas>
-  <div className="labels" aria-hidden="true">
+  <div className="labels" ref={bind("layer")} style={{ opacity: 0 }} aria-hidden="true">
     <HeroAgent beat={shown} topic={topic} attestationId={attestationId} anchorRef={bind("console")} />
     <div ref={bind("p101")} className={`lbl ${topic === 0 && shown >= 1 ? "on" : "dim"}`}><span className="tag">P-101</span>{topic === 0 && shown === 1 ? <span>known · CC-2026-0611-P101</span> : topic === 0 && shown >= 3 ? <span>2.4 bar · accepted</span> : null}</div>
     <div ref={bind("p102")} className={`lbl ${topic === 0 && (shown === 2 || shown === 3) ? "on" : "dim"}`}><span className="tag">P-102</span>{topic === 0 && shown === 3 ? <span>wrong plate</span> : null}</div>
@@ -176,5 +191,7 @@ export default function HeroScene({ control, attestationId, still, onProgress }:
     <div ref={bind("v501")} className="lbl dim"><span className="tag">V-501</span></div>
     <div ref={bind("v504")} className={`lbl ${topic === 2 ? "on" : "dim"}`}><span className="tag">V-504</span></div>
   </div>
+  </div>
+  <HeroWorkflow beat={shown} topic={topic} attestationId={attestationId} visible={shown > 0} />
   </>;
 }

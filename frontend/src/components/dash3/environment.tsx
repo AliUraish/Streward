@@ -6,16 +6,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api3 } from "@/lib/api-3";
 import { useEyeFeed, useIssues3, useObligations, useScene, useViewerCommands, useVision } from "@/lib/hooks-3";
-import { SITES3, agentName, roleOf, site3 } from "@/lib/sites-3";
+import { SITES3, agentName, rn, site3 } from "@/lib/sites-3";
 import type { Asset3, EyeFrame, Issue3, PinSeverity, SiteId3, ValveResult, ViewerCommand } from "@/lib/types-3";
 import AssetDrawer from "./asset-drawer";
 import MissionHud from "./mission";
 import { useHudEvents } from "@/lib/live-3";
 import ViewerSlot, { type ViewerFocus, type ViewerPin } from "./viewer-slot";
 import { Btn, OperatorTag, PageHead, Reveal, State, SynthTag, ago, errorText, fx, useToast, words } from "./ui3";
-import type { WalkLabel } from "@/lib/api-7";
-import { useLabels, usePatrols } from "@/lib/hooks-7";
-import { LabelDetail, WalkthroughBar, assessmentOf, followPose, isRunning } from "./walkthrough";
+import { markPoint, type WalkLabel } from "@/lib/api-7";
+import { useLabels, useWalk } from "@/lib/hooks-7";
+import { LabelDetail, WalkthroughBar, assessmentOf, followPose } from "./walkthrough";
 
 export const tagOf = (a: Asset3) => a.tag ?? a.assetTag ?? "";
 export const pinOf = (a: Asset3): [number, number, number] | null => !a.pin ? null : Array.isArray(a.pin) ? a.pin : [a.pin.x, a.pin.y, a.pin.z];
@@ -25,11 +25,11 @@ export const valveWord: Record<ValveResult["status"], string> = { fixed: "fixed"
 
 export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
   const site = site3(siteId);
-  /* Contract 7: the latest walkthrough (every 3 s) and the label it left on each asset (every 5 s). While one runs,
-     the eye feed is read faster and the view follows the walking agent's camera unless the operator turns that off. */
-  const patrols = usePatrols(siteId);
+  /* Contract 7: the walk now (every 3 s) and the label it left on each asset (every 5 s). While the engineer walks,
+     the eye feed is read faster and the view follows its camera unless that is turned off. */
+  const walk = useWalk(siteId);
   const labels = useLabels(siteId);
-  const walking = isRunning(patrols.data?.[0]);
+  const walking = Boolean(walk.data?.walking);
   const [followWalk, setFollowWalk] = useState(true);
   const eye = useEyeFeed(siteId, walking ? 1_500 : 3_000);
   const scene = useScene(siteId);
@@ -69,12 +69,15 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
     const mine = openIssues.filter(i => i.assetTag === tag);
     const severity = mine.reduce<PinSeverity>((m, i) => RANK[i.severity] > RANK[m] ? i.severity : m, "none");
     const l = labelOf.get(tag);
-    return [{ assetTag: tag, position: p, severity, label: `${tag} ${a.name}`, estimated: a.pinSource !== "placed", issueIds: mine.map(i => i.id), ...(l ? { assessment: assessmentOf(l) } : {}) }];
+    /* A labelled asset's marker sits where the engineer marked it (else at the label's own point); that point is seen,
+       not estimated. */
+    const at = l ? markPoint(l) : null;
+    return [{ assetTag: tag, position: p, severity, label: `${tag} ${a.name}`, estimated: a.pinSource !== "placed" && !l?.mark?.world, issueIds: mine.map(i => i.id), ...(l ? { assessment: assessmentOf(l) } : {}), ...(at ? { mark: at } : {}) }];
   }), [assets, openIssues, labelOf]);
-  /* A label on an asset the register has no pin for is drawn where the walkthrough looked (its world point). */
+  /* A label on an asset the register has no pin for is drawn where the engineer marked it (else its world point). */
   const shownPins: ViewerPin[] = useMemo(() => {
     const have = new Set(pins.map(p => p.assetTag));
-    const extra = (labels.data ?? []).filter(l => l.world && !have.has(l.assetTag)).map(l => ({ assetTag: l.assetTag, position: l.world!, severity: "none" as PinSeverity, label: `${l.assetTag}${l.assetName ? ` ${l.assetName}` : ""}`, estimated: true, issueIds: [], assessment: assessmentOf(l) }));
+    const extra = (labels.data ?? []).filter(l => markPoint(l) && !have.has(l.assetTag)).map(l => ({ assetTag: l.assetTag, position: markPoint(l)!, severity: "none" as PinSeverity, label: `${l.assetTag}${l.assetName ? ` ${l.assetName}` : ""}`, estimated: !l.mark?.world, issueIds: [], assessment: assessmentOf(l) }));
     return extra.length ? [...pins, ...extra] : pins;
   }, [pins, labels.data]);
   const unpinned = assets.length - pins.length;
@@ -88,7 +91,7 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
   /* Realtime, when the bridge has a channel: reload what an event touches instead of waiting for the next poll. */
   useHudEvents(siteId, { eye_frame: () => eye.reload(), issue_change: () => issues.reload() });
   const lastFrame = frames[0] ?? null;
-  const follow = useMemo(() => (followWalk ? followPose(frames, patrols.data?.[0]) : null), [followWalk, frames, patrols.data]);
+  const follow = useMemo(() => (followWalk ? followPose(frames, walk.data) : null), [followWalk, frames, walk.data]);
 
   /* The viewer follows backend viewer commands (MCP focus_view, agents). */
   const onCommand = useCallback((c: ViewerCommand) => {
@@ -104,8 +107,8 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
 
   const drawerAsset = drawer ? assets.find(a => tagOf(a) === drawer) : undefined;
   return <div className="page3">
-    <PageHead id="environment" title="Environment" sub={`${site.name}: the scan is the agents' eye. Humans watch it; the ${roleOf(siteId, "engineer").title}, the ${roleOf(siteId, "manager").title} and the Operations Director drive it, and each move returns a frame.`} />
-    <Reveal className="eye-now"><OperatingAgent frame={lastFrame} readiness={eye.readiness} retry={eye.reload} /><WalkthroughBar siteId={siteId} patrols={patrols} labels={labels} follow={followWalk} onFollow={setFollowWalk} /></Reveal>
+    <PageHead id="environment" title="Environment" />
+    <Reveal className="eye-now"><OperatingAgent frame={lastFrame} readiness={eye.readiness} retry={eye.reload} /><WalkthroughBar siteId={siteId} walk={walk} labels={labels} follow={followWalk} onFollow={setFollowWalk} /></Reveal>
 
     <div className="fac3">
       <Reveal className={`viewer3 ${mission ? "mission-on" : ""}`}>
@@ -116,7 +119,7 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
               onPinClick={mission ? tag => focusOn(tag) : openAsset} onPlacePin={p => setPending(p)} renderCard={renderCard} className="fill" />
           </div>
           {mission ? <MissionHud siteId={siteId} frames={frames} issues={issues.data ?? []} hidden={hudHidden} now={tick} renderers={eye.data?.renderers ? eye.data.renderers.filter(r => !r.stale).length : undefined} onFocus={tag => focusOn(tag)} onHide={() => setHudHidden(v => !v)} onExit={closeMission} /> : null}
-          {mission && !hudHidden ? <WalkthroughBar hud siteId={siteId} patrols={patrols} labels={labels} follow={followWalk} onFollow={setFollowWalk} /> : null}
+          {mission && !hudHidden ? <WalkthroughBar hud siteId={siteId} walk={walk} labels={labels} follow={followWalk} onFollow={setFollowWalk} /> : null}
         </div>
         <div className="viewer-meta">
           <span>{scene.readiness === "ready" ? `${pins.length} pins${estimated ? `, ${estimated} estimated (hollow)` : ""}${unpinned > 0 ? `, ${unpinned} assets without a pin` : ""}` : scene.readiness === "loading" ? "Loading pins" : <>Pins not available yet <button type="button" className="retry" onClick={scene.reload}>Retry</button></>}</span>
@@ -148,8 +151,7 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
     <CaptureStrip siteId={siteId} results={vision.data?.results ?? []} />
 
     {site.valves || (vision.data?.results.length ?? 0) > 0 ? <Reveal className="p3 valves3">
-      <div className="p-head"><h3>Valve inspection</h3><span className="meta">{vision.data?.model ?? (vision.data?.results[0]?.model ?? "V-JEPA 2")}{vision.data?.ranAt ? `, ${new Date(vision.data.ranAt).toLocaleString()}` : ""}</span></div>
-      <p className="note3">An anomaly score: each valve&apos;s distance from the site&apos;s other valves, not a trained defect classifier. Valves that are not fixed or uncertain get a written explanation.</p>
+      <div className="p-head"><h3>Valve inspection</h3><span className="meta">{vision.data?.ranAt ? new Date(vision.data.ranAt).toLocaleString() : ""}</span></div>
       <State remote={vision} what="the valve inspection" isEmpty={v => v.results.length === 0} empty="No valve inspection results for this site yet.">
         {v => <ValveTable results={v.results} onOpen={openAsset} />}
       </State>
@@ -164,7 +166,7 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
 /* Who is driving the eye and what it last did, from GET /api/eye/{siteId}/feed. */
 function OperatingAgent({ frame, readiness, retry }: { frame: EyeFrame | null; readiness: string; retry: () => void }) {
   if (readiness !== "ready") return <p className="eye-line"><span className="sig off" aria-hidden="true" />{readiness === "loading" ? "Connecting to the agent eye" : <>The eye feed is not available yet. <button type="button" className="retry" onClick={retry}>Retry</button></>}</p>;
-  if (!frame) return <p className="eye-line"><span className="sig off" aria-hidden="true" />No agent has driven the eye yet. When one does, the camera below moves and its frames appear in the strip.</p>;
+  if (!frame) return <p className="eye-line"><span className="sig off" aria-hidden="true" />No agent has driven the eye yet.</p>;
   const pins = frame.visiblePins.filter(p => !p.occluded).map(p => p.assetTag);
   return <p className="eye-line on"><span className="sig ok" aria-hidden="true" /><strong>{agentName(frame.actor)}</strong>&nbsp;{actionText(frame)}<span className="r3">, {ago(frame.at)}{pins.length ? `; sees ${pins.slice(0, 6).join(", ")}${pins.length > 6 ? ` and ${pins.length - 6} more` : ""}` : ""}</span></p>;
 }
@@ -175,7 +177,7 @@ export function actionText(f: EyeFrame): string {
     case "turn": return `turned ${p.yawDeg ?? 0}° yaw, ${p.pitchDeg ?? 0}° pitch`;
     case "go_to": return `went to ${p.assetTag ?? "an asset"}`;
     case "orbit": return `orbited ${p.assetTag ?? "an asset"}`;
-    case "mark": return `marked a point${p.note ? `: ${String(p.note)}` : ""}`;
+    case "mark": { const note = p.note ? rn(String(p.note)).replace(/\s*\(evals?\)/gi, "").trim() : ""; return `marked a point${note ? `: ${note}` : ""}`; }
     case "look": return "looked";
     default: return f.action ? words(f.action) : "rendered a frame";
   }

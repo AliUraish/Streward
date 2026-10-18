@@ -8,6 +8,9 @@ per site, plus the authority table enforced on every mutating endpoint and on ag
 | 4 | <site>-engineer | Site Engineer · <Site> (Conservation Engineer · Tomioka) | own site |
 | 4 | <site>-compliance | Compliance Officer · <Site> | own site |
 | 5 | <site>-technician | Field Technician · <Site> | own site |
+| 3 | site-inspector | Site Inspector | all three sites: formal inspections (contract 8) |
+| 3 | people-officer | People Officer | all three sites: attendance and the people on shift (contract 8) |
+| 3 | compliance-counsel | Compliance Counsel | all three sites: the lawyer copied on compliance mail, the contractor's legal contact (contract 8) |
 
 `<site>` is `myer` (myer-plant), `bristol` (bristol-pumps) or `tomioka` (tomioka-mill). Identities and identity-scoped
 keys come from `INKBOX_IDENTITY_<SUFFIX>` / `INKBOX_AGENT_KEY_<SUFFIX>` (suffix `DIRECTOR`, `MYER_MANAGER`, ...,
@@ -15,8 +18,12 @@ keys come from `INKBOX_IDENTITY_<SUFFIX>` / `INKBOX_AGENT_KEY_<SUFFIX>` (suffix 
 `STEWARD_DISPATCH_PHONE_NUMBER`): every field technician reaches people by SMS or call through it, and every agent
 emails from its own identity.
 
+The three contract-8 agents work across all sites, like the director, and reuse revived Inkbox identities
+(`INKBOX_IDENTITY_INSPECTOR` = steward-warden-harbor, `INKBOX_IDENTITY_PEOPLE` = steward-atlas, `INKBOX_IDENTITY_COUNSEL` =
+steward-counsel, each with its `INKBOX_AGENT_KEY_<SUFFIX>`).
+
 Cross-site messages are allowed only manager to manager, compliance to compliance, and anyone to or from the
-director (`message_allowed`). `authorize()` is the single gate for actions; it raises `AUTHORITY_DENIED` naming who
+director or a cross-site agent (`message_allowed`). `authorize()` is the single gate for actions; it raises `AUTHORITY_DENIED` naming who
 may perform the action.
 """
 from __future__ import annotations
@@ -26,11 +33,16 @@ from .providers import clean_env
 from .sites import SITE_BY_ID, SITE_IDS
 
 OPERATOR, DIRECTOR, OWNER, DISPATCH = "operator", "director", "owner", "dispatch"
+INSPECTOR, PEOPLE, COUNSEL = "site-inspector", "people-officer", "compliance-counsel"
+CROSS_SITE = (INSPECTOR, PEOPLE, COUNSEL)
+CROSS_SITE_TITLES = {INSPECTOR: "Site Inspector", PEOPLE: "People Officer", COUNSEL: "Compliance Counsel"}
+CROSS_SITE_SUFFIX = {INSPECTOR: "INSPECTOR", PEOPLE: "PEOPLE", COUNSEL: "COUNSEL"}
 ROLES = ("manager", "engineer", "compliance", "technician")
 TEAM_PREFIX = {"myer-plant": "myer", "bristol-pumps": "bristol", "tomioka-mill": "tomioka"}
 PREFIX_SITE = {prefix: site for site, prefix in TEAM_PREFIX.items()}
 SHORT_SITE = {"myer-plant": "Myer", "bristol-pumps": "Bristol", "tomioka-mill": "Tomioka"}
-LEVELS = {OPERATOR: 1, DIRECTOR: 2, "manager": 3, "engineer": 4, "compliance": 4, "technician": 5, DISPATCH: 5}
+LEVELS = {OPERATOR: 1, DIRECTOR: 2, "manager": 3, "engineer": 4, "compliance": 4, "technician": 5, DISPATCH: 5,
+          INSPECTOR: 3, PEOPLE: 3, COUNSEL: 3}
 ROLE_TITLES = {"manager": "Plant Manager", "engineer": "Site Engineer", "compliance": "Compliance Officer", "technician": "Field Technician"}
 # Contract 5 §2: the mill's manager and engineer have their own titles; authority is the same as the other sites' roles.
 SITE_ROLE_TITLES = {"tomioka-mill": {"manager": "Site Manager", "engineer": "Conservation Engineer"}}
@@ -42,6 +54,9 @@ ROLE_LINES = {
     "compliance": "own site: obligations, regulations, documents, notices; emails documents to any agent; talks to the other site's compliance officer",
     "technician": "own site: contacts people through the dispatch line and email, collects evidence; cannot attest or write facts",
     DISPATCH: "the shared phone number every field technician uses for SMS and calls",
+    INSPECTOR: "all three sites: formal compliance inspections with the agent eye; reports findings and evidence to the site's compliance officer",
+    PEOPLE: "all three sites: the badge log and attendance; calls an employee who is late two working days running and tells the site manager",
+    COUNSEL: "all three sites: the lawyer copied on compliance mail; sends the contractor the legal requirements for a job and can call them",
 }
 SCOPED_KINDS = ROLES
 # The Owner's agent keeps the direct reality verbs (resolve/attest/escalate/owner-decision) for the single-agent path
@@ -60,6 +75,9 @@ AUTHORITY: dict[str, list[str]] = {
     "compliance": ["read", "write_compliance", "send_document", "request_document", "raise_issue", "viewer", "wait"],
     "technician": ["read", "resolve", "dispatch", "escalate", "collect_evidence", "contact_people", "wait"],
     OWNER: ["read", "owner_decision"],
+    INSPECTOR: ["read", "eye", "ingest_vision", "raise_issue", "call_agent", "viewer", "wait"],
+    PEOPLE: ["read", "call_agent", "contact_people", "wait"],
+    COUNSEL: ["read", "review_document", "send_document", "call_agent", "contact_people", "wait"],
 }
 ACTION_LABEL = {
     "read": "read", "start_mission": "start a mission", "set_budget": "set a budget", "resolve": "resolve a fact",
@@ -87,11 +105,15 @@ SKILLS = {
                    ("send-document", "Send a document", "Email a compliance document (PDF attached) to another Steward agent.")],
     "technician": [("dispatch-technician", "Dispatch a technician", "Reach an employee or contractor through the dispatch line or email."),
                    ("collect-evidence", "Collect evidence", "Receive the reply and hand the evidence to the site engineer.")],
+    INSPECTOR: [("inspect-site", "Inspect a site", "Walk a site with the agent eye and report compliance findings with evidence.")],
+    PEOPLE: [("attendance-follow-up", "Follow up attendance", "Read the badge log and call an employee who is late two working days running.")],
+    COUNSEL: [("compliance-counsel", "Advise on compliance", "Review compliance mail and tell the contractor what the law requires for a job.")],
 }
 # Contract 4 id migration: old id -> new id, or a role resolved by the record's site.
 OLD_AGENT_IDS = {"atlas": DIRECTOR, "warden:myer-plant": "myer-engineer", "warden:bristol-pumps": "bristol-engineer",
                  "counsel": "compliance", "runner": "technician"}
-RETIRED_HANDLES = ("steward-atlas", "steward-warden-myer", "steward-warden-bristol", "steward-counsel", "steward-warden-harbor")
+# Contract 8 revived steward-atlas (People Officer), steward-counsel (Compliance Counsel) and steward-warden-harbor (Site Inspector).
+RETIRED_HANDLES = ("steward-warden-myer", "steward-warden-bristol")
 
 
 def team_id(site_id: str, role: str) -> str:
@@ -136,14 +158,14 @@ def site_of(agent_id: str) -> str | None:
 
 
 def is_known(agent_id: str) -> bool:
-    if agent_id in (OPERATOR, DIRECTOR, OWNER):
+    if agent_id in (OPERATOR, DIRECTOR, OWNER) or agent_id in CROSS_SITE:
         return True
     site, role = _split(agent_id)
     return bool(role) and site in SITE_BY_ID
 
 
 def all_agent_ids() -> list[str]:
-    return [OPERATOR, DIRECTOR] + [team_id(site, role) for site in SITE_IDS if site in TEAM_PREFIX for role in ROLES]
+    return [OPERATOR, DIRECTOR] + [team_id(site, role) for site in SITE_IDS if site in TEAM_PREFIX for role in ROLES] + list(CROSS_SITE)
 
 
 def site_team(site_id: str) -> list[str]:
@@ -159,6 +181,8 @@ def display_name(agent_id: str) -> str:
         return "Steward Dispatch Line"
     if agent_id == OWNER:
         return "the owner"
+    if agent_id in CROSS_SITE_TITLES:
+        return CROSS_SITE_TITLES[agent_id]
     site, role = _split(agent_id)
     if role:
         return f"{SITE_ROLE_TITLES.get(site, {}).get(role, ROLE_TITLES[role])} · {SHORT_SITE.get(site, site)}"
@@ -170,6 +194,8 @@ def env_suffix(agent_id: str) -> str | None:
         return "DIRECTOR"
     if agent_id == DISPATCH:
         return "DISPATCH"
+    if agent_id in CROSS_SITE_SUFFIX:
+        return CROSS_SITE_SUFFIX[agent_id]
     site, role = _split(agent_id)
     if role:
         return f"{TEAM_PREFIX[site].upper()}_{role.upper()}"
@@ -226,7 +252,8 @@ def parse_actor(header_value: str | None) -> str:
                            "Use operator, director or <myer|bristol|tomioka>-<manager|engineer|compliance|technician>.", 403)
     if not is_known(actor):
         raise RealityError(f"Unknown actor '{actor[:40]}'.", "AUTHORITY_DENIED",
-                           "Send X-Steward-Actor as operator, director or <myer|bristol|tomioka>-<manager|engineer|compliance|technician>.", 403)
+                           "Send X-Steward-Actor as operator, director, site-inspector, people-officer, compliance-counsel or "
+                           "<myer|bristol|tomioka>-<manager|engineer|compliance|technician>.", 403)
     return actor
 
 
@@ -258,7 +285,7 @@ def authorize(actor: str, action: str, site: str | None = None) -> str:
 
 def message_allowed(caller: str, target: str) -> tuple[bool, str]:
     """Cross-site messages: manager to manager, compliance to compliance, and anyone to or from the director."""
-    if DIRECTOR in (caller, target) or OPERATOR in (caller, target):
+    if DIRECTOR in (caller, target) or OPERATOR in (caller, target) or caller in CROSS_SITE or target in CROSS_SITE:
         return True, ""
     caller_site, target_site = site_of(caller), site_of(target)
     if not caller_site or not target_site or caller_site == target_site:

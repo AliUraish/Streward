@@ -9,14 +9,22 @@ asset it looks at: green "Looks good" or blue "Looks bad".
   path (nearest neighbour from the scan's initial camera). Pace `paceSeconds` (default 8 s, `STEWARD_PATROL_PACE_SECONDS`)
   per stop while the backend runs its workers; inline with no sleeping otherwise.
 - Each stop: `eye.act_sync(site, "go_to", {assetTag}, walker)` (cold-start aware; skipped with the reason when no
-  renderer is open and the headless worker is off; an eye failure keeps the walk going with `frameId: null`), then a
-  deterministic assessment and a `patrol_label` record. **Bad** when an obligation on the asset is overdue or blocked
+  renderer is open and the headless worker is off; an eye failure keeps the walk going with `frameId: null`), then the
+  deterministic assessment of the records: **bad** when an obligation on the asset is overdue or blocked
   (`compliance: true`), an open stored issue sits on it, or a live reading is outside its band; **good** otherwise, with
-  the evidence in words. No model is called.
+  the evidence in words. With a frame, Claude then looks at it with the records (`walks.py`: the records still decide a bad
+  verdict; the frame adds the observation and can turn a good asset bad on concrete visible evidence; answers are reused
+  per asset while its state holds, within daily caps; the rules label the stop otherwise), and the eye's `mark` goes to the
+  point it judged (or the asset's tag point for a rules label) so the renderer picks the world point. The `patrol_label`
+  carries `observation`, `headline`, `mark {x, y, note, world, hit, frameId}`, `confidence`, `assessedBy` (claude | rules),
+  `model` and, when the records overrode the answer, `override`; its `world` is the mark's point when the pick hit the
+  scan, else the pin.
 - Changes of type `patrol`, extras `{patrolId, status: started|stop|completed|canceled|failed, assetTag, verdict, labelId,
   stop, stops}`. At the end the walker messages the Site Manager with the summary (an A2A message conversation, which the
   manager acknowledges) and every bad compliance label starts a compliance alert (`compliance_alerts.py`), once per
-  obligation per 24 h; later walkthroughs reuse the alert.
+  obligation per 24 h; later walkthroughs reuse the alert. A continuous walk (`origin: autoplay`, see `walks.py`) reports
+  only when it raised a new alert, when its bad findings differ from the last walk that reported, or once every
+  `STEWARD_WALK_REPORT_MINUTES` (default 60), so the managers are not messaged every few minutes.
 - `GET /api/properties/{siteId}/labels` returns the latest label per asset.
 """
 from __future__ import annotations
@@ -27,13 +35,16 @@ import time
 
 from .agents import DIRECTOR, OPERATOR, authorize, display_name, engineer_id, manager_id, parse_actor
 from .compliance_alerts import (BAD_STATUSES, ComplianceAlertService, categorize, cite_short, due_in_days, place_of, plural, primary_regulation,
-                                query, state_phrase)
+                                query, state_phrase, walk_owner_alerts)
 from .env import env
 from .errors import RealityError
 from .sites import SITE_BY_ID
 from .store import now, uid
+from .verify import parse_time
+from .walks import rules_decision
 
 DEFAULT_PACE_SECONDS = 8.0
+DEFAULT_REPORT_MINUTES = 60.0
 MAX_DEFAULT_STOPS = 10
 MAX_ROUTE = 24
 LABEL_KEEP_PER_SITE = 400
@@ -141,9 +152,12 @@ class PatrolService:
                 return True
         return False
 
-    def busy(self) -> str | None:
-        """What is playing now (for the autoplayer): a running walkthrough, or a compliance alert still in its steps."""
+    def busy(self, manual_only: bool = False) -> str | None:
+        """What is playing now (for the autoplayer): a running walkthrough, or a compliance alert still in its steps.
+        `manual_only` skips the continuous walks (origin autoplay), which run beside the scenario rotation."""
         for patrol in self.running():
+            if manual_only and patrol.get("origin") == "autoplay":
+                continue
             return f"a walkthrough of {patrol['place']} is running" + ("" if patrol.get("origin") == "autoplay" else " (started by hand)")
         for alert in self.alerts.active():
             return f"the compliance alert for {alert.get('assetTag') or alert['obligationId']} is running"
@@ -349,13 +363,15 @@ class PatrolService:
                 if patrol["state"] != "running":
                     return patrol
                 patrol["stops"].append(dict(assetTag=tag, labelId=label["id"], verdict=label["verdict"], frameId=frame_id, at=label["at"],
-                                            reason=(label["reasons"] or [None])[0]))
+                                            reason=(label["reasons"] or [None])[0], assessedBy=label["assessedBy"],
+                                            observation=label.get("observation"), markFrameId=(label.get("mark") or {}).get("frameId")))
                 patrol["stopIndex"] = index + 1
                 patrol.setdefault("counts", {})[label["verdict"]] = patrol.get("counts", {}).get(label["verdict"], 0) + 1
                 self._save(patrol)
             self._change(patrol, f"{patrol['agentName']} at {tag} (stop {index + 1} of {len(route)}): {label['title']}"
                                  + (f": {label['reasons'][0]}" if label["reasons"] else "") + ".", "stop", assetTag=tag, verdict=label["verdict"],
-                         labelId=label["id"], stop=index + 1, stops=len(route), frameId=frame_id)
+                         labelId=label["id"], stop=index + 1, stops=len(route), frameId=frame_id, assessedBy=label["assessedBy"],
+                         observation=(label.get("observation") or None) and label["observation"][:300])
             if realtime and index < len(route) - 1:
                 remaining = float(patrol.get("paceSeconds") or 0) - (time.monotonic() - began)
                 if remaining > 0 and self._stop.wait(remaining):
@@ -392,7 +408,14 @@ class PatrolService:
             self._save(patrol)
         self._change(patrol, f"Walkthrough completed. {summary}", "completed", stop=len(labels), stops=len(patrol["route"]),
                      alerts=len(patrol["alertIds"]) or None)
-        self.report(patrol, queued)
+        why = self.report_reason(patrol, queued)
+        if why:
+            self.report(patrol, queued)
+        else:
+            with self.lock:
+                fresh = self.get(patrol_id)
+                fresh["reportSkipped"] = "Same findings as the last report to the Site Manager and no new alert: no message this time."
+                self._save(fresh)
         self.service.ops.note(patrol["agentId"], None)
         self.prune_labels(site)
         for alert_id in queued:
@@ -400,6 +423,33 @@ class PatrolService:
                 break
             self.alerts.run(alert_id, realtime)
         return self.get(patrol_id)
+
+    @staticmethod
+    def findings(patrol: dict) -> list[str]:
+        return sorted({stop["assetTag"] for stop in patrol.get("stops") or [] if stop.get("verdict") == "bad"})
+
+    def report_reason(self, patrol: dict, new_alert_ids: list[str]) -> str | None:
+        """Why this walk messages the Site Manager, or None. A walk started by hand always reports; a continuous walk reports
+        when it raised a new compliance alert, when its bad findings differ from the last walk that reported, or hourly."""
+        if patrol.get("origin") != "autoplay":
+            return "started by hand"
+        if new_alert_ids:
+            return "new compliance alert"
+        reported = query(self.store, "patrol", "json_extract(body, '$.conversationId') IS NOT NULL AND id != ?", (patrol["id"],),
+                         order="json_extract(body, '$.finishedAt') DESC", limit=1, property_id=patrol["siteId"])
+        if not reported:
+            return "first report"
+        if self.findings(reported[0]) != self.findings(patrol):
+            return "findings changed"
+        try:
+            minutes = max(0.0, float(env("STEWARD_WALK_REPORT_MINUTES", str(DEFAULT_REPORT_MINUTES)) or DEFAULT_REPORT_MINUTES))
+        except ValueError:
+            minutes = DEFAULT_REPORT_MINUTES
+        last = parse_time(reported[0].get("finishedAt"))
+        finished = parse_time(patrol.get("finishedAt")) or parse_time(now())
+        if last is None or (finished - last).total_seconds() >= minutes * 60:
+            return "hourly summary"
+        return None
 
     def report(self, patrol: dict, new_alert_ids: list[str] | None = None) -> dict | None:
         """The walker's message to the Site Manager (the director when the manager walked), acknowledged by the recipient."""
@@ -409,10 +459,12 @@ class PatrolService:
         fresh_ids = set(new_alert_ids or [])
         new = sorted({a["assetTag"] for a in alerts if a.get("assetTag") and a["id"] in fresh_ids})
         known = sorted({a["assetTag"] for a in alerts if a.get("assetTag") and a["id"] not in fresh_ids} - set(new))
-        text = (patrol["summary"] + (f" Compliance is taking {', '.join(new)} to the owner." if new else "")
+        to_owner = walk_owner_alerts()  # contract 8: otherwise the Site Inspector's inspection takes compliance to the owner
+        text = (patrol["summary"] + ((f" Compliance is taking {', '.join(new)} to the owner." if to_owner else
+                                      f" Compliance has {', '.join(new)} in hand for the inspection.") if new else "")
                 + (f" Compliance already has {', '.join(known)} in hand from an earlier walk." if known else ""))
-        ack = ("Thanks. I'll take the decision when Compliance calls." if new else "Thanks. Compliance already has it in hand." if known else
-               "Thanks. Nothing for the owner from this walk.")
+        ack = (("Thanks. I'll take the decision when Compliance calls." if to_owner else "Thanks. Compliance has it in hand.") if new else
+               "Thanks. Compliance already has it in hand." if known else "Thanks. Nothing for the owner from this walk.")
         try:
             conversation = self.service.conversations.message(walker, recipient, f"Walkthrough of {patrol['place']}", text, site_ids=[site],
                                                               data=dict(patrolId=patrol["id"]), synthetic=True)
@@ -446,22 +498,63 @@ class PatrolService:
     def label(self, patrol: dict, index: int, tag: str, frame_id: str | None, frame_url: str | None, note: str | None) -> dict:
         site = patrol["siteId"]
         component = self.service.reality.component_by_tag(site, tag)
-        assessment = self.assess(site, component)
-        reasons = list(assessment["reasons"])
+        obligations, issues, readings = self.service.people.obligations(site), self.open_issues(site), self.readings(site)
+        assessment = self.assess(site, component, obligations, issues, readings)
+        judged = self.judgement(site, patrol, index, component, assessment, frame_id, obligations, issues, readings)
+        reasons = list(judged["reasons"])
         if not frame_id:
             reasons.append(f"No eye frame: {note or 'the eye did not answer'}")
-        bad = assessment["verdict"] == "bad"
+        bad = judged["verdict"] == "bad"
         point = pin_point(component)
-        label = dict(id=uid("lbl"), patrolId=patrol["id"], siteId=site, assetTag=tag, assetName=component.get("name"), verdict=assessment["verdict"],
-                     color="blue" if bad else "green", title="Looks bad" if bad else "Looks good", reasons=reasons, compliance=assessment["compliance"],
+        mark = self.mark(site, patrol["agentId"], judged["mark"]) if frame_id and judged.get("mark") else None
+        if mark and mark.get("hit") and mark.get("world"):
+            world = mark["world"]  # the point the renderer picked under the mark
+        else:
+            world = dict(x=point[0], y=point[1], z=point[2]) if point else None
+        label = dict(id=uid("lbl"), patrolId=patrol["id"], siteId=site, assetTag=tag, assetName=component.get("name"), verdict=judged["verdict"],
+                     color="blue" if bad else "green", title="Looks bad" if bad else "Looks good", headline=judged["headline"], reasons=reasons,
+                     observation=judged["observation"], mark=mark, confidence=judged["confidence"], assessedBy=judged["assessedBy"],
+                     model=judged["model"], cached=judged["cached"], claudeAt=judged["claudeAt"], factVerdict=judged["factVerdict"],
+                     claudeVerdict=judged["claudeVerdict"], override=judged["override"], fallbackReason=judged["fallbackReason"],
+                     stateKey=judged["stateKey"], compliance=assessment["compliance"],
                      regulationIds=assessment["regulationIds"], obligationId=assessment["obligationId"], obligationIds=assessment["obligationIds"],
                      issueId=assessment["issueId"], frameId=frame_id, frameUrl=frame_url if frame_id else None,
-                     world=dict(x=point[0], y=point[1], z=point[2]) if point else None, agentId=patrol["agentId"], agentName=patrol["agentName"],
+                     world=world, agentId=patrol["agentId"], agentName=patrol["agentName"],
                      stop=index + 1, at=now(), synthetic=True)
         self.store.put("patrol_label", label, site)
         self.service.telemetry.record(patrol["agentId"], "tool", "label_asset", tokens=40, site_id=site, synthetic=True,
                                       detail=(f"{tag}: {label['title']}" + (f": {reasons[0]}" if reasons else ""))[:200])
         return label
+
+    def judgement(self, site: str, patrol: dict, index: int, component: dict, assessment: dict, frame_id: str | None,
+                  obligations: list[dict], issues: list[dict], readings: list[dict]) -> dict:
+        """Claude's decision for the stop (walks.WalkJudge), or the rules' when the judge is missing or fails: the walk always labels."""
+        walks = getattr(self.service, "walks", None)
+        if walks is None:
+            return rules_decision(component["tag"], assessment, None, "no judge")
+        try:
+            return walks.judge.judge(site, patrol, index, component, assessment, frame_id, obligations, issues, readings)
+        except Exception as error:
+            return rules_decision(component["tag"], assessment, None, f"the assessment failed ({type(error).__name__})")
+
+    def mark(self, site_id: str, walker: str, point: dict) -> dict:
+        """The eye's mark at a point of the frame: the renderer picks the world point under it (`hit` when the pick met the scan)."""
+        out = dict(x=point["x"], y=point["y"], note=point.get("note") or "", source=point.get("source"), world=None, hit=False, frameId=None)
+        try:
+            timeout = float(env("STEWARD_PATROL_EYE_TIMEOUT", "20") or 20)
+        except ValueError:
+            timeout = 20.0
+        try:
+            result = self.service.eye.act_sync(site_id, "mark", dict(x=point["x"], y=point["y"], note=out["note"][:300]), walker, timeout=timeout)
+        except RealityError as error:
+            out["error"] = error.detail[:160]
+            return out
+        except Exception as error:  # a mark never stops the walk
+            out["error"] = type(error).__name__
+            return out
+        world = (result or {}).get("world")
+        out.update(world=world if isinstance(world, dict) else None, hit=bool((result or {}).get("hit")), frameId=(result or {}).get("frameId"))
+        return out
 
     def assess(self, site_id: str, component: dict, obligations: list[dict] | None = None, issues: list[dict] | None = None,
                readings: list[dict] | None = None) -> dict:

@@ -1,7 +1,7 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { PIPE_R, PIPE_Y, VOLUTE_R, VOLUTE_Y, WORLD_CY, WORLD_H, WORLD_W, X, type V2 } from "./story";
 import { GAS_TUBES, TANK } from "./hero-sketch";
@@ -20,6 +20,7 @@ const fragmentShader = /* glsl */ `
   precision highp sampler3D;
   uniform sampler3D uNoise;
   uniform float uTime;
+  uniform float uInk;
   varying vec2 vWorld;
   out vec4 gasColor;
 
@@ -105,6 +106,9 @@ const fragmentShader = /* glsl */ `
     float volumeAlpha = 1.0 - transmittance;
     float alpha = volumeAlpha + plume * (1.0 - volumeAlpha);
     float luminance = (light + plume * 0.82 * (1.0 - volumeAlpha)) / max(alpha, 0.001);
+    // The gas fills behind the pen and recedes with the eraser; its volume and advection stay unchanged.
+    float pen = mix(${(-WORLD_W / 2 - 0.3).toFixed(4)}, ${(WORLD_W / 2 + 0.3).toFixed(4)}, uInk);
+    alpha *= (1.0 - smoothstep(pen - 0.15, pen + 0.15, p.x)) * smoothstep(0.0, 0.03, uInk);
     gasColor = vec4(vec3(luminance), alpha);
   }
 `;
@@ -144,20 +148,23 @@ function makeNoise() {
   return texture;
 }
 
-export default function HeroGas({ still }: { still?: boolean }) {
+export default function HeroGas({ still, reveal }: { still?: boolean; reveal?: MutableRefObject<number> }) {
   const noise = useMemo(makeNoise, []);
   const material = useMemo(() => new THREE.ShaderMaterial({
     name: "Steward gas volume",
     glslVersion: THREE.GLSL3,
     vertexShader,
     fragmentShader,
-    uniforms: { uNoise: { value: noise }, uTime: { value: 6 } },
+    uniforms: { uNoise: { value: noise }, uTime: { value: 6 }, uInk: { value: 0 } },
     transparent: true,
     depthWrite: false,
     depthTest: false,
     toneMapped: false,
   }), [noise]);
-  useFrame(({ clock }) => { material.uniforms.uTime.value = still ? 6 : clock.elapsedTime; });
+  useFrame(({ clock }) => {
+    material.uniforms.uTime.value = still ? 6 : clock.elapsedTime;
+    material.uniforms.uInk.value = still ? 1 : reveal?.current ?? 1;
+  });
   useEffect(() => () => { noise.dispose(); material.dispose(); }, [noise, material]);
   return <mesh position={[0, WORLD_CY, -0.05]} renderOrder={-1} material={material}>
     <planeGeometry args={[WORLD_W, WORLD_H]} />

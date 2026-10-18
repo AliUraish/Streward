@@ -360,7 +360,7 @@ def test_metrics_overview_and_three_site_summaries(client):
     assert summary["totals"]["employeesCheckedIn"] == sum(s["employeesCheckedIn"] for s in sites.values())
     assert summary["average"]["avgPressureBar"] == round((sites[MY]["avgPressureBar"] + sites[BR]["avgPressureBar"]) / 2, 2)
     overview = client.get("/api/overview").json()
-    assert [s["id"] for s in overview["sites"]] == [MY, BR, TM] and len(overview["agents"]) == 14
+    assert [s["id"] for s in overview["sites"]] == [MY, BR, TM] and len(overview["agents"]) == 17
     assert len(json.dumps(overview, separators=(",", ":"))) <= 2400
     assert {"ok", "due_soon", "overdue", "blocked"} == set(overview["sites"][2]["compliance"])
 

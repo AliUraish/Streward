@@ -420,15 +420,21 @@ class PeopleService:
         crew_record = self.store.get("crew_member", crew_member_id, site_id) if crew_member_id else None
         crew = self.crew_public(crew_record) if crew_record else (self.who_is_responsible(site_id, issue_kind)["owner"] if issue_kind else None)
         mode, reason, provider_ref, channel = "not_contactable", "no owner on the crew table", None, None
+        notice_id, outbox_id = uid("ntc"), None
         if crew and crew["contactable"]:
             channel = "sms" if crew["phone"] else "email"
             phone = user_phone()
             gates = [external_messages_allowed(), flag("STEWARD_ALLOW_NOTICE_SMS"), channel == "sms",
                      bool(phone) and phone.casefold() in allowed_recipients()]
             if all(gates):
+                # Contract 8 §7: the text goes through the outbox (one text every 2 minutes, daily cap), which writes the result back.
                 try:
-                    result = self.reality.comms.send_sms(site_id, phone, text[:1500])
-                    mode, reason, provider_ref = "sent", "sent by Runner's number", result.get("id")
+                    item = self.service.outbox.sms(sender=technician_id(site_id), to_role="contractor", text=text[:1500], site_id=site_id,
+                                                   purpose="notice", gate="external", dedupe_key=f"notice:{notice_id}",
+                                                   refs=dict(noticeId=notice_id, issueId=issue_id, record=dict(kind="notice", id=notice_id, propertyId=site_id)))
+                    outbox_id, provider_ref = item.get("id"), item.get("providerRef")
+                    mode = {"sent": "sent", "queued": "queued", "sending": "queued", "failed": "failed"}.get(item.get("status"), "dry_run")
+                    reason = "sent by the dispatch line" if mode == "sent" else ("queued in the outbox" if mode == "queued" else item.get("reason"))
                 except Exception as error:
                     mode, reason = "failed", f"provider request failed ({type(error).__name__})"
             else:
@@ -437,7 +443,8 @@ class PeopleService:
         elif crew:
             reason = "synthetic crew member with no contact details; recorded, never contacted"
         via = technician_id(site_id)
-        notice = dict(id=uid("ntc"), siteId=site_id, noticeKind=notice_kind, sender=sender, via=via, line="dispatch" if channel == "sms" else None,
+        notice = dict(id=notice_id, siteId=site_id, noticeKind=notice_kind, sender=sender, via=via, line="dispatch" if channel == "sms" else None,
+                      outboxId=outbox_id,
                       toCrewId=(crew or {}).get("id"),
                       toName=(crew or {}).get("name"), toRole=(crew or {}).get("role"), channel=channel, text=text[:1500], mode=mode, reason=reason,
                       providerRef=provider_ref, obligationId=obligation_id, issueId=issue_id, issueKind=issue_kind, acknowledgedAt=None,
@@ -469,19 +476,28 @@ class PeopleService:
         owner = owner if PHONE_RE.match(owner) else ""
         gates = [external_messages_allowed(), flag("STEWARD_ALLOW_NOTICE_SMS"), bool(owner) and owner.casefold() in allowed_recipients()]
         mode, reason, provider_ref = "dry_run", "owner SMS is live only with STEWARD_ALLOW_EXTERNAL_MESSAGES, STEWARD_ALLOW_NOTICE_SMS and an allowlisted INKBOX_OWNER_PHONE", None
+        owner_note_id, owner_outbox_id = uid("ntf"), None
         if not owner:
             mode, reason = "not_contactable", "no valid INKBOX_OWNER_PHONE configured"
         elif all(gates):
+            # Contract 8 §7: the owner's text goes through the outbox (paced, capped), which writes the result into the notification.
             try:
-                provider_ref = self.reality.comms.send_sms(site, owner, f"Steward: {text}"[:1500]).get("id")
-                mode, reason = "sent", "sent through the dispatch line"
+                item = self.service.outbox.sms(sender=sender if sender not in (OPERATOR, OWNER) else DIRECTOR, to_role="owner", text=f"Steward: {text}"[:1500],
+                                               site_id=site, purpose="decision_request",
+                                               gate="external", dedupe_key=f"decision:{record_id}",
+                                               refs=dict(decisionRequestId=record_id, issueId=issue["id"],
+                                                         record=dict(kind="notification", id=owner_note_id, propertyId=site)))
+                provider_ref, owner_outbox_id = item.get("providerRef"), item.get("id")
+                mode = {"sent": "sent", "queued": "queued", "sending": "queued", "failed": "failed"}.get(item.get("status"), "dry_run")
+                reason = "sent through the dispatch line" if mode == "sent" else ("queued in the outbox" if mode == "queued" else item.get("reason"))
             except Exception as error:
                 mode, reason = "failed", f"provider request failed ({type(error).__name__})"
         notifications = []
         for to_kind, to, to_name, channel, note_mode, extra in (
                 ("agent", manager, display_name(manager), "a2a", "sent", dict(a2aTaskId=conversation["a2aTaskIds"][0], transport=conversation["transport"])),
-                ("owner", "owner", "the owner", "sms", mode, dict(providerRef=provider_ref, reason=reason, toMasked=mask_phone(owner)))):
-            note = dict(id=uid("ntf"), siteId=site, workflowId=None, issueId=issue["id"], sender=sender, toKind=to_kind, to=to, toName=to_name, channel=channel,
+                ("owner", "owner", "the owner", "sms", mode, dict(providerRef=provider_ref, reason=reason, toMasked=mask_phone(owner), outboxId=owner_outbox_id))):
+            note = dict(id=owner_note_id if to_kind == "owner" else uid("ntf"), siteId=site, workflowId=None, issueId=issue["id"], sender=sender,
+                        toKind=to_kind, to=to, toName=to_name, channel=channel,
                         text=text, mode=note_mode, decisionRequestId=record_id, synthetic=False, at=now(), **extra)
             self.store.put("notification", note, site)
             self.reality.mirror.put("notification", note, site)

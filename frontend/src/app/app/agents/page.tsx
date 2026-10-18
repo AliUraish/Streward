@@ -1,5 +1,4 @@
-import type { Metadata } from "next";
-import AgentMapPage from "@/components/dash3/agent-map";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Agents map" };
-export default function Page() { return <AgentMapPage />; }
+/* The agent map is part of the overview's agent mode. */
+export default function Page() { redirect("/app?mode=agent"); }

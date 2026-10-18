@@ -560,3 +560,17 @@ streamed scan in the viewer), `dash5-agents-1440.jpg`, `dash6-tools-myer-1440.jp
 `dash6-tool-detail-1440.jpg`; `dash6-tool-detail-fixture-1440.jpg` is the detail rendered with `/api/tools` answered by a
 contract-shaped fixture through CDP request interception (QA only, labelled FIXTURE in its text), to exercise the recipe,
 test, approval, usage and published controls before the backend ships them.
+
+## Homepage hero, October 18: the plant becomes the agent's working world
+
+The existing “The product performs” direction continues in the top animation only. The factory appears with the approved gas, wipes away, and reveals a task contract, three agents exchanging work, MCP calls, and the returned proof. The loop rotates between pump, sensor, and valve tasks. There are no playback or chapter controls. The wipe uses clip-path because the user specifically requested an erasing transition; reduced motion and no-WebGL rendering show the completed agent illustration without travel.
+
+The simulation is labelled “Illustrated workflow”; the homepage does not execute these illustrated calls. Agent SVG markers use unique IDs, and the invisible factory stops drawing its geometry after the wipe. The gas shader is unchanged (SHA-256 0169baa78690a190a58582c7486675ae1ccff6d44d410bd2ee30fe2e01cd2b9f).
+
+Validation: production build and TypeScript pass; site taste lint reports 0 FAIL, 0 WARN. Browser inspection at 1280, 1440, 768 and 390 verifies the continuous loop, rotating topics, absent controls, fitting panels and no horizontal overflow. Mobile presents the contract, agent conversation and calls in successive phases. Screenshots: qa/agent-workflow-final.png, qa/agent-workflow-1440.png, qa/agent-workflow-tablet.png, qa/agent-workflow-mobile.png. This is visual and interaction verification; the existing API proxy on port 8001 was unavailable during the preview, so no backend execution is asserted. The existing llms.txt build trace warning remains.
+
+### Hero refinement: pen strokes and gas, October 18
+
+Removed the visible topic caption and “Illustrated workflow” text from the animation. The existing equipment now draws by cumulative stroke length: completed vertices remain intact, one moving line tip finishes each stroke, and the same path retracts in reverse on exit. A shared reveal value fills and clears the gas from left to right and back; the volume density, noise, advection and lighting are unchanged. The opening lasts 4.8 seconds so the sketch has time to form and hold before the 1.35-second erasure into the agent simulation. Playback remains automatic with no controls. Reduced motion keeps the completed agent view.
+
+Validation: geometry checks cover empty, partially drawn, complete, reverse and replay states; production build and TypeScript pass; taste lint is 0 FAIL, 0 WARN. Desktop and 390px browser checks show the complete gas, transition and agent phases, absent captions and controls, no overflow, and no WebGL/THREE/shader errors. Screenshots: qa/pump-sketch-latest.png and qa/pump-sketch-mobile.png. The previous gas checksum describes the pre-refinement shader; this revision adds its visibility mask without changing the volumetric rendering underneath.

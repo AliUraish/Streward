@@ -14,7 +14,8 @@ Booking (at most one new window per site per 10 minutes, the most overdue first)
   the last working day at least two days before its due date. The start time comes from the kind of work
   (pressure-system examinations 09:00, fire-safety checks 10:00, visitor routes 08:00 before opening, ...).
 - First it looks for another site's open window of the same kind (same contractor type or regulation family) within
-  ±7 days. When there is one, the two Managers hold a cross-site A2A call (`ConversationService.call`) and line the visits
+  ±7 days. When there is one, the two Managers hold a cross-site A2A chat (contract 8 §4: `ChatWriter.run`, 8 to 12 turns
+  written by Claude from each Manager's window, `source="planner"`, the template turns as the fallback) and line the visits
   up: the same examining body where the group shares one, the other site's checklist or method statement, and which visit
   goes first. The new window is linked to the other one (`linkedWindowIds`, `coordination`, `conversationId`) and the
   other window gets the back link.
@@ -24,10 +25,16 @@ Booking (at most one new window per site per 10 minutes, the most overdue first)
 - The Manager tells the team over A2A (`ConversationService.message` to the Compliance Officer, the Engineer and the
   Field Technician; each answers).
 - A planner window is marked `done` once its obligation is closed (the obligation's `lastDoneAt` passes the booking).
+- Maintenance a site event asks for (events.py proposes it as the site Manager, with `requestedBy`, in the next working-hours slot
+  for its kind of work) is picked up on the next pass: the Manager approves it (one per site per pass) and tells the Engineer and
+  the Field Technician over A2A; once its slot has passed it is marked `done`.
 
-Text comes from templates (no model calls) and every record is labelled synthetic internally. While a live path is on
-(Inkbox A2A, live Supermemory) the planner pauses, like the scenario autoplayer, unless `STEWARD_SCENARIO_AUTOPLAY_LIVE`
-or `STEWARD_MAINTENANCE_PLANNER_LIVE` is true; `STEWARD_MAINTENANCE_PLANNER=false` turns the background loop off.
+Text comes from templates, except the cross-site chat (Claude, capped by the chat writer: at most 4 planner chats an hour and
+half the day's chat budget), and every record is labelled synthetic internally. While a live path is on
+(live Supermemory) the planner pauses, like the scenario autoplayer, unless `STEWARD_SCENARIO_AUTOPLAY_LIVE` or
+`STEWARD_MAINTENANCE_PLANNER_LIVE` is true; `STEWARD_MAINTENANCE_PLANNER=false` turns the background loop off. Inkbox A2A
+is not a live path: the planner's calls and messages run between Steward's own identities and never reach a person (the
+A2A bus caps them per hour), and owner alerts have their own capped owner channel.
 The propose/approve API in `maintenance.py` is unchanged.
 """
 from __future__ import annotations
@@ -323,6 +330,7 @@ class MaintenancePlanner:
         self.state = "off"
         self.reason: str | None = "The planner starts with the backend's workers."
         self.last_tick_at: str | None = None
+        self.last_picked: list[dict] = []
 
     # ---- lifecycle -------------------------------------------------------------------------------------------
 
@@ -356,13 +364,9 @@ class MaintenancePlanner:
                 return
 
     def live_switches(self) -> list[str]:
-        """External paths the planner's calls and messages would take now: Inkbox A2A and live Supermemory memories."""
+        """External paths the planner's work would take now: live Supermemory memories. (Inkbox A2A only connects Steward's own
+        identities, so it is not one.)"""
         on = []
-        try:
-            if self.service.bus.inkbox_available():
-                on.append("Inkbox A2A transport")
-        except Exception:
-            pass
         client = getattr(getattr(self.service, "memory", None), "client", None)
         try:
             if client is not None and client.live:
@@ -448,6 +452,7 @@ class MaintenancePlanner:
                                                      "the machine on their own. Set STEWARD_MAINTENANCE_PLANNER_LIVE=true to allow it.")
                 return []
             self.sync_windows()
+            self.last_picked = self.pick_up_requests(moment)  # maintenance requested by site events (events.py)
             booked = []
             for prop in self.store.all("property"):
                 site = prop["id"]
@@ -620,6 +625,64 @@ class MaintenancePlanner:
         stored["history"] = (stored.get("history") or [])[-19:] + [dict(at=now(), severity=stored["severity"], summary=text[:300], by=window["proposedBy"])]
         self.service.issues._save(stored, f"Issue {stored['kind']} on {stored.get('assetTag') or 'the site'}: {text}"[:480], window["proposedBy"])
 
+    def pick_up_requests(self, moment: datetime | None = None) -> list[dict]:
+        """Maintenance a site event asked for (events.py): a window the site's Manager proposed with `requestedBy`, in the planner's
+        next working-hours slot for that kind of work. Each pass the Manager approves one such request per site and tells the
+        Engineer and the Field Technician over A2A; a picked-up request whose slot has passed is marked done."""
+        moment = moment or utcnow()
+        picked, sites = [], set()
+        for window in self.store.all("maintenance_window", ""):
+            if not window.get("requestedBy") or not window.get("siteIds"):
+                continue
+            site = window["siteIds"][0]
+            tag = (window.get("assetTags") or [None])[0]
+            if window.get("status") == "approved" and window.get("pickedUpAt"):
+                end = parse_time(window.get("endAt"))
+                if end and end <= moment:
+                    window.update(status="done", doneAt=now(), closedReason="The booked visit's slot has passed.")
+                    self.service.maintenance._put(window)
+                    self.service.reality.emit_change(site, "maintenance", window["id"], f"Maintenance {window['id']} done: {window['scope'][:200]}.", tag,
+                                                     extra=dict(maintenanceId=window["id"], status="done", crossSite=False, origin="request"))
+                continue
+            if window.get("status") != "proposed" or window.get("pickedUpAt") or site in sites or site not in SITE_TZ:
+                continue
+            sites.add(site)
+            try:
+                picked.append(self._pick_up(site, tag, window))
+            except Exception as error:  # one request's failure never stops the pass (or the obligation booking after it)
+                self.store.event(site, manager_id(site), "maintenance.planner_failed", "Maintenance planner could not pick up a request",
+                                 f"{window['id']}: {type(error).__name__}: {str(error)[:200]}")
+        return picked
+
+    def _pick_up(self, site: str, tag: str | None, window: dict) -> dict:
+        manager = manager_id(site)
+        self.service.maintenance.approve(window["id"], manager)
+        window = self.service.maintenance.get(window["id"])
+        label = WORK_KINDS.get(window.get("workKind") or "general", WORK_KINDS["general"])["label"]
+        what, start = tag or "the site", window.get("localStart") or window["date"]
+        when = f"{start} {city(site)} time"
+        contractor = clean(window.get("examiner")) or "the contractor"
+        messages = [
+            (engineer_id(site), f"Booked for {when} with {contractor}: {clean(window['scope']).rstrip('.')}. Please have {what} ready and walk it with them.",
+             f"Noted. I'll have {what} ready for {start}."),
+            (technician_id(site), f"Please confirm the {label} for {what} on {when} with {contractor} the day before.",
+             "Noted. I'll confirm the day before."),
+        ]
+        ids = []
+        conversations = self.service.conversations
+        for teammate, text, answer in messages:
+            conversation = conversations.message(manager, teammate, clean(f"Maintenance booked: {what} {label}, {start}"), clean(text), site_ids=[site],
+                                                 issue_id=window.get("issueId"), data=dict(maintenanceWindowId=window["id"]), synthetic=True)
+            conversation["maintenanceWindowId"] = window["id"]
+            conversations._save(conversation)
+            conversations.answer(conversation["id"], teammate, clean(answer))
+            ids.append(conversation["id"])
+        window.update(pickedUpAt=now(), pickedUpBy=manager, teamConversationIds=ids)
+        self.service.maintenance._put(window)
+        self.service.ops.note(manager, f"Booked the {label} for {what}: {start}", why=clean(window.get("requestReason") or window["scope"])[:120])
+        self._log(window)
+        return window
+
     def _log(self, window: dict) -> None:
         with self.store.lock:
             log = json.loads(self.store.meta(LOG_META) or "[]")
@@ -676,9 +739,26 @@ class MaintenancePlanner:
                        actions=[dict(owner=display_name(compliance_id(other_site)), task=f"Send {spec['share']} to {display_name(compliance_id(site))}",
                                      due=day_label(ours)),
                                 dict(owner=display_name(caller), task=f"Tell the {short(site)} team about the booking", due="today")])
-        conversation = self.service.conversations.call(caller, callee, clean(topic), [dict(t, text=clean(t["text"])) for t in turns],
-                                                       site_ids=[site, other_site], issue_id=(issue or {}).get("id"),
-                                                       issue_kind=(issue or {}).get("kind"), summary=clean_tree(summary), summary_by="hand-seed")
+        # Contract 8 §4: the two Managers talk it through in a long chat written by Claude, each from its own window; the template turns
+        # above are the fallback (no Claude, a cap, or the planner's hourly limit), so the plan below is what the chat lands on either way.
+        shared = clean(f"Kind of work: {spec['label']}. {short(site)}: {describe(obligation)}, {due_text}; proposed for {our_when} with {contractor}. "
+                       f"{short(other_site)}: {their_work} on {their_when} with {their_contractor}. They work from {spec['share']}. "
+                       f"The plan on the table: {plan}")
+        briefs = {
+            caller: clean(f"You are booking {describe(obligation)} ({due_text}) for {our_when} with {contractor}, {relation}. You want the two "
+                          f"visits lined up: confirm your slot, which visit goes first, and that {short(other_site)}'s Compliance Officer sends "
+                          f"{spec['share']} to {display_name(compliance_id(site))}. Then you link the two windows and tell your team."),
+            callee: clean(f"Your site has the {spec['label']} on {their_when}: {their_work}, with {their_contractor}. You can share "
+                          f"{spec['share']}; your Compliance Officer, {display_name(compliance_id(other_site))}, sends it. Agree the order of the "
+                          f"visits, and that both reports go to the Operations Director together."),
+        }
+        goal = clean(f"Line up the two {spec['label']}s: agree {short(site)}'s booking for {our_when} with {contractor}, which visit goes first, "
+                     f"and that {spec['share']} goes from {short(other_site)} to {short(site)}, so both windows can be linked.")
+        conversation = self.service.chats.run(convener=caller, participants=[caller, callee], topic=clean(topic), site_ids=[site, other_site],
+                                              briefs=briefs, shared=shared, goal=goal, min_turns=8, max_turns=12,
+                                              refs=dict(maintenanceWindowId=window["id"]), issue_id=(issue or {}).get("id"),
+                                              issue_kind=(issue or {}).get("kind"), fallback=[dict(t, text=clean(t["text"])) for t in turns],
+                                              fallback_summary=clean_tree(summary), realtime=self.service.start_workers, source="planner")
         conversation["maintenanceWindowId"] = window["id"]
         self.service.conversations._save(conversation)
         coordination = dict(mode="linked", siteId=other_site, windowId=other["id"], conversationId=conversation["id"], relation=relation,

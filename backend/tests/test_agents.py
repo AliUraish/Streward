@@ -180,8 +180,9 @@ TEAM = ["myer-manager", "myer-engineer", "myer-compliance", "myer-technician", "
 
 def test_agent_registry_and_authority_table(client):
     agents = client.get("/api/agents").json()
-    assert [a["id"] for a in agents] == ["operator", "director", *TEAM, "dispatch"]
-    assert [a["level"] for a in agents] == [1, 2, 3, 4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 5, 5]
+    # Contract 8 added the three cross-site agents after the site teams.
+    assert [a["id"] for a in agents] == ["operator", "director", *TEAM, "site-inspector", "people-officer", "compliance-counsel", "dispatch"]
+    assert [a["level"] for a in agents] == [1, 2, 3, 4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 5, 3, 3, 3, 5]
     names = {a["id"]: a["name"] for a in agents}
     assert names["operator"] == "Owner's agent" and names["director"] == "Operations Director" and names["myer-manager"] == "Plant Manager · Myer"
     assert names["bristol-compliance"] == "Compliance Officer · Bristol" and names["myer-technician"] == "Field Technician · Myer"

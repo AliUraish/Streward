@@ -60,7 +60,7 @@ test('harness gate: hidden by default, with the flag but no header, and when hos
     for (const [label, url, headers, modern] of hidden) {
       const client = await connect(url, headers, modern); clients.push(client);
       const tools = (await client.listTools()).tools;
-      assert.equal(tools.length, 71, `${label}: 73 tools less the two scenario tools`);
+      assert.equal(tools.length, 73, `${label}: 75 tools less the two scenario tools`);
       for (const name of HARNESS_TOOLS) assert(!tools.some(tool => tool.name === name), `${label}: ${name} is not listed`);
       const before = scenarioRequests(upstream.state.paths);
       for (const [name, args] of [['list_scenarios', {}], ['start_scenario', { scenarioId: 'br-sump' }]] as const) {
@@ -93,13 +93,13 @@ test('harness gate: hidden by default, with the flag but no header, and when hos
       assert(text.length > 100 && !MACHINERY.test(text), `prompt ${name}: ${text.match(MACHINERY)?.[0]}`);
     }
 
-    // The eval harness: the flag and the header. Every client era sees 73 tools and can list and start a scenario.
+    // The eval harness: the flag and the header. Every client era sees 75 tools and can list and start a scenario.
     const harness = await connect(flaggedUrl!, HARNESS); clients.push(harness);
     const tools = (await harness.listTools()).tools;
-    assert.equal(tools.length, 73);
+    assert.equal(tools.length, 75);
     for (const name of HARNESS_TOOLS) assert.match(tools.find(tool => tool.name === name)?.description ?? '', /^Eval harness only\./, name);
     const modernHarness = await connect(flaggedUrl!, HARNESS, true); clients.push(modernHarness);
-    assert.equal((await modernHarness.listTools()).tools.length, 73);
+    assert.equal((await modernHarness.listTools()).tools.length, 75);
     assert.equal(data(await modernHarness.callTool({ name: 'list_scenarios', arguments: {} }) as CallToolResult).scenarios.length, 10);
     const viaMcpUse = await mcpUse.connect('steward');
     assert.deepEqual((await viaMcpUse.listTools()).map(tool => tool.name).sort(), tools.map(tool => tool.name).sort());

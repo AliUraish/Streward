@@ -1,0 +1,78 @@
+/* /app/notifications, laid on the shared list styles of dash3.css (rows3, r1 to r3, tg, fld, lnk, mode3): tone steps,
+   square corners, no hairlines; white marks what reached you, var(--issue) what failed. Agent mode sets the feed in the
+   mono face, as the agent view's stream is: it is the text an agent reads. */
+
+/* The page's own Human · Agent switch: the shell's track and knob (mode3), at the home page's width. */
+.mode.mode { flex: none; width: 176px; margin-top: 0; }
+.modeHold { display: block; flex: none; width: 176px; height: 40px; background: var(--s3); }
+
+.bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 8px; }
+.sites { flex-wrap: wrap; }
+.kind { width: min(260px, 100%); }
+.status { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
+.status:empty { display: none; }
+.status p { margin: 0; }
+
+.list > li { gap: 6px; min-width: 0; }
+.title, .text { overflow-wrap: anywhere; }
+.metaLine { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.delivery { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.via { font-size: var(--f-s); color: var(--muted); }
+.chip { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 8px; font-size: var(--f-s); font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.sent { color: #000000; background: #ffffff; }
+.held { color: var(--ink-2); background: var(--s4); }
+.fail { color: var(--issue); background: var(--s4); }
+
+.files { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.files > li { min-width: 0; max-width: 100%; }
+.file { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; min-height: 30px; max-width: 100%; padding: 4px 10px; font-size: var(--f-s); color: var(--ink); background: var(--s3); transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+a.file:hover { background: var(--s4); }
+a.file:active { transform: scale(.98); }
+.ftype { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.fname { min-width: 0; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--s5); text-underline-offset: 3px; transition: text-decoration-color var(--t-hover) ease; }
+a.file:hover .fname { text-decoration-color: var(--ink); }
+.fsize { color: var(--muted); white-space: nowrap; }
+.nolink .fname { color: var(--ink-2); text-decoration: none; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.more { display: flex; justify-content: center; margin-top: 12px; }
+.solo { margin-bottom: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .list > li.fresh { animation: arrive 1800ms var(--ease-out) both; }
+}
+@keyframes arrive { from { background-color: var(--s4); } to { background-color: var(--s2); } }
+
+/* ---- Agent mode ----------------------------------------------------------------------------------------------- */
+.kv { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.kv > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
+.kv dt { font-size: var(--f-s); color: var(--muted); }
+.kv dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; margin: 0; }
+.tool { padding: 2px 6px; font-family: var(--font-mono); /* taste-skill-ignore: MCP tool names are identifiers */ font-size: 14px; color: #ffffff; background: var(--s3); overflow-wrap: anywhere; }
+.url { min-width: 0; font-family: var(--font-mono); /* taste-skill-ignore: the URL an agent fetches */ font-size: 13px; overflow-wrap: anywhere; }
+.blocks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+.block { display: flex; flex-direction: column; min-width: 0; }
+.headTools { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pre { margin: 0; padding: 14px 16px; max-height: min(72vh, 760px); overflow: auto; background: var(--s2); font-family: var(--font-mono); /* taste-skill-ignore: the feed exactly as an agent reads it */ font-size: 13px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.pre:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }
+.jl { display: block; padding-left: 2ch; text-indent: -2ch; }
+.jl + .jl { margin-top: 8px; }
+@media (min-width: 1280px) { .blocks { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); } }
+@media (max-width: 760px) {
+  .kv > div { grid-template-columns: minmax(0, 1fr); }
+  .pre { padding: 12px; font-size: 12px; }
+}
+
+/* ---- The sidebar's count of what arrived since the last visit -------------------------------------------------- */
+.badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; margin-left: 8px; padding: 0 6px; font-size: 12px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; color: #000000; background: #ffffff; vertical-align: 1px; }
+:global(.nav3 a.on) .badge { color: #ffffff; background: #000000; }
+@media (prefers-reduced-motion: no-preference) { .badge { animation: badgeIn 320ms var(--ease-out) both; } }
+@keyframes badgeIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+
+/* ---- The page head: title and switch on one row in both modes; the sub-line and the actions under them ---------- */
+.head.head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title switch" "sub sub" "actions actions"; align-items: center; gap: 0 16px; }
+.hTitle { grid-area: title; min-width: 0; }
+.hSwitch { grid-area: switch; justify-self: end; display: flex; }
+.hSub { grid-area: sub; }
+.hActions.hActions { grid-area: actions; margin-top: 16px; }
+@media (max-width: 760px) {
+  .mode.mode, .modeHold { width: 150px; height: 36px; }
+}

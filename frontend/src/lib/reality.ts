@@ -11,7 +11,7 @@ export type Readiness = "loading" | "ready" | "not_ready" | "error";
 export interface Remote<T> { data: T | null; readiness: Readiness; error: string; reload: () => void; at: number }
 
 export function readinessOf(error: unknown): { readiness: Readiness; message: string } {
-  if (error instanceof ApiError && error.notReady) return { readiness: "not_ready", message: `${error.message}. The backend has not shipped this endpoint yet.` };
+  if (error instanceof ApiError && error.notReady) return { readiness: "not_ready", message: error.message };
   if (error instanceof Error) return { readiness: "error", message: error.message };
   return { readiness: "error", message: "Request failed" };
 }

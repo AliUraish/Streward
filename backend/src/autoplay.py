@@ -4,9 +4,14 @@ teams at work without anyone pressing Start.
 Before every start the autoplayer checks, in order:
 - It is on: `STEWARD_SCENARIO_AUTOPLAY` (default true when the backend runs its workers) and not paused from the dashboard
   (`POST /api/scenario-autoplay {enabled}`, remembered across restarts).
-- No live switch is on (real SMS, calls or email, Inkbox A2A, live Supermemory, a model provider). An auto-started run
-  would otherwise send real messages or spend money on its own, again and again. `STEWARD_SCENARIO_AUTOPLAY_LIVE=true`
-  overrides this on purpose.
+- No live switch is on: real SMS, calls or email to people (`STEWARD_ALLOW_EXTERNAL_MESSAGES`, `STEWARD_ALLOW_NOTICE_SMS`),
+  live Supermemory, or a model provider (`STEWARD_MODEL_PROVIDER` other than local). An
+  auto-started run would otherwise send real messages or spend money on its own, again and again.
+  `STEWARD_SCENARIO_AUTOPLAY_LIVE=true` overrides this on purpose. Not live switches: agent-to-agent messages over Inkbox
+  (`STEWARD_A2A_TRANSPORT=inkbox`) travel only between Steward's own identities, never reach a person and are capped per
+  hour by the A2A bus; owner alerts (`STEWARD_ALLOW_OWNER_ALERTS`) go through their own capped owner channel; agent email
+  (`STEWARD_ALLOW_AGENT_EMAIL`, contract 8) only lets the outbox mail Steward's own mailboxes (capped per hour), and the
+  document email that also reaches a person still needs `STEWARD_ALLOW_EXTERNAL_MESSAGES`.
 - The Supabase realtime budget is less than half spent today, so the demo keeps the rest.
 - Fewer than `STEWARD_SCENARIO_AUTOPLAY_MAX_PER_DAY` auto runs today (default 120).
 - No other scenario run or fix workflow is active, and nobody started a scenario by hand (a presenter, the evals,
@@ -16,12 +21,11 @@ Before every start the autoplayer checks, in order:
 
 Runs play at `STEWARD_SCENARIO_AUTOPLAY_SPEED` (default 10x, the contract-7 continuous pace) through the playlist
 `STEWARD_SCENARIO_AUTOPLAY_PLAYLIST` (default every scenario, sites interleaved), resuming where the rotation left off.
-Contract 7 §3: after every two scenarios the playlist walks a site (`patrol:<siteId>`, rotating myer-plant, bristol-pumps,
-tomioka-mill; a custom playlist may name `patrol:<siteId>` entries too): the site's Engineer walks the scan with the agent
-eye (`PatrolService.start(site, origin="autoplay")`), and the walkthrough counts as playing until it and the compliance
-alerts it started finish. Walkthroughs drive the eye, so they are in the playlist by default only when the backend runs
-its workers (`STEWARD_SCENARIO_AUTOPLAY_PATROLS` overrides). A running walkthrough started by hand also makes autoplay wait.
-Auto runs carry `origin: "autoplay"` and `startedBy: "autoplay"`; everything they write stays synthetic.
+The playlist holds scenarios only: each site's Engineer walks continuously on its own (`walks.py`), so the autoplayer no
+longer walks sites (contract 7 §3's `patrol:<siteId>` entries are gone; a custom playlist naming one ignores it). A
+walkthrough started by hand makes autoplay wait, and so does a compliance alert still in its steps; the continuous walks
+(origin autoplay) do not. Auto runs carry `origin: "autoplay"` and `startedBy: "autoplay"`; everything they write stays
+synthetic.
 """
 from __future__ import annotations
 
@@ -35,11 +39,7 @@ from .env import env
 TICK_SECONDS = 5
 PLAYLIST_ORDER = ("my-overpressure", "br-sump", "tm-humidity", "my-extinguisher", "br-vessel-cert", "tm-alteration-permit",
                   "x-maintenance", "ops-injection", "x-heritage", "ops-counsel-tokens")
-LIVE_FLAGS = ("STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_NOTICE_SMS", "STEWARD_ALLOW_AGENT_EMAIL", "STEWARD_SUPERMEMORY_LIVE",
-              "STEWARD_ALLOW_OWNER_ALERTS")
-PATROL_SITES = ("myer-plant", "bristol-pumps", "tomioka-mill")
-PATROL_EVERY = 2  # scenarios between walkthroughs
-PATROL_PREFIX = "patrol:"
+LIVE_FLAGS = ("STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_NOTICE_SMS", "STEWARD_SUPERMEMORY_LIVE")
 DEFAULT_SPEED = 10.0
 REALTIME_SHARE_LIMIT = 0.5
 
@@ -57,11 +57,9 @@ def _number(name: str, default: float, low: float, high: float) -> float:
 
 
 def live_switches() -> list[str]:
-    """The settings that make a scenario reach the real world or spend money, as they are now."""
+    """The settings that make a scenario reach a person or spend money, as they are now. The A2A transport is not one: over
+    Inkbox it only connects Steward's own identities (and the bus caps it per hour)."""
     on = [name for name in LIVE_FLAGS if _flag(name)]
-    transport = (env("STEWARD_A2A_TRANSPORT", "local") or "local").strip().lower()
-    if transport not in ("", "local"):
-        on.append(f"STEWARD_A2A_TRANSPORT={transport}")
     provider = (env("STEWARD_MODEL_PROVIDER", "local") or "local").strip().lower()
     if provider not in ("", "local"):
         on.append(f"STEWARD_MODEL_PROVIDER={provider}")
@@ -77,7 +75,6 @@ class ScenarioAutoplay:
         self.thread: threading.Thread | None = None
         self.booted = time.monotonic()
         self.current_run_id: str | None = None
-        self.current_patrol_id: str | None = None
         self.last_finished: float | None = None
         self.state = "off"
         self.reason: str | None = "Autoplay starts with the backend's workers."
@@ -115,33 +112,14 @@ class ScenarioAutoplay:
     def speed(self) -> float:
         return _number("STEWARD_SCENARIO_AUTOPLAY_SPEED", DEFAULT_SPEED, 1, 100000)
 
-    def patrols_enabled(self) -> bool:
-        return _flag("STEWARD_SCENARIO_AUTOPLAY_PATROLS", "true" if self.service.start_workers else "false")
-
-    def patrol_site(self, entry: str) -> str | None:
-        """The site of a `patrol:<siteId>` playlist entry, when that site exists."""
-        if not entry.startswith(PATROL_PREFIX):
-            return None
-        site = entry[len(PATROL_PREFIX):].strip()
-        return site if site and self.store.get("property", site) else None
-
     def playlist(self) -> list[str]:
+        """Scenarios only (the sites are walked continuously by walks.py; a custom `patrol:<siteId>` entry is ignored)."""
         known = list(self.service.scenarios.scripts)
         raw = (env("STEWARD_SCENARIO_AUTOPLAY_PLAYLIST", "") or "").strip()
         if raw:
-            return [s.strip() for s in raw.split(",") if s.strip() in known or self.patrol_site(s.strip())]
+            return [s.strip() for s in raw.split(",") if s.strip() in known]
         ordered = [s for s in PLAYLIST_ORDER if s in known]
-        scenarios = ordered + [s for s in known if s not in ordered]
-        sites = [s for s in PATROL_SITES if self.store.get("property", s)]
-        if not self.patrols_enabled() or not sites:
-            return scenarios
-        out, walks = [], 0
-        for count, scenario in enumerate(scenarios, 1):
-            out.append(scenario)
-            if count % PATROL_EVERY == 0:
-                out.append(PATROL_PREFIX + sites[walks % len(sites)])
-                walks += 1
-        return out
+        return ordered + [s for s in known if s not in ordered]
 
     @staticmethod
     def _today() -> str:
@@ -169,7 +147,7 @@ class ScenarioAutoplay:
             if workflow.get("state") == "running":
                 return f"a fix workflow for {workflow.get('assetTag') or workflow.get('issueId')} is running"
         patrols = getattr(self.service, "patrols", None)
-        return patrols.busy() if patrols is not None else None
+        return patrols.busy(manual_only=True) if patrols is not None else None  # the continuous walks run beside the rotation
 
     def blocked(self) -> tuple[str, str] | None:
         if not self.enabled():
@@ -220,15 +198,7 @@ class ScenarioAutoplay:
                 return
 
     def _current(self) -> dict | None:
-        """The auto run still playing (or whose fix workflow still plays), or the auto walkthrough still walking (or whose
-        compliance alerts still play); None once it is done."""
-        if self.current_patrol_id:
-            patrol = self.store.get("patrol", self.current_patrol_id)
-            if patrol and self.service.patrols.active(patrol):
-                return dict(patrol, title=f"the walkthrough of {patrol['place']}")
-            self.current_patrol_id = None
-            self.last_finished = time.monotonic()
-            return None
+        """The auto run still playing (or whose fix workflow still plays); None once it is done."""
         if not self.current_run_id:
             return None
         run = self.store.get("scenario_run", self.current_run_id, "")
@@ -245,20 +215,12 @@ class ScenarioAutoplay:
         self.last_finished = time.monotonic()
         return None
 
-    @staticmethod
-    def _playing(current: dict) -> str:
-        if "route" not in current:  # a scenario run
-            return f"Playing {current['title']}."
-        if current.get("state") == "running":
-            return f"{current.get('line') or 'Walking ' + current['title']}."
-        return f"Compliance alerts from {current['title']} are playing."
-
     def tick(self) -> dict | None:
         """One decision: keep playing, wait, or start the next scenario. Returns the run it started, if any."""
         with self.lock:
             current = self._current()
             if current:
-                self.state, self.reason = "playing", self._playing(current)
+                self.state, self.reason = "playing", f"Playing {current['title']}."
                 return None
             blocked = self.blocked()
             if blocked:
@@ -270,19 +232,6 @@ class ScenarioAutoplay:
                 return None
             index = int(self.store.meta("autoplay:index") or 0) % len(playlist)
             scenario_id = playlist[index]
-            site = self.patrol_site(scenario_id)
-            if site:
-                # Advance first: a walkthrough that cannot start must not wedge the rotation on this entry.
-                self.store.meta("autoplay:index", str((index + 1) % len(playlist)))
-                try:
-                    patrol = self.service.patrols.start(site, OPERATOR, origin="autoplay")
-                except Exception as error:
-                    self.state, self.reason = "error", f"Walkthrough of {site} did not start: {type(error).__name__}: {str(error)[:160]}"
-                    return None
-                self.store.meta(f"autoplay:played:{self._today()}", str(self.played_today() + 1))
-                self.current_patrol_id, self.current_run_id = patrol["id"], None
-                self.state, self.reason = "playing", f"Walking {patrol['place']} ({patrol['agentName']})."
-                return patrol
             run = self.service.scenarios.start(scenario_id, OPERATOR, speed=self.speed(), origin="autoplay")
             self.store.meta("autoplay:index", str((index + 1) % len(playlist)))
             self.store.meta(f"autoplay:played:{self._today()}", str(self.played_today() + 1))
@@ -296,15 +245,13 @@ class ScenarioAutoplay:
         playlist = self.playlist()
         index = int(self.store.meta("autoplay:index") or 0) % len(playlist) if playlist else 0
         run = self.store.get("scenario_run", self.current_run_id, "") if self.current_run_id else None
-        patrol = self.store.get("patrol", self.current_patrol_id) if self.current_patrol_id else None
         current = dict(kind="scenario", runId=run["id"], scenarioId=run["scenarioId"], title=run["title"], state=run["state"],
                        stepIndex=run["stepIndex"], stepCount=run["stepCount"]) if run else None
-        if patrol:
-            current = dict(kind="patrol", patrolId=patrol["id"], siteId=patrol["siteId"], title=f"Walkthrough of {patrol['place']}", state=patrol["state"],
-                           agentId=patrol["agentId"], agentName=patrol["agentName"], stopIndex=patrol.get("stopIndex", 0), stopCount=len(patrol["route"]),
-                           assetTag=patrol.get("currentAssetTag"), line=patrol.get("line"), alertIds=patrol.get("alertIds") or [])
+        walks = getattr(self.service, "walks", None)
         return dict(enabled=self.enabled(), state=self.state, reason=self.reason,
-                    current=current, patrols=self.patrols_enabled(),
+                    current=current, patrols=False,
+                    walks=dict(continuous=bool(walks and walks.enabled()), status="/api/walks/status",
+                               note="Each site's Engineer walks on its own; the playlist plays scenarios only."),
                     next=playlist[index] if playlist else None, playlist=playlist, speed=self.speed(), gapSeconds=self.gap(),
                     cooldownSeconds=self.cooldown(), playedToday=self.played_today(), maxPerDay=self.max_per_day(),
                     liveSwitches=live_switches(), liveAllowed=_flag("STEWARD_SCENARIO_AUTOPLAY_LIVE"), synthetic=True)

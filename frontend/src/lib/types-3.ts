@@ -214,7 +214,7 @@ export interface Conversation extends SyntheticMark {
   id: string; kind: "call" | "meeting" | "message" | string; participants: string[]; siteIds: string[];
   transport?: "inkbox" | "local" | string; providerTaskIds?: string[]; transcript: ConversationTurn[];
   summary: ConversationSummary | null; summaryBy?: string | null; startedAt: string; endedAt?: string | null;
-  title?: string | null; scenarioId?: string | null; issueId?: string | null; voiceNote?: string | null; convener?: string | null; status?: string | null;
+  title?: string | null; scenarioId?: string | null; issueId?: string | null; convener?: string | null; status?: string | null;
 }
 
 /* Section 5: regulations, real sources cached locally with attribution, explained in our own words. */

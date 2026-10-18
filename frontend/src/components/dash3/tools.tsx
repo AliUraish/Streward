@@ -36,7 +36,7 @@ export default function ToolsPage({ siteId }: { siteId?: SiteId3 }) {
   const source: Remote<ForgedTool[]> = fallback ? { ...remote, data: fallback, readiness: "ready" } : remote;
   const published = all.filter(t => t.status === "published").length;
   return <div className="page3">
-    <PageHead id="tools" title="Tools" sub={<>{site ? `${site.name}: the` : "Every site: the"} tools the agents built for themselves when none of their tools could answer a task. A forged tool is declarative, allow-listed Steward operations run with its builder&apos;s authority and scoped to its site; Steward validates and tests it, the site&apos;s manager approves a read-only tool and the Operations Director any write, and it is published to every MCP client as forge_&lt;name&gt;.</>}>
+    <PageHead id="tools" title="Tools">
       {!siteId ? <div className="tabs3" role="tablist" aria-label="Site">{[{ id: "all", short: "All sites" }, ...SITES3].map(s => <button key={s.id} type="button" role="tab" aria-selected={filter === s.id} className={filter === s.id ? "on" : ""} onClick={() => setFilter(s.id)}>{s.short}</button>)}</div> : null}
     </PageHead>
 
@@ -173,7 +173,6 @@ function AskForTool({ siteId, onTool }: { siteId?: SiteId3; onTool: (t: ForgedTo
           <Btn small arrow type="submit" disabled={run.busy || !task.trim()}>{run.busy ? "The team is on it" : "Ask the team"}</Btn>
           {demo && task.trim() !== demo.task ? <button type="button" className="lnk-btn" onClick={() => { setAgentId(demo.agentId); setTask(demo.task); }}>Use the suggested task</button> : null}
         </div>
-        <p className="note3 under">The agent looks at its current tools first and records why none fits. The draft can only use allow-listed Steward operations, runs with the agent&apos;s own authority and stays inside {site3(site).name}.</p>
       </form>
       <div className="ask-live" aria-live="polite">
         {run.rows ? <RunSteps rows={run.rows} /> : <ol className="fix-steps run3 idle" aria-label="Tool lifecycle">{[{ status: "request", title: "Request", what: "The agent checks its tools and records the gap and the tools it considered." }, ...LIFECYCLE].map(s => <li key={s.status}><span className="sig off" aria-hidden="true" /><strong>{s.title}</strong><span className="r3">{s.what}</span></li>)}</ol>}
@@ -243,7 +242,7 @@ function ToolDetail({ tool, onChanged }: { tool: ForgedTool; onChanged: () => vo
     <div className="tv-two">
       <section className="tv-sec" aria-label="Inputs">
         <h3>Inputs</h3>
-        {ins.length ? <ul className="params">{ins.map(f => <li key={f.name}><code className="tname">{f.name}</code><span className="r3">{[f.type, f.required ? "required" : "", f.note].filter(Boolean).join(", ") || (t.placeholder ? "as agreed in the contract" : "")}</span></li>)}</ul> : <p className="st3 empty">No inputs.</p>}
+        {ins.length ? <ul className="params">{ins.map(f => <li key={f.name}><code className="tname">{f.name}</code><span className="r3">{[f.type, f.required ? "required" : "", f.note].filter(Boolean).join(", ")}</span></li>)}</ul> : <p className="st3 empty">No inputs.</p>}
       </section>
       <section className="tv-sec" aria-label="Output">
         <h3>Returns</h3>
@@ -259,7 +258,7 @@ function ToolDetail({ tool, onChanged }: { tool: ForgedTool; onChanged: () => vo
         <span className="what"><strong>{OP_WORDS[s.op] ?? words(s.op)}</strong> <code className="op">{s.op}</code></span>
         {Object.keys(s.args).length ? <span className="args">{Object.entries(s.args).map(([k, v]) => <span key={k} className="arg"><span className="k">{k}</span> <Tpl v={v} /></span>)}</span> : null}
         <span className="sid">{s.id}</span>
-      </li>)}</ol> : <p className="st3 empty">{t.placeholder ? "The steps are written when the agent drafts the tool; the contract does not fix them." : "No steps on this record."}</p>}
+      </li>)}</ol> : <p className="st3 empty">{t.placeholder ? "The steps are written when the agent drafts the tool." : "No steps on this record."}</p>}
     </section>
 
     <div className="tv-two">
@@ -320,7 +319,6 @@ function ToolActions({ tool: t, run }: { tool: ForgedTool; run: ReturnType<typeo
     {run.waiting ? <div className="row-actions"><Btn small arrow disabled={run.busy} onClick={() => void run.decide(true)}>Approve as the Operations Director</Btn><Btn small quiet disabled={run.busy} onClick={() => void run.decide(false)}>Refuse</Btn></div> : null}
     {error ? <p className="err3" role="alert">{error}</p> : null}
     {result ? <details className="io3" open><summary>Result of the call</summary><pre>{result}</pre></details> : null}
-    {t.status === "published" ? <p className="note3 under">Each call counts towards the tool&apos;s usage.</p> : null}
   </div>;
 }
 

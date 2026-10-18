@@ -23,7 +23,7 @@ export default function Pdf3({ url, title, initialPage = 1 }: { url: string; tit
     (async () => {
       try {
         const res = await fetch(url, { signal: abort.signal });
-        if (res.status === 404 || res.status === 405 || res.status === 501) throw new Error("Not available yet: the backend has not cached this PDF.");
+        if (res.status === 404 || res.status === 405 || res.status === 501) throw new Error("This PDF is not available yet.");
         if (!res.ok) throw new Error(`The PDF could not be loaded (${res.status}).`);
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";

@@ -1,7 +1,7 @@
 "use client";
 
 /* Owner alerts (REALITY-CONTRACT-7.md section 2): when a walkthrough finds a compliance problem, the site's team works it
-   (the issue, a call with the Compliance Officer, a call with another site, the manager's decision), then the
+   (the issue, a chat with the Compliance Officer, a chat with another site, the manager's decision), then the
    Compliance Officer emails you the file and the evidence and the Steward Dispatch Line calls you. Each alert shows its
    steps as they arrive, the email (subject, attachments) and the call, in plain words for what happened to each:
    "Emailed you", "Ready to send: live messaging is off", "Held: today's alert limit reached", or why it failed. */
@@ -16,11 +16,11 @@ import "./dash7.css";
 /* The workflow's steps in order, matched to the record's step names by their words. */
 const STEPS: { label: string; re: RegExp }[] = [
   { label: "Issue raised", re: /issue/i },
-  { label: "Teammate call", re: /team|teammate|engineer/i },
-  { label: "Cross-site call", re: /cross|other.?site|peer/i },
+  { label: "Teammate chat", re: /team|teammate|engineer/i },
+  { label: "Cross-site chat", re: /cross|other.?site|peer/i },
   { label: "Manager's decision", re: /manager|decision|approv/i },
   { label: "Email to you", re: /mail/i },
-  { label: "Call to you", re: /owner.?call|phone|^call$|dispatch|voice/i },
+  { label: "Call to you", re: /owner.?call|phone|^call$|dispatch/i },
 ];
 function stepsOf(a: OwnerAlert) {
   const used = new Set<number>();
@@ -46,7 +46,7 @@ function deliveryWord(d: AlertEmail | AlertCall | null, sent: string): string {
     default: return d.reason || d.mode.replace(/_/g, " ");
   }
 }
-const CALL_LINKS = ["Teammate call", "Cross-site call", "Manager's decision"];
+const CALL_LINKS = ["Teammate chat", "Cross-site chat", "Manager's decision"];
 
 function AlertItem({ a }: { a: OwnerAlert }) {
   const steps = stepsOf(a);
@@ -62,7 +62,7 @@ function AlertItem({ a }: { a: OwnerAlert }) {
       <div><dt>Call</dt><dd className={tone(a.call?.mode)}>{deliveryWord(a.call, "Called you")}</dd></div>
     </dl>
     {a.call?.brief ? <details className="oa-brief"><summary>What the call says</summary><p><JaText text={a.call.brief} /></p></details> : null}
-    {a.conversationIds.length ? <p className="oa-links">{a.conversationIds.map((id, i) => <Link key={id} className="lnk" href={`/app/conversations?id=${encodeURIComponent(id)}`}>{CALL_LINKS[i] ?? `Call ${i + 1}`}</Link>)}</p> : null}
+    {a.conversationIds.length ? <p className="oa-links">{a.conversationIds.map((id, i) => <Link key={id} className="lnk" href={`/app/conversations?id=${encodeURIComponent(id)}`}>{CALL_LINKS[i] ?? `Chat ${i + 1}`}</Link>)}</p> : null}
   </li>;
 }
 
@@ -71,8 +71,8 @@ export default function OwnerAlerts({ siteId, limit = 4, i = 0 }: { siteId: Site
   const site = site3(siteId);
   const hid = `oa-${siteId}-h`;
   return <Reveal as="section" className="p3 oa7" i={i} aria-labelledby={hid}>
-    <div className="p-head"><h2 id={hid}>Owner alerts</h2><span className="meta">email and call to you</span></div>
-    <State remote={alerts} what="owner alerts" isEmpty={a => a.length === 0} empty={`No owner alerts at ${site.short}. When a walkthrough finds a compliance problem, the Compliance Officer emails you the file and the evidence and the Steward Dispatch Line calls you.`}>
+    <div className="p-head"><h2 id={hid}>Owner alerts</h2></div>
+    <State remote={alerts} what="owner alerts" isEmpty={a => a.length === 0} empty={`No owner alerts at ${site.short}.`}>
       {a => <ol className="oa-list">{a.slice(0, limit).map(x => <AlertItem key={x.id} a={x} />)}</ol>}
     </State>
   </Reveal>;

@@ -116,7 +116,7 @@ npm test
 
 The API contract is in [API-CONTRACT.md](API-CONTRACT.md), backend details in [backend/README.md](backend/README.md), and implementation status plus earlier product context in [STEWARD-BUILD-BRIEF.md](STEWARD-BUILD-BRIEF.md).
 
-The completed reference comparison and browser verification are in [design-qa.md](design-qa.md); the final local preview is saved in [qa/steward-final.png](qa/steward-final.png). All 28 automated checks and the frontend, MCP and optional agent-runtime builds passed. Live provider actions still require the account configuration described above.
+Steward's UI captures are kept in [frontend/qa/](frontend/qa/). Run the checks above to verify the current source. Live provider actions require the account configuration described above.
 
 ## Sponsor integrations
 

@@ -1,5 +1,4 @@
-import type { Metadata } from "next";
-import AgentView from "@/components/dash3/agent-view";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Agent view" };
-export default function Page() { return <AgentView />; }
+/* Agent mode is the one switch at the top now; the overview in agent mode carries the agent view. */
+export default function Page() { redirect("/app?mode=agent"); }

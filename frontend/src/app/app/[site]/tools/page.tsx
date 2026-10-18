@@ -1,9 +1,7 @@
-import ToolsPage from "@/components/dash3/tools";
-import type { SiteId3 } from "@/lib/types-3";
-import { siteMeta } from "../meta";
+import { redirect } from "next/navigation";
 
-export const generateMetadata = siteMeta("Tools");
+/* The tools live on the one Tools page for all three sites. */
 export default async function Page({ params }: { params: Promise<{ site: string }> }) {
   const { site } = await params;
-  return <ToolsPage siteId={site as SiteId3} />;
+  redirect(`/app/tools?siteId=${encodeURIComponent(site)}`);
 }

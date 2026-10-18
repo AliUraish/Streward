@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from .agents import DIRECTOR, OPERATOR, agent_infos, authorize, is_known, parse_actor, team_id
+from .agents import DIRECTOR, OPERATOR, agent_infos, authorize, display_name, is_known, parse_actor, team_id
 from .integrations import integration_status
 from .env import env, sanitize_environment
 from .errors import RealityError
@@ -253,6 +253,12 @@ class DecisionRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
     options: list[str] = Field(default_factory=list, max_length=6)
     actor: str | None = Field(default=None, max_length=40)
+
+
+class OwnerDigestRequest(BaseModel):
+    """POST /api/owner/digest: prepare the owner's compliance digest now (all sites by default)."""
+    siteIds: list[str] | None = Field(default=None, max_length=3)
+    note: str | None = Field(default=None, max_length=300)
 
 
 class DecisionAnswer(BaseModel):
@@ -819,10 +825,10 @@ def create_app(data_directory: Path | None = None, start_workers=True):
 
     @app.get("/api/properties/{property_id}/changes")
     def changes(property_id: str, request: Request, since: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=1000),
-                includeScenario: bool = Query(default=False)):
+                includeScenario: bool = Query(default=False), latest: bool = Query(default=False)):
         # Scenario step rows only with includeScenario=true (the eval harness); people and agents get the issue, fact and
         # conversation Changes each step emits.
-        return public(reality(request).changes(property_id, since, limit, include_scenario=includeScenario))
+        return public(reality(request).changes(property_id, since, limit, include_scenario=includeScenario, latest=latest))
 
     @app.post("/api/properties/{property_id}/subscriptions", status_code=201)
     def subscribe(property_id: str, body: SubscriptionRequest, request: Request):
@@ -877,6 +883,11 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     @app.get("/api/a2a/tasks/{task_id}")
     def a2a_task(task_id: str, request: Request):
         return public(service(request).bus.task(task_id))
+
+    @app.get("/api/a2a/transport")
+    def a2a_transport(request: Request):
+        """How agent-to-agent messages travel now: the mode, whether Inkbox carries them, and the hourly Inkbox cap."""
+        return public(service(request).bus.transport_status())
 
     @app.post("/api/missions", status_code=201)
     async def start_mission(body: MissionRequest, request: Request):
@@ -1217,6 +1228,23 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         """The latest walkthrough label per asset: green "Looks good" or blue "Looks bad"."""
         return public(service(request).patrols.labels(property_id))
 
+    @app.get("/api/walks/status")
+    def walks_status(request: Request):
+        """Continuous walks: each site's walk (stop, asset, last observation) and the day's Claude calls, cache hits, tokens and spend."""
+        return public(service(request).walks.status())
+
+    # ---- events at the sites (events.py) ---------------------------------------------------------------------------------
+
+    @app.get("/api/events/status")
+    def events_status(request: Request):
+        """The event director: the next event's time, the day's Claude calls, tokens and estimated spend, the caps and the template fallbacks."""
+        return public(service(request).events.status())
+
+    @app.get("/api/events")
+    def site_events(request: Request, siteId: str = Query(default="", max_length=40), limit: int = Query(default=20, ge=1, le=200)):
+        """Events at the sites, newest first: what happened, the effects played (and the ones dropped), where it came from and its usage."""
+        return public(service(request).events.list(siteId or None, limit))
+
     @app.get("/api/owner-alerts")
     def owner_alerts(request: Request, siteId: str = "", limit: int = Query(default=20, ge=1, le=200)):
         return public(service(request).patrols.alerts.list(siteId or None, limit))
@@ -1224,6 +1252,73 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     @app.get("/api/owner-alerts/{alert_id}")
     def owner_alert(alert_id: str, request: Request):
         return public(service(request).patrols.alerts.get(alert_id))
+
+    # ---- the owner's notifications, the compliance snapshot, digests and agent reports (owner, Oct 18) ----------
+
+    @app.get("/api/owner/notifications")
+    def owner_notifications(request: Request, limit: int = Query(default=50, ge=1, le=200), since: str = Query(default="", max_length=40),
+                            siteId: str = Query(default="", max_length=40), kind: str = Query(default="", max_length=200),
+                            format: str = Query(default="json", max_length=8)):
+        """Newest first: everything sent or prepared for the owner and the main things that happened (format=md for agents)."""
+        if format not in ("json", "md"):
+            raise RealityError("format must be json or md.", "INVALID_REQUEST", "Pass ?format=md for Markdown, or leave it out for JSON.")
+        owner = service(request).owner
+        feed = owner.feed(limit, since or None, siteId or None, kind or None)
+        if format == "md":
+            return Response(owner.markdown(feed), media_type="text/markdown; charset=utf-8")
+        return public(feed)
+
+    @app.get("/api/owner/notifications/{item_id}")
+    def owner_notification(item_id: str, request: Request):
+        return public(service(request).owner.item(item_id))
+
+    @app.get("/api/owner/digests")
+    def owner_digests(request: Request, limit: int = Query(default=20, ge=1, le=100)):
+        """The digest and report schedule (caps, gates, last and next) and the latest digests and agent reports."""
+        return public(service(request).owner.digests_view(limit))
+
+    @app.post("/api/owner/digest", status_code=201)
+    async def owner_digest_now(request: Request, body: OwnerDigestRequest | None = None):
+        """Prepare the owner's compliance digest now (the Owner's agent or the Operations Director); it is emailed from the
+        Operations Director's identity only when the owner channel allows, else recorded as a dry run (or capped)."""
+        actor = parse_actor(request.headers.get("x-steward-actor"))
+        if actor not in (OPERATOR, DIRECTOR):
+            raise RealityError(f"{display_name(actor)} may not prepare the owner's digest.", "AUTHORITY_DENIED",
+                               "The Owner's agent or the Operations Director prepares it.", 403)
+        svc = service(request)
+        sites = svc.owner.sites((body.siteIds if body else None) or None)
+        if actor == OPERATOR:
+            actor_for(request, "read", None, dict(siteIds=sites), "owner_digest")
+        reason = ((body.note if body else None) or "").strip() or "Prepared on request"
+        return public(await run_in_threadpool(svc.owner.prepare_digest, "manual", reason, actor, sites))
+
+    @app.get("/api/owner/digests/{digest_file}")
+    def owner_digest_pdf(digest_file: str, request: Request):
+        if not digest_file.endswith(".pdf"):
+            raise RealityError("Digest PDF not found.", "NOT_FOUND", "Use the attachment URL from the notifications feed.", 404)
+        path, filename = service(request).owner.digest_pdf(digest_file[:-4])
+        return FileResponse(path, media_type="application/pdf", filename=filename, content_disposition_type="inline",
+                            headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.get("/api/owner/reports/{report_file}")
+    def owner_report_pdf(report_file: str, request: Request):
+        if not report_file.endswith(".pdf"):
+            raise RealityError("Report PDF not found.", "NOT_FOUND", "Use the attachment URL from the notifications feed.", 404)
+        path, filename = service(request).owner.report_pdf(report_file[:-4])
+        return FileResponse(path, media_type="application/pdf", filename=filename, content_disposition_type="inline",
+                            headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.get("/api/compliance/snapshot")
+    def compliance_snapshot(request: Request, siteId: str = Query(default="", max_length=120)):
+        """The compliance snapshot as data (all sites by default; siteId takes one site or a comma-separated list)."""
+        owner = service(request).owner
+        return public(owner.snapshot(owner.sites(siteId or None)))
+
+    @app.get("/api/compliance/snapshot.pdf")
+    def compliance_snapshot_pdf(request: Request, siteId: str = Query(default="", max_length=120)):
+        data, filename = service(request).owner.snapshot_file(siteId or None)
+        return Response(data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{filename}"',
+                                                                     "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
 
     # ---- metrics, regulations, maintenance --------------------------------------------------------------------
 
@@ -1615,6 +1710,19 @@ def create_app(data_directory: Path | None = None, start_workers=True):
 
     app.state.call_tool = call_tool
     install_supabase(app, start_workers)
+    # Contract 8: the outbox and phone calls, the employees' badge log, and the inspection chain (read-only for people).
+    from .routes_attendance import router as attendance_router
+    from .routes_chats import router as chats_router
+    from .routes_inspections import router as inspections_router
+    from .routes_outbox import router as outbox_router
+    from .routes_agent_environment import router as agent_environment_router
+    from .routes_site_tours import router as site_tours_router
+    app.include_router(outbox_router)
+    app.include_router(attendance_router)
+    app.include_router(inspections_router)
+    app.include_router(chats_router)
+    app.include_router(agent_environment_router)
+    app.include_router(site_tours_router)
     return app
 
 

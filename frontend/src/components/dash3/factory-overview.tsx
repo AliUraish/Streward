@@ -13,6 +13,7 @@ import { Kpis, withFigures } from "./kpis";
 import { NowCell, useNowRows } from "./portfolio";
 import { useShared } from "./shell";
 import { BandMark, NotYet, PageHead, Reveal, SiteTitle, State, SynthTag, TrendMark, ago, words } from "./ui3";
+import { LatestInspection } from "./inspections";
 import OwnerAlerts from "./owner-alerts";
 import { SceneTally } from "./walkthrough";
 
@@ -40,7 +41,8 @@ const RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 export const bandState = (v: number | undefined | null, spec?: { min?: number | null; max?: number | null } | null): LiveState =>
   v === undefined || v === null || !spec ? "normal" : spec.max != null && v > spec.max ? "high" : spec.min != null && v < spec.min ? "low" : "normal";
 
-export default function FactoryOverview({ siteId }: { siteId: SiteId3 }) {
+/* `embedded`: the environment page's "Today" tab, under the agent's window, so no title and no picture of the site. */
+export default function FactoryOverview({ siteId, embedded }: { siteId: SiteId3; embedded?: boolean }) {
   const site = site3(siteId);
   const { overview, agents } = useShared();
   const summary = useMetricsSummary();
@@ -56,22 +58,26 @@ export default function FactoryOverview({ siteId }: { siteId: SiteId3 }) {
   /* The site's lead figures, then the counts every site shares. */
   const kpis = [...site.kpis.filter(k => !["compliancePct", "crewOnShift", "agentActionsToday"].includes(k)), "openIssues", "compliancePct", "crewOnShift", "agentActionsToday"] as typeof site.kpis;
   const defs = metricDefsFor(siteId);
-  return <div className="page3">
-    <PageHead id="factory" title={<SiteTitle site={site} />} sub={`${site.about}.`}>
-      <Link className="b3 small" href={`/app/${siteId}/environment`}><span>Open the agent eye</span><span className="arrow" aria-hidden="true">→</span></Link>
-    </PageHead>
-    <div className="fo-top">
-      <Reveal as="figure" className="fo-pic">
-        <Link href={`/app/${siteId}/environment`} aria-label={`Open the agent eye on ${site.name}`}><img src={site.thumbnailUrl} alt={`${site.name}, 3-D scan`} width={960} height={540} /></Link>
-        <SceneTally siteId={siteId} />
-      </Reveal>
-      <Reveal as="section" className="p3 fo-kpis" i={1} aria-labelledby="kpi-h">
+  const kpiPanel = <Reveal as="section" className="p3 fo-kpis" i={1} aria-labelledby="kpi-h">
         <div className="p-head"><h2 id="kpi-h">Today at {site.short}</h2>{liveSite ? <span className="meta">live, every 5 s</span> : null}</div>
-        <Kpis s={withFigures(summary.data?.sites.find(s => s.siteId === siteId) ?? null, metrics.data?.series, siteId)} live={liveSite?.kpis ?? null} liveAt={live.data?.at} remote={(metrics.data && !summary.data ? metrics : summary) as Remote<unknown>} only={kpis} missingText={`The metrics summary does not include ${site.short} yet.`} />
-      </Reveal>
-    </div>
+        <Kpis s={withFigures(summary.data?.sites.find(s => s.siteId === siteId) ?? null, metrics.data?.series, siteId)} live={liveSite?.kpis ?? null} liveAt={live.data?.at} remote={(metrics.data && !summary.data ? metrics : summary) as Remote<unknown>} only={kpis} missingText="No figures yet." />
+      </Reveal>;
+  const metricsHref = embedded ? "#metrics" : `/app/${siteId}#metrics`;
+  return <div className="page3">
+    {embedded ? kpiPanel : <>
+      <PageHead id="factory" title={<SiteTitle site={site} />} sub={`${site.about}.`}>
+        <Link className="b3 small" href={`/app/${siteId}`}><span>Open the agent eye</span><span className="arrow" aria-hidden="true">→</span></Link>
+      </PageHead>
+      <div className="fo-top">
+        <Reveal as="figure" className="fo-pic">
+          <Link href={`/app/${siteId}`} aria-label={`Open the agent eye on ${site.name}`}><img src={site.thumbnailUrl} alt={`${site.name}, 3-D scan`} width={960} height={540} /></Link>
+          <SceneTally siteId={siteId} />
+        </Reveal>
+        {kpiPanel}
+      </div>
+    </>}
     <Reveal as="section" className="p3 sparks3" i={1} aria-labelledby="spark-h">
-      <div className="p-head"><h2 id="spark-h">Last 24 hours</h2><Link className="lnk" href={`/app/${siteId}/metrics`}>All metrics</Link></div>
+      <div className="p-head"><h2 id="spark-h">Last 24 hours</h2><Link className="lnk" href={metricsHref}>All metrics</Link></div>
       {metrics.data ? <ul className="spark-grid">{defs.map(d => {
         const ss = seriesFor(metrics.data!.series, d.key); const s = ss[0];
         /* The live reading of the card's series when it answers, else the series' latest point. */
@@ -79,7 +85,7 @@ export default function FactoryOverview({ siteId }: { siteId: SiteId3 }) {
         const last = typeof reading?.value === "number" ? reading.value : s?.points.at(-1)?.[1];
         const state = reading ? reading.state : bandState(last, s?.spec);
         return <li key={d.key}>
-          <Link href={`/app/${siteId}/metrics#${d.key}`} className="spark-card">
+          <Link href={metricsHref} className="spark-card">
             <span className={`spark-v ${state !== "normal" ? "bad" : ""}`}>{last !== undefined ? new Intl.NumberFormat(undefined, { maximumFractionDigits: d.digits }).format(last) : "–"}<small>{s?.unit ?? d.unit}</small>{reading ? <TrendMark trend={reading.trend} at={live.data?.at} /> : null}</span>
             <span className="r1"><strong>{d.label}</strong>{s?.assetTag && s.assetTag !== "SITE" ? <span className="sev">{s.assetTag}{ss.length > 1 ? ` +${ss.length - 1}` : ""}</span> : null}{s ? <SynthTag rec={s.synthetic === undefined ? metrics.data : s} /> : null}<BandMark state={state} /></span>
             <span className="r3">{s?.spec ? `spec ${s.spec.min ?? "–"} to ${s.spec.max ?? "–"} ${s.unit ?? d.unit}` : "no spec"}</span>
@@ -92,16 +98,17 @@ export default function FactoryOverview({ siteId }: { siteId: SiteId3 }) {
       <Reveal as="section" className="p3" i={2} aria-labelledby="iss-h">
         <div className="p-head"><h2 id="iss-h">Open issues</h2><span className="meta">{issues.data ? open.length : ""}</span></div>
         <State remote={issues} what="issues" isEmpty={() => open.length === 0} empty="No open issues on this site.">
-          {() => <ul className="rows3">{open.slice(0, 8).map(i => <li key={i.id}><Link className="row-btn" href={`/app/${siteId}/environment?asset=${encodeURIComponent(i.assetTag)}`}>
+          {() => <ul className="rows3">{open.slice(0, 8).map(i => <li key={i.id}><Link className="row-btn" href={`/app/${siteId}?asset=${encodeURIComponent(i.assetTag)}`}>
             <span className="r1"><span className={`sig ${i.severity === "high" ? "bad" : i.severity === "medium" ? "warn" : "off"}`} aria-hidden="true" /><strong>{i.assetTag}</strong><span className="sev">{i.severity}, {words(i.kind)}</span><SynthTag rec={i} /></span>
             <span className="r2">{i.summary}</span>
           </Link></li>)}</ul>}
         </State>
       </Reveal>
       <div className="fo-side">
+        <LatestInspection siteId={siteId} compact i={3} />
         <OwnerAlerts siteId={siteId} limit={3} i={3} />
         <Reveal as="section" className="p3" i={3} aria-labelledby="team-h">
-          <div className="p-head"><h2 id="team-h">Team</h2><Link className="lnk" href={`/app/${siteId}/team`}>Team page</Link></div>
+          <div className="p-head"><h2 id="team-h">Team</h2><Link className="lnk" href={embedded ? "#team" : `/app/${siteId}#team`}>Team and chats</Link></div>
           {!rows.some(r => r.known) ? <p className="note3"><NotYet remote={overview.readiness === "ready" ? agents as Remote<unknown> : overview as Remote<unknown>} what="agent status" /></p> : null}
           <ol className="now-strip team">{rows.map(r => <NowCell key={r.id} r={r} />)}</ol>
         </Reveal>
@@ -112,11 +119,11 @@ export default function FactoryOverview({ siteId }: { siteId: SiteId3 }) {
           </State>
         </Reveal>
         <Reveal as="section" className="p3" i={5} aria-labelledby="calls-h">
-          <div className="p-head"><h2 id="calls-h">Latest calls</h2><Link className="lnk" href="/app/conversations">All</Link></div>
-          <State remote={calls} what="conversations" isEmpty={c => c.length === 0} empty="No calls or meetings yet.">
+          <div className="p-head"><h2 id="calls-h">Latest chats</h2><Link className="lnk" href="/app/conversations">All</Link></div>
+          <State remote={calls} what="conversations" isEmpty={c => c.length === 0} empty="No chats or meetings yet.">
             {c => <ul className="rows3">{[...c].sort((a, b) => (a.kind === "message" ? 1 : 0) - (b.kind === "message" ? 1 : 0) || b.startedAt.localeCompare(a.startedAt)).filter((x, i, all) => all.findIndex(y => (y.summary?.headline ?? y.title) === (x.summary?.headline ?? x.title)) === i).slice(0, 3).map(x => <li key={x.id}><Link className="row-btn" href={`/app/conversations?id=${encodeURIComponent(x.id)}`}>
               <span className="r1"><strong>{x.summary?.headline ?? x.title ?? "Conversation"}</strong><SynthTag rec={x} /></span>
-              <span className="r3">{x.kind}, {ago(x.startedAt)}</span>
+              <span className="r3">{x.kind === "call" ? "chat" : x.kind}, {ago(x.startedAt)}</span>
             </Link></li>)}</ul>}
           </State>
         </Reveal>

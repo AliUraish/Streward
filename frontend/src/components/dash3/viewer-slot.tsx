@@ -24,7 +24,7 @@ function ViewerPending({ siteId }: { siteId: string }) {
   const site = site3(siteId);
   return <div className="vw-pending" role="status">
     <img src={site.thumbnailUrl} alt={`${site.name}, overview`} />
-    <p><strong>The 3-D view of {site.name} is not ready yet.</strong> <span>Until it is, this overview stands in and the agent eye cannot look around here.</span></p>
+    <p><strong>The 3-D view of {site.name} is not ready yet.</strong></p>
   </div>;
 }
 

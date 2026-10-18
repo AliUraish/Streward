@@ -1,109 +1,52 @@
 "use client";
 
-/* Calls, dashboard-wide (REALITY-CONTRACT-7.md section 7), mounted once by the shell. Every 3 s it reads the latest
-   calls; when a new one starts it says so ("Compliance Officer · Bristol started a call with Compliance Officer ·
-   Myer") with Listen. The live call panel reveals the transcript line by line as it is spoken, each agent in its own
-   voice (lib/speech.ts). "Play calls aloud", remembered on this device, plays new calls as they start. Browsers make
-   no sound before a click on the page, so that switch's click unlocks it (as does any click); until then, or with no
-   voices at all, the lines appear on a timer. In fullscreen (the mission view) the toasts and the panel move into the
-   fullscreen element so they stay in sight. */
+/* What is happening now, dashboard-wide, mounted once by the shell (bottom right; in fullscreen, inside the fullscreen
+   element so it stays in sight). Two things: a real phone call to you while it is on the line (phone-calls.tsx), and
+   the agents' chats. Agents talk to each other in text, over A2A: when a chat starts, a notice says so ("Compliance
+   Officer · Bristol started a chat with Site Inspector"); Follow opens the chat as it is written, its messages arriving
+   as they are sent and its summary (what they did, what they decided) when it ends. */
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api7 } from "@/lib/api-7";
 import { useCalls } from "@/lib/hooks-7";
 import { useHudEvents } from "@/lib/live-3";
-import { loadVoices, speakOne, speechAvailable, stopSpeech, unlockSpeech } from "@/lib/speech";
 import { agentName, siteList } from "@/lib/sites-3";
 import type { Conversation } from "@/lib/types-3";
+import { PhoneCallBanner } from "./phone-calls";
 import { JaText, ago } from "./ui3";
 import "./dash7.css";
+import "./dash10.css";
 
-/* ---- "Play calls aloud": one small store, so the sidebar switch and the notifier agree ------------------------- */
-const ALOUD_KEY = "steward.callsAloud";
-const SEEN_KEY = "steward.callsSeen";
-interface Sound { aloud: boolean; unlocked: boolean }
-const SERVER: Sound = { aloud: false, unlocked: false };
-let sound: Sound = SERVER;
-let hydrated = false;
-const subs = new Set<() => void>();
-const emit = (next: Partial<Sound>) => { sound = { ...sound, ...next }; subs.forEach(f => f()); };
-const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
-function hydrate() {
-  if (hydrated || typeof window === "undefined") return;
-  hydrated = true;
-  let aloud = false; try { aloud = window.localStorage.getItem(ALOUD_KEY) === "1"; } catch { /* storage blocked */ }
-  let unlocked = false; try { unlocked = Boolean((navigator as Navigator & { userActivation?: { hasBeenActive?: boolean } }).userActivation?.hasBeenActive); } catch { /* no such API */ }
-  emit({ aloud, unlocked: unlocked || sound.unlocked });
-}
-function unlock() { if (!sound.unlocked) { unlockSpeech(); emit({ unlocked: true }); } }
-export function useSound(): Sound { return useSyncExternalStore(subscribe, () => sound, () => SERVER); }
-export function setAloud(on: boolean) {
-  if (on) { unlockSpeech(); emit({ aloud: true, unlocked: true }); } else { emit({ aloud: false }); stopSpeech(); }
-  try { window.localStorage.setItem(ALOUD_KEY, on ? "1" : "0"); } catch { /* storage blocked */ }
-}
-
-/* The sidebar switch. Remembered on this device; while it is on but this page has not had a click yet, its click
-   allows sound instead of turning it off. */
-export function CallsToggle() {
-  const s = useSound();
-  useEffect(() => { hydrate(); }, []);
-  const waiting = s.aloud && !s.unlocked;
-  return <button type="button" role="switch" aria-checked={s.aloud} className="aloud7" data-calls-toggle="" onClick={() => (waiting ? unlock() : setAloud(!s.aloud))}>
-    <span className="track" aria-hidden="true"><span className="knob" /></span>
-    <span className="say"><span>Play calls aloud</span>{waiting ? <span className="hint">Click once to allow sound</span> : null}</span>
-  </button>;
-}
-
-/* ---- words ------------------------------------------------------------------------------------------------- */
+const SEEN_KEY = "steward.chatsSeen";
 const callerOf = (c: Conversation) => c.convener ?? c.participants[0] ?? "";
-const calleesOf = (c: Conversation) => c.participants.filter(p => p !== callerOf(c));
+const othersOf = (c: Conversation) => c.participants.filter(p => p !== callerOf(c));
 const names = (ids: string[]) => { const n = ids.map(agentName); return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : n[0] ?? "the team"; };
-/* Each name carries its site ("Compliance Officer · Myer"), so a call across sites names both. */
-export const startedText = (c: Conversation) => `${agentName(callerOf(c))} started a call with ${names(calleesOf(c))}`;
+/* Each name carries its site ("Compliance Officer · Myer"), so a chat across sites names both. */
+export const startedText = (c: Conversation) => `${agentName(callerOf(c))} started a chat with ${names(othersOf(c))}`;
 const topicOf = (c: Conversation) => c.title || c.summary?.headline || null;
-const readMs = (text: string) => Math.min(7_000, Math.max(1_800, 600 + text.length * 48));
-const sleep = (ms: number) => new Promise<void>(r => window.setTimeout(r, ms));
+const isOver = (c: Conversation) => Boolean(c.endedAt) || c.status === "ended";
 function loadSeen(): Set<string> {
   try { const v: unknown = JSON.parse(window.sessionStorage.getItem(SEEN_KEY) ?? "[]"); return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []); }
   catch { return new Set(); }
 }
 function saveSeen(s: Set<string>) { try { window.sessionStorage.setItem(SEEN_KEY, JSON.stringify([...s].slice(-80))); } catch { /* storage blocked */ } }
 
-interface Toast { id: string; call: Conversation; text: string }
-interface Play { call: Conversation; shown: number; now: number; done: boolean; voices: boolean | null; voiced: boolean }
+interface Toast { id: string; chat: Conversation; text: string }
 
-export default function CallNotifier() {
-  const calls = useCalls();
-  const s = useSound();
+export default function LiveNotifier() {
+  const chats = useCalls();
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [playing, setPlaying] = useState<Play | null>(null);
+  const [following, setFollowing] = useState<Conversation | null>(null);
   const [announce, setAnnounce] = useState("");
   const [fs, setFs] = useState<Element | null>(null);
   const seen = useRef<Set<string> | null>(null);
   const primed = useRef(false);
-  const queue = useRef<Conversation[]>([]);
-  const token = useRef(0);
-  const busy = useRef(false);
-  const voiced = useRef(false);
-  const hold = useRef(false);
   const toastHold = useRef(false);
-  const closeTimer = useRef(0);
-  const playRef = useRef<(c: Conversation, speak: boolean) => void>(() => {});
 
-  useEffect(() => { hydrate(); }, []);
-  /* Any click or key on the page allows sound from then on (the switch handles its own click). */
-  useEffect(() => {
-    const onInput = (e: Event) => { if (sound.unlocked) return; const t = e.target as Element | null; if (t?.closest?.("[data-calls-toggle]")) return; unlock(); };
-    window.addEventListener("click", onInput, true); window.addEventListener("keydown", onInput, true);
-    return () => { window.removeEventListener("click", onInput, true); window.removeEventListener("keydown", onInput, true); };
-  }, []);
   useEffect(() => { const h = () => setFs(document.fullscreenElement); h(); document.addEventListener("fullscreenchange", h); return () => document.removeEventListener("fullscreenchange", h); }, []);
-  /* Realtime, when the shell's bridge has a channel: a conversation line is a nudge to read the calls now. */
-  useHudEvents("all", { conversation_line: () => calls.reload() });
-  /* Turning "Play calls aloud" off quiets the call being played; its lines go on appearing. */
-  useEffect(() => { if (!s.aloud && voiced.current) { voiced.current = false; stopSpeech(); setPlaying(p => (p ? { ...p, voiced: false } : p)); } }, [s.aloud]);
-  useEffect(() => () => { token.current++; stopSpeech(); window.clearTimeout(closeTimer.current); }, []);
+  /* Realtime, when the shell's bridge has a channel: a conversation line is a nudge to read the chats now. */
+  useHudEvents("all", { conversation_line: () => chats.reload() });
 
   const dismiss = useCallback((id: string) => setToasts(t => t.filter(x => x.id !== id)), []);
   const scheduleDismiss = useCallback((id: string) => {
@@ -111,55 +54,10 @@ export default function CallNotifier() {
     window.setTimeout(tick, 12_000);
   }, [dismiss]);
 
-  /* Play one call: reveal each line as it is spoken (or after a reading time without sound), then the next queued. */
-  const play = useCallback(async (first: Conversation, speak: boolean) => {
-    const my = ++token.current;
-    const alive = () => my === token.current;
-    busy.current = true; voiced.current = speak;
-    window.clearTimeout(closeTimer.current);
-    stopSpeech();
-    let call = first;
-    setPlaying({ call, shown: 0, now: -1, done: false, voices: null, voiced: speak });
-    const voices = speechAvailable() ? await loadVoices() : [];
-    if (!alive()) return;
-    setPlaying(p => (p && alive() ? { ...p, voices: voices.length > 0 } : p));
-    await sleep(150);
-    let i = 0; let waited = 0;
-    while (alive()) {
-      if (i >= call.transcript.length) {
-        /* A call still under way may add turns: read it again for a while. */
-        if (!call.endedAt && call.status !== "ended" && waited < 20_000) {
-          await sleep(1_500); waited += 1_500;
-          try { const fresh = await api7.call(call.id); if (alive()) { call = { ...fresh, convener: call.convener }; setPlaying(p => (p && alive() ? { ...p, call } : p)); } } catch { /* keep what we have */ }
-          continue;
-        }
-        break;
-      }
-      const line = call.transcript[i];
-      setPlaying(p => (p && alive() ? { ...p, call, shown: i + 1, now: i } : p));
-      const t0 = Date.now();
-      const spoken = voiced.current && sound.unlocked && voices.length > 0 ? await speakOne(line.speaker, line.text, () => !alive() || !voiced.current) : false;
-      if (!alive()) return;
-      const rest = spoken ? 250 : readMs(line.text) - (Date.now() - t0);
-      if (rest > 0) await sleep(rest);
-      i++;
-    }
-    if (!alive()) return;
-    setPlaying(p => (p ? { ...p, call, shown: call.transcript.length, now: -1, done: true } : p));
-    busy.current = false;
-    await sleep(1_500);
-    if (!alive()) return;
-    const next = queue.current.shift();
-    if (next) { playRef.current(next, sound.aloud); return; }
-    const close = () => { if (!alive()) return; if (hold.current) { closeTimer.current = window.setTimeout(close, 3_000); return; } setPlaying(null); };
-    closeTimer.current = window.setTimeout(close, 9_000);
-  }, []);
-  playRef.current = play;
-
-  /* New calls since the last read: a toast each, and with "Play calls aloud" on, a place in the queue. Calls that
-     started before this page opened (more than 45 s ago) are history, not news. */
+  /* New chats since the last read: a notice each. Chats that started before this page opened (more than 45 s ago) are
+     history, not news. */
   useEffect(() => {
-    const list = calls.data; if (!list) return;
+    const list = chats.data; if (!list) return;
     if (!seen.current) seen.current = loadSeen();
     const now = Date.now(); const fresh: Conversation[] = [];
     for (const c of [...list].reverse()) {
@@ -171,62 +69,69 @@ export default function CallNotifier() {
     primed.current = true;
     if (!fresh.length) return;
     saveSeen(seen.current);
-    const items = fresh.map(c => ({ id: c.id, call: c, text: startedText(c) }));
+    const items = fresh.map(c => ({ id: c.id, chat: c, text: startedText(c) }));
     setToasts(t => [...t, ...items].slice(-3));
     items.forEach(x => scheduleDismiss(x.id));
     setAnnounce(items.map(x => x.text).join(". "));
-    if (sound.aloud) {
-      queue.current = [...queue.current, ...fresh].slice(-3);
-      if (!busy.current) { const next = queue.current.shift(); if (next) playRef.current(next, true); }
-    }
-  }, [calls.data, scheduleDismiss]);
+  }, [chats.data, scheduleDismiss]);
 
-  const listen = (t: Toast) => { dismiss(t.id); if (playing && !playing.done && playing.call.id === t.call.id) return; unlock(); queue.current = queue.current.filter(c => c.id !== t.call.id); play(t.call, true); };
-  const stop = () => { token.current++; busy.current = false; voiced.current = false; queue.current = []; stopSpeech(); setPlaying(p => (p ? { ...p, shown: p.call.transcript.length, now: -1, done: true } : p)); };
-  const close = () => { stop(); window.clearTimeout(closeTimer.current); setPlaying(null); };
+  const follow = (t: Toast) => { dismiss(t.id); setFollowing(t.chat); };
 
   const ui = <div className="calls7">
     <p className="sr-only" aria-live="polite">{announce}</p>
-    {toasts.map(t => <div key={t.id} className="ct7" role="group" aria-label="New call" onPointerEnter={() => { toastHold.current = true; }} onPointerLeave={() => { toastHold.current = false; }} onFocus={() => { toastHold.current = true; }} onBlur={() => { toastHold.current = false; }}>
-      <p className="ct-kind"><span className="sig" aria-hidden="true" />Call{t.call.siteIds.length ? ` · ${siteList(t.call.siteIds)}` : ""}<span className="ct-when">{ago(t.call.startedAt)}</span></p>
+    <PhoneCallBanner />
+    {toasts.map(t => <div key={t.id} className="ct7" role="group" aria-label="New chat" onPointerEnter={() => { toastHold.current = true; }} onPointerLeave={() => { toastHold.current = false; }} onFocus={() => { toastHold.current = true; }} onBlur={() => { toastHold.current = false; }}>
+      <p className="ct-kind"><span className="sig" aria-hidden="true" />Chat{t.chat.siteIds.length ? ` · ${siteList(t.chat.siteIds)}` : ""}<span className="ct-when">{ago(t.chat.startedAt)}</span></p>
       <p className="ct-text">{t.text}</p>
-      {topicOf(t.call) ? <p className="ct-topic"><JaText text={topicOf(t.call)} /></p> : null}
+      {topicOf(t.chat) ? <p className="ct-topic"><JaText text={topicOf(t.chat)} /></p> : null}
       <div className="ct-actions">
-        <button type="button" className="ct-btn" onClick={() => listen(t)} aria-label={`Listen: ${t.text}`}>Listen</button>
+        <button type="button" className="ct-btn" onClick={() => follow(t)} aria-label={`Follow: ${t.text}`}>Follow</button>
         <button type="button" className="ct-btn quiet" onClick={() => dismiss(t.id)}>Dismiss</button>
       </div>
     </div>)}
-    {playing ? <CallPanel p={playing} unlocked={s.unlocked} onStop={stop} onClose={close} onHold={v => { hold.current = v; }} /> : null}
+    {following ? <ChatPanel key={following.id} first={following} onClose={() => setFollowing(null)} /> : null}
   </div>;
   return fs ? createPortal(ui, fs) : ui;
 }
 
-function CallPanel({ p, unlocked, onStop, onClose, onHold }: { p: Play; unlocked: boolean; onStop: () => void; onClose: () => void; onHold: (on: boolean) => void }) {
+/* A chat as it is written: messages arrive as they are sent (read every 2 s while it is going), then the summary. */
+function ChatPanel({ first, onClose }: { first: Conversation; onClose: () => void }) {
+  const [chat, setChat] = useState(first);
   const listRef = useRef<HTMLOListElement>(null);
-  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [p.shown]);
-  const c = p.call;
-  const sites = siteList(c.siteIds);
-  const topic = topicOf(c);
-  const live = !p.done;
-  const note = !live ? "" : p.voices === false ? "No voices in this browser, so the lines appear on their own." : !p.voiced ? "Sound is off; the lines appear on their own." : !unlocked ? "Click anywhere on the page to hear the voices." : "";
-  return <section className={`cl7 ${live ? "playing" : "done"}`} aria-label={live ? "Live call" : "Call ended"} onPointerEnter={() => onHold(true)} onPointerLeave={() => onHold(false)} onFocus={() => onHold(true)} onBlur={() => onHold(false)}>
+  useEffect(() => {
+    let alive = true; let timer = 0; let idle = 0;
+    const read = async () => {
+      try { const fresh = await api7.call(first.id); if (!alive) return; setChat(prev => ({ ...fresh, convener: prev.convener ?? fresh.convener })); idle = isOver(fresh) ? idle + 1 : 0; }
+      catch { idle += 1; }
+      /* Once it has ended (or cannot be read), two more reads and the panel stops asking. */
+      if (alive && idle < 3) timer = window.setTimeout(read, 2_000);
+    };
+    void read();
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [first.id]);
+  useEffect(() => { const el = listRef.current; if (el) el.scrollTop = el.scrollHeight; }, [chat.transcript.length]);
+  const live = !isOver(chat);
+  const s = chat.summary;
+  const sites = siteList(chat.siteIds);
+  return <section className={`cl7 ${live ? "playing" : "done"}`} aria-label={live ? "Chat in progress" : "Chat ended"}>
     <header className="cl-head">
-      <span className="cl-state"><span className="bars7" aria-hidden="true"><i /><i /><i /></span>{live ? "Live call" : "Call ended"}</span>
+      <span className="cl-state"><span className={`dot10 ${live ? "live" : ""}`} aria-hidden="true" />{live ? "Chat in progress" : "Chat ended"}</span>
       {sites ? <span className="cl-sites">{sites}</span> : null}
-      <span className="cl-tools">
-        {live ? <button type="button" className="cl-btn" onClick={onStop}>Stop</button> : null}
-        <button type="button" className="cl-btn" onClick={onClose} aria-label="Close the call panel">Close</button>
-      </span>
+      <span className="cl-tools"><button type="button" className="cl-btn" onClick={onClose} aria-label="Close the chat panel">Close</button></span>
     </header>
-    <p className="cl-who"><strong>{agentName(callerOf(c))}</strong> with <strong>{names(calleesOf(c))}</strong></p>
-    {topic ? <p className="cl-topic"><JaText text={topic} /></p> : null}
-    <ol className="cl-lines" ref={listRef} aria-live="polite">{c.transcript.slice(0, p.shown).map((t, i) => <li key={i} className={i === p.now ? "now" : ""}>
+    <p className="cl-who"><strong>{agentName(callerOf(chat))}</strong> with <strong>{names(othersOf(chat))}</strong></p>
+    {topicOf(chat) ? <p className="cl-topic"><JaText text={topicOf(chat)} /></p> : null}
+    {!live && s ? <div className="cl-sum10">
+      <p className="h">{s.headline}</p>
+      {s.decisions.length ? <ul>{s.decisions.slice(0, 3).map((d, i) => <li key={i}>{d}</li>)}</ul> : null}
+      {s.actions.length ? <ul className="acts">{s.actions.slice(0, 3).map((a, i) => <li key={i}><strong>{agentName(a.owner)}</strong> {a.task}</li>)}</ul> : null}
+    </div> : null}
+    <ol className="cl-lines" ref={listRef} aria-live="polite">{chat.transcript.map((t, i) => <li key={i}>
       <span className="who">{agentName(t.speaker)}</span><span className="txt"><JaText text={t.text} /></span>
     </li>)}</ol>
     <footer className="cl-foot">
-      <span>{p.shown} of {c.transcript.length} line{c.transcript.length === 1 ? "" : "s"}</span>
-      <Link className="lnk" href={`/app/conversations?id=${encodeURIComponent(c.id)}`}>Open in Conversations</Link>
-      {note ? <span className="cl-note">{note}</span> : null}
+      <span>{chat.transcript.length} message{chat.transcript.length === 1 ? "" : "s"}</span>
+      <Link className="lnk" href={`/app/conversations?id=${encodeURIComponent(chat.id)}`}>Open in Conversations</Link>
     </footer>
   </section>;
 }

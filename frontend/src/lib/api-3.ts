@@ -125,7 +125,7 @@ function normaliseActivity(raw: unknown, agentId: string): AgentActivity {
 function normaliseMemory(raw: unknown, agentId: string): AgentMemory {
   const m = obj(raw); const sm = obj(m.supermemory);
   const local = list<Raw>(m, "items", "local").map(x => ({ id: x.id, at: x.at, text: rn(String(x.text ?? x.content ?? "")), kind: x.kind ? String(x.kind).replace(/^scenario_/, "") : null, refs: x.refs ?? null, synthetic: x.synthetic }));
-  const remote = list<Raw>(sm, "results").map((x, i) => ({ id: x.id ?? `sm-${i}`, at: x.updatedAt ?? x.createdAt, text: String(x.content ?? x.memory ?? x.chunk ?? x.text ?? ""), kind: "supermemory recall" }));
+  const remote = list<Raw>(sm, "results").map((x, i) => ({ id: x.id ?? `sm-${i}`, at: x.updatedAt ?? x.createdAt, text: String(x.content ?? x.memory ?? x.chunk ?? x.text ?? ""), kind: "recall" }));
   return { agentId, source: m.source ?? (sm.live ? "supermemory" : "local"), container: m.container ?? null, items: [...remote, ...local], detail: sm.detail ?? null };
 }
 function normaliseConfig(raw: unknown, agentId: string): AgentConfig {

@@ -12,15 +12,26 @@ key sends the real A2A 1.0 JSON-RPC `SendMessage` through `identity.a2a_client()
 ends of every task live in this process, a task sent over Inkbox is also delivered in-process immediately; the
 webhook echo is deduplicated by provider task/message id. A provider failure never pretends success: the task
 is persisted with `transport: "local"` and a bounded `providerError`, and an event is written.
+
+Messages between Steward's own identities never reach a person, so Inkbox carrying them is not a live switch; it is
+bounded instead. At most `STEWARD_A2A_INKBOX_MAX_PER_HOUR` (default 120) Inkbox-carried messages (sends, replies and
+follow-ups) per rolling hour, counted in the store so a restart keeps the count; over the cap a message stays in-process
+(a new task records `transport: "local"`, `transportReason: "hourly Inkbox cap"`; a reply or follow-up on an Inkbox task
+records the same on the message). Machine chatter never goes over Inkbox (`transportReason: "machine chatter"`): the
+simulator's tasks, status checks, keep-alives and pings (real_only.SYSTEM_KINDS) and bare acknowledgements ("Noted.",
+"ok", "(end of call)"). Traffic with an outside party is never held, only counted. `GET /api/a2a/transport` shows the
+mode and the hour's count.
 """
 from __future__ import annotations
 
+import json
 import os
 import threading
+import time
 from uuid import uuid4
 
-from .agents import (DIRECTOR, SKILLS, agent_key, all_agent_ids, engineer_id, handle_for, is_known, kind_of, manager_id, migrate_agent_id,
-                     require_message_allowed, site_of, technician_id)
+from .agents import (DIRECTOR, OPERATOR, OWNER, SKILLS, agent_key, all_agent_ids, engineer_id, handle_for, is_known, kind_of, manager_id,
+                     migrate_agent_id, require_message_allowed, site_of, technician_id)
 from .env import env
 from .errors import RealityError
 from .providers import clean_env
@@ -28,6 +39,10 @@ from .sites import DEMO_SITE
 from .store import now, uid
 
 OPEN_TASK_STATES = ("submitted", "working", "input_required")
+INKBOX_SENT_META = "a2a:inkbox:sent"  # epoch seconds of the Inkbox-carried messages of the last hour (JSON list)
+DEFAULT_INKBOX_PER_HOUR = 120
+CAP_REASON = "hourly Inkbox cap"
+CHATTER_REASON = "machine chatter"
 INTENT_STATE = {"progress": "working", "ask_caller": "input_required", "complete": "completed", "fail": "failed"}
 WIRE_STATE = {"TASK_STATE_SUBMITTED": "submitted", "TASK_STATE_WORKING": "working", "TASK_STATE_COMPLETED": "completed",
               "TASK_STATE_FAILED": "failed", "TASK_STATE_CANCELED": "canceled", "TASK_STATE_INPUT_REQUIRED": "input_required",
@@ -78,6 +93,62 @@ class A2ABus:
         if any(end == "operator" or not handle_for(end) for end in ends):
             return "local"
         return "inkbox"
+
+    # ---- the hourly Inkbox cap and machine chatter ------------------------------------------------------
+
+    @staticmethod
+    def inkbox_cap() -> int:
+        try:
+            return max(0, int(float(env("STEWARD_A2A_INKBOX_MAX_PER_HOUR", str(DEFAULT_INKBOX_PER_HOUR)) or DEFAULT_INKBOX_PER_HOUR)))
+        except ValueError:
+            return DEFAULT_INKBOX_PER_HOUR
+
+    def _inkbox_stamps(self) -> list[float]:
+        cutoff = time.time() - 3600
+        try:
+            stamps = json.loads(self.store.meta(INKBOX_SENT_META) or "[]")
+        except ValueError:
+            stamps = []
+        return [float(t) for t in stamps if isinstance(t, (int, float)) and not isinstance(t, bool) and t > cutoff]
+
+    def inkbox_sent_last_hour(self) -> int:
+        return len(self._inkbox_stamps())
+
+    def _take_inkbox_slot(self, enforce: bool = True) -> bool:
+        """Count one Inkbox-carried message in the rolling hour. False (nothing counted) when `enforce` and the cap is reached."""
+        with self.store.lock:
+            stamps = self._inkbox_stamps()
+            if enforce and len(stamps) >= self.inkbox_cap():
+                self.store.meta(INKBOX_SENT_META, json.dumps(stamps))
+                return False
+            stamps.append(round(time.time(), 3))
+            self.store.meta(INKBOX_SENT_META, json.dumps(stamps))
+            return True
+
+    @staticmethod
+    def own_pair(a: str, b: str) -> bool:
+        """Both ends are Steward's own agent identities (never a person and never an outside party)."""
+        return all(is_known(end) and end not in (OPERATOR, OWNER) for end in (a, b))
+
+    @staticmethod
+    def chatter(text: str, kind: str | None, simulated: bool) -> bool:
+        """Machine chatter by real_only.py's rule: the simulator's tasks, status checks, keep-alives and pings, bare acknowledgements."""
+        from .real_only import SYSTEM_KINDS, content_free
+        return bool(simulated) or kind in SYSTEM_KINDS or content_free(text)
+
+    def _inkbox_gate(self, speaker: str, listener: str, text: str, kind: str | None, simulated: bool) -> str | None:
+        """Why a message Inkbox could carry stays in-process (`machine chatter`, `hourly Inkbox cap`), or None when it goes (and
+        is counted). Messages with an outside party are counted but never held."""
+        own = self.own_pair(speaker, listener)
+        if own and self.chatter(text, kind, simulated):
+            return CHATTER_REASON
+        return None if self._take_inkbox_slot(enforce=own) else CAP_REASON
+
+    def transport_status(self) -> dict:
+        sent, cap = self.inkbox_sent_last_hour(), self.inkbox_cap()
+        return dict(mode=self.mode(), inkboxAvailable=self.inkbox_available(), maxPerHour=cap, sentLastHour=sent, capReached=sent >= cap,
+                    keptLocal=[f"{CHATTER_REASON}: simulator status checks, keep-alives and pings, bare acknowledgements",
+                               f"{CAP_REASON}: over {cap} Inkbox-carried messages in the last hour"])
 
     def register(self, agent_kind: str, handler) -> None:
         self.handlers[agent_kind] = handler
@@ -171,6 +242,10 @@ class A2ABus:
                       providerTaskId=None, providerContextId=None, siteId=site, steward=steward, createdAt=now(), updatedAt=now())
         if simulated:
             record["simulated"] = True
+        if record["transport"] == "inkbox":
+            held = self._inkbox_gate(caller, target, text, steward.get("kind"), simulated)
+            if held:
+                record.update(transport="local", transportReason=held)
         if record["transport"] == "inkbox" and self.inkbox_available():
             try:
                 provider = self._inkbox_send(caller, target, parts, message_id=task_id, context_id=self._provider_context(context_id, site, caller, target))
@@ -207,9 +282,14 @@ class A2ABus:
             parts = [{"text": text}, {"data": {"steward": steward}}]
             record["messages"].append(dict(role="agent", parts=parts, at=now(), id=message_id, intent=intent))
             record["state"] = INTENT_STATE[intent]
+            held = None
+            if record["transport"] == "inkbox" and record.get("providerTaskId") and self.inkbox_available():
+                held = self._inkbox_gate(agent, record["caller"], text, steward.get("kind"), bool(record.get("simulated")))
+                if held:
+                    record["messages"][-1].update(transport="local", transportReason=held)
             if record["transport"] == "inkbox" and record.get("providerTaskId") and not self.inkbox_available():
                 record["providerError"] = "Reply kept local: STEWARD_A2A_TRANSPORT=local (or no INKBOX_API_KEY)."
-            elif record["transport"] == "inkbox" and record.get("providerTaskId"):
+            elif record["transport"] == "inkbox" and record.get("providerTaskId") and not held:
                 try:
                     self._inkbox_reply(agent, record["providerTaskId"], intent, parts)
                 except Exception as error:
@@ -239,9 +319,14 @@ class A2ABus:
             record["messages"].append(dict(role="caller", parts=parts, at=now(), id=message_id))
             record["state"] = "working"
             self._telemetry(caller, "a2a_message", text, record)
+            held = None
+            if record["transport"] == "inkbox" and record.get("providerTaskId") and self.inkbox_available():
+                held = self._inkbox_gate(caller, record["target"], text, steward.get("kind"), bool(record.get("simulated")))
+                if held:
+                    record["messages"][-1].update(transport="local", transportReason=held)
             if record["transport"] == "inkbox" and record.get("providerTaskId") and not self.inkbox_available():
                 record["providerError"] = "Follow-up kept local: STEWARD_A2A_TRANSPORT=local (or no INKBOX_API_KEY)."
-            elif record["transport"] == "inkbox" and record.get("providerTaskId"):
+            elif record["transport"] == "inkbox" and record.get("providerTaskId") and not held:
                 try:
                     self._inkbox_send(caller, record["target"], parts, message_id=message_id, context_id=record.get("providerContextId"),
                                       task_id=record["providerTaskId"])

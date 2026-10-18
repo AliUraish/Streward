@@ -5,9 +5,9 @@
 import { useMemo, useState } from "react";
 import type { Remote } from "@/lib/reality";
 import { useCrew, useResponsible } from "@/lib/hooks-3";
-import { agentName, site3, teamOf } from "@/lib/sites-3";
+import { agentName, teamOf } from "@/lib/sites-3";
 import type { CrewMember, SiteId3 } from "@/lib/types-3";
-import { AgentDetail, useSpeaker } from "./agent-detail";
+import { AgentDetail } from "./agent-detail";
 import { useNowRows } from "./portfolio";
 import { useShared } from "./shell";
 import { NotYet, PageHead, Reveal, State, SynthTag, ago, day, words } from "./ui3";
@@ -31,11 +31,10 @@ export default function TeamPage({ siteId }: { siteId: SiteId3 }) {
   const team = teamOf(siteId);
   const [selected, setSelected] = useState(team[0].id);
   const me = team.find(a => a.id === selected) ?? team[0];
-  const speaker = useSpeaker();
   return <div className="page3">
-    <PageHead id="team" title="Team" sub={`${site3(siteId).name}: four agents and the people they work for.`} />
+    <PageHead id="team" title="Team" />
     <Reveal as="section" className="p3" aria-labelledby="agents-h">
-      <div className="p-head"><h2 id="agents-h">Agents</h2>{!rows.some(r => r.known) ? <NotYet remote={overview.readiness === "ready" ? agents as Remote<unknown> : overview as Remote<unknown>} what="agent status" /> : <span className="meta">select one for its transcript, memory and tokens</span>}</div>
+      <div className="p-head"><h2 id="agents-h">Agents</h2>{!rows.some(r => r.known) ? <NotYet remote={overview.readiness === "ready" ? agents as Remote<unknown> : overview as Remote<unknown>} what="agent status" /> : null}</div>
       <div className="team-cards">{team.map(a => { const r = rows.find(x => x.id === a.id); const st = r?.status ?? (r?.known ? "idle" : "unknown");
         return <button key={a.id} type="button" className={`ag-btn card ${a.id === me.id ? "on" : ""}`} aria-pressed={a.id === me.id} onClick={() => setSelected(a.id)}>
           <span className="r1"><span className={`sig ${st === "working" ? "ok" : st === "waiting" ? "warn" : "off"}`} aria-hidden="true" /><strong>{a.name}</strong><span className="st">{st}</span></span>
@@ -43,7 +42,7 @@ export default function TeamPage({ siteId }: { siteId: SiteId3 }) {
           {r?.waitingOn ? <span className="r3">Waiting on {r.waitingOn}</span> : r?.since ? <span className="r3">{ago(r.since)}</span> : null}
         </button>; })}</div>
     </Reveal>
-    <AgentDetail key={me.id} me={me} info={agents.data?.find(x => x.id === me.id)} speaker={speaker} />
+    <AgentDetail key={me.id} me={me} info={agents.data?.find(x => x.id === me.id)} />
     <div className="ppl3">
       <Reveal className="p3 crew3">
         <div className="p-head"><h2>Crew</h2><span className="meta">{crew.data ? `${crew.data.length} people, ${crew.data.filter(c => c.onShift).length} on shift` : ""}</span></div>
@@ -75,7 +74,6 @@ function ContactMap({ siteId, crew }: { siteId: SiteId3; crew: CrewMember[] }) {
   const [kind, setKind] = useState<string | null>(null);
   const responsible = useResponsible(siteId, kind);
   return <div className="cmap">
-    <p>The Steward Dispatch Line holds the one phone number; the field technician sends anything that must reach a person by SMS or voice through it.</p>
     <ul className="rows3 plain">{kinds.map(k => {
       const owners = crew.filter(c => c.owns.includes(k));
       return <li key={k} className={kind === k ? "sel" : ""}>
@@ -84,8 +82,8 @@ function ContactMap({ siteId, crew }: { siteId: SiteId3; crew: CrewMember[] }) {
           <span className="r2">{owners.map(o => `${o.name}, ${o.role}`).join("; ")}</span>
         </button>
         {kind === k ? <div className="resp">
-          <State remote={responsible} what="who_is_responsible">
-            {r => r?.crewMember ? <p>who_is_responsible names <strong>{r.crewMember.name}</strong> ({r.crewMember.role}){r.fallback ? ", as the fallback owner" : ""}{r.via ? `, reached through ${agentName(r.via)}` : ""}{r.channel ? ` by ${r.channel}` : ""}.{r.reason ? ` ${r.reason}` : ""}</p> : <p>who_is_responsible names nobody for {words(k)}{r?.reason ? `: ${r.reason}` : "."}</p>}
+          <State remote={responsible} what="who is responsible">
+            {r => r?.crewMember ? <p>Responsible: <strong>{r.crewMember.name}</strong> ({r.crewMember.role}){r.fallback ? ", as the fallback owner" : ""}{r.via ? `, reached through ${agentName(r.via)}` : ""}{r.channel ? ` by ${r.channel}` : ""}.{r.reason ? ` ${r.reason}` : ""}</p> : <p>Nobody is named for {words(k)}{r?.reason ? `: ${r.reason}` : "."}</p>}
           </State>
         </div> : null}
       </li>;

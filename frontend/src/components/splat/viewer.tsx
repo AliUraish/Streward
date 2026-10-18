@@ -32,6 +32,9 @@ const DIRECTIONS: MoveDirection[] = ['forward', 'back', 'left', 'right', 'up', '
 interface EyeHud { actor: string; label: string; busy: boolean; error: string | null; ms: number | null }
 interface EyeDebug { status: EyeStatus; detail: string | null; executed: number; last: { id: string; action: string; ms: number; error: string | null; frames: number } | null }
 const fmt = (n: number) => (Math.abs(n) < 1e-4 ? 0 : n).toFixed(3);
+// where a dot is drawn: the walking engineer's mark when the pin has one, else the pin itself
+const dotAt = (pin: SplatPin): Vec3Tuple => pin.mark ?? pin.position;
+const dotsKey = (list: SplatPin[]) => list.reduce((s, p) => { const q = dotAt(p); return s + q[0] + 3 * q[1] + 7 * q[2]; }, 0).toFixed(3);
 
 export default function SplatViewerImpl(props: SplatViewerProps) {
   const { siteId, pins, focus, editMode = false, className } = props;
@@ -87,7 +90,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       if (!el) continue;
       let pr = projections.current.get(pin.assetTag);
       if (!pr) { pr = { x: 0, y: 0, depth: 0, distance: 0, visible: false }; projections.current.set(pin.assetTag, pr); }
-      engine.project(pin.position, pr);
+      engine.project(dotAt(pin), pr);
       if (!pr.visible) {
         el.style.visibility = 'hidden';
         continue;
@@ -462,12 +465,12 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       if (!engine || busy || document.hidden) return;
       if (engine.idleMs < 400 || engine.rig.animating || engine.rig.locked) return;
       const pose = engine.rig.current;
-      const key = [pose.yaw, pose.pitch, pose.distance, ...pose.target].map((n) => n.toFixed(3)).join(',') + `|${live.current.pins.length}|${engine.width}x${engine.height}`;
+      const key = [pose.yaw, pose.pitch, pose.distance, ...pose.target].map((n) => n.toFixed(3)).join(',') + `|${live.current.pins.length}:${dotsKey(live.current.pins)}|${engine.width}x${engine.height}`;
       if (key === lastKey) return;
       const list = live.current.pins;
       const candidates: { pin: SplatPin; pr: Projection }[] = [];
       for (const pin of list) {
-        const pr = engine.project(pin.position, { x: 0, y: 0, depth: 0, distance: 0, visible: false });
+        const pr = engine.project(dotAt(pin), { x: 0, y: 0, depth: 0, distance: 0, visible: false });
         if (pr.visible && pr.x >= 0 && pr.y >= 0 && pr.x < engine.width && pr.y < engine.height) candidates.push({ pin, pr });
         else occluded.current.delete(pin.assetTag);
       }
@@ -520,10 +523,10 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
         engine.reset();
         break;
       case 'focus':
-        if (pin) { engine.focusOn(pin.position); pulseTag(pin.assetTag); }
+        if (pin) { engine.focusOn(dotAt(pin)); pulseTag(pin.assetTag); }
         break;
       case 'orbit':
-        if (pin) { engine.orbitAround(pin.position); pulseTag(pin.assetTag); }
+        if (pin) { engine.orbitAround(dotAt(pin)); pulseTag(pin.assetTag); }
         break;
       case 'highlight':
         if (pin) pulseTag(pin.assetTag);
@@ -579,7 +582,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
   };
   const clickPin = (pin: SplatPin) => {
     props.onPinClick?.(pin.assetTag);
-    engineRef.current?.focusOn(pin.position);
+    engineRef.current?.focusOn(dotAt(pin));
     setPulse({ tag: pin.assetTag, key: Date.now() });
   };
 
@@ -669,7 +672,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
             {(eyeOverlay || eyeStatus?.status === 'offline') && (
               <div className={styles.eyeChip} data-eye-status={eyeStatus?.status ?? 'connecting'}>
                 {eyeStatus?.status === 'offline' ? 'Eye offline · retrying every 5 s'
-                  : eyeStatus?.status === 'online' ? `Agent eye · ${eye.rendererId}` : 'Agent eye · connecting'}
+                  : eyeStatus?.status === 'online' ? 'Agent eye' : 'Agent eye · connecting'}
               </div>
             )}
             {eyeOverlay && eyeHud && (
@@ -684,12 +687,12 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
 
       {editMode && phase === 'ready' && (
         <div className={styles.editPanel} style={{ top: 12 + st + (eye ? 84 : 0), left: 12 + sl }}>
-          <div className={styles.editTitle}>Place pins · operator tool</div>
+          <div className={styles.editTitle}>Place pins</div>
           <div className={styles.overlayText}>Click the scan to pick the point under the cursor.</div>
           {picked ? (
             <div className={styles.coords}>
               x {fmt(picked.position[0])} y {fmt(picked.position[1])} z {fmt(picked.position[2])}
-              <div className={styles.overlayText}>{picked.source === 'surface' ? 'Picked on the splat surface' : `No surface under the cursor: ray at ${rayDistance.toFixed(1)} m`}</div>
+              <div className={styles.overlayText}>{picked.source === 'surface' ? 'Picked on the scan surface' : `No surface under the cursor: ray at ${rayDistance.toFixed(1)} m`}</div>
             </div>
           ) : <div className={styles.coords}>No point picked yet</div>}
           <label className={styles.range}>
@@ -711,8 +714,8 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
             <div className={styles.numbers}>
               {phase === 'preparing'
                 ? site.lod
-                  ? `Coarsest level first${chunkProgress ? ` · ${progress.loaded} of ${progress.total} chunk files` : ''} · ${(site.gaussians / 1e6).toFixed(2)} M gaussians in ${site.lod.levels} levels`
-                  : `${(site.gaussians / 1e6).toFixed(2)} M gaussians`
+                  ? (chunkProgress ? `${Math.round(pct * 100)}%` : '')
+                  : ''
                 : progress.total > 0 ? `${Math.round(pct * 100)}% · ${mb(progress.loaded)} of ${mb(progress.total)}` : 'Connecting'}
             </div>
           </div>
@@ -733,7 +736,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
 
       {streaming && stream && (
         <div className={styles.streamChip} role="status" aria-live="polite" style={safe ? { top: 12 + st, right: 12 + sr } : undefined}>
-          Streaming detail · {stream.pendingFiles} chunk file{stream.pendingFiles === 1 ? '' : 's'} to go
+          Streaming detail
         </div>
       )}
 

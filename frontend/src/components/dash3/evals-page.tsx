@@ -21,7 +21,7 @@ const SOURCE = "Steward telemetry";
 const sourceWord = (s?: string | null) => (s || SOURCE).replace(/,?\s*also delivered to Armature/i, "");
 const STAGES: { kind: string; word: string; who: string }[] = [
   { kind: "detect", word: "The Operations Director detects", who: "a Compliance Officer's tokens per mission against its peers" },
-  { kind: "call", word: "The director calls the Compliance Officer", who: "and asks why it re-reads every certificate" },
+  { kind: "call", word: "The director messages the Compliance Officer", who: "and asks why it re-reads every certificate" },
   { kind: "reconfigure", word: "The director reconfigures it", who: "document cache on, subscribe instead of poll" },
   { kind: "rerun", word: "The efficiency eval reruns", who: "tokens per mission against the budget" },
 ];
@@ -86,7 +86,7 @@ export default function EvalsPage() {
   const budget = Number(f?.configs?.[target]?.maxTokensPerMission ?? loopCfg.data?.config.maxTokensPerMission) || f?.loop?.budget || null;
   const metrics = useEvalMetrics();
   return <div className="page3">
-    <PageHead id="evals" title="Evals" sub="How well the agents work: three suites, the cost of a mission, and the loop in which the Operations Director finds an agent wasting tokens and fixes it." />
+    <PageHead id="evals" title="Evals" />
     <EvalMetricsBlock remote={metrics} />
     <div className="ev3">
       <Reveal className="suites3">
@@ -115,7 +115,7 @@ export default function EvalsPage() {
             <span role="cell" className={s.result === "FAIL" ? "bad" : ""}><span className={`sig ${s.result === "PASS" ? "ok" : "bad"}`} aria-hidden="true" />{s.result === "PASS" ? "pass" : "fail"}<small>{n(s.ms)} ms</small></span>
             <span role="cell">{s.detail}</span>
           </div>)}
-        </div> : <p className="st3 empty">{runs.readiness === "ready" ? "No run yet. Start a suite to see its steps." : "Runs appear here once the evals endpoint answers."}</p>}
+        </div> : <p className="st3 empty">{runs.readiness === "ready" ? "No run yet. Start a suite to see its steps." : "No runs yet."}</p>}
       </Reveal>
     </div>
 
@@ -158,16 +158,13 @@ export default function EvalsPage() {
       </Reveal>
       <Reveal className="p3 arm3" i={1}>
         <div className="p-head"><h3>Armature</h3></div>
-        <p>Sessions and issues per agent.</p>
         <dl className="kv3">
           <dt>Sessions</dt><dd>{f?.armature ? n(f.armature.sessions) : "–"}</dd>
           <dt>Issues</dt><dd>{f?.armature ? n(f.armature.issues ?? null) : "–"}</dd>
           <dt>Counted from</dt><dd>{f?.armature ? (f.armature.source === "armature" ? "Armature" : "Steward telemetry") : "not available yet"}</dd>
         </dl>
-        {f?.armature?.detail || f?.armature?.error ? <p className="note3">{f.armature.error ?? f.armature.detail}</p> : null}
-        {f?.note ? <p className="note3">{f.note}</p> : null}
         {ARMATURE_URL ? <a className="b3" href={ARMATURE_URL} target="_blank" rel="noreferrer"><span>Open Armature</span><span className="arrow" aria-hidden="true">→</span></a>
-          : <a className="lnk" href="https://app.armature.tech" target="_blank" rel="noreferrer">Open Armature: app.armature.tech</a>}
+          : <a className="lnk" href="https://app.armature.tech" target="_blank" rel="noreferrer">Open Armature</a>}
       </Reveal>
     </div>
   </div>;
@@ -193,8 +190,7 @@ function EvalMetricsBlock({ remote }: { remote: Remote<EvalMetrics3> }) {
           : <p className="st3 empty">No runs yet.</p>}</div>
         <div className="em-chart"><h3>Tokens per mission</h3><BarChart title="Tokens per agent per mission" rows={x.tokensPerMission.map(t => ({ label: agentName(t.agentId), value: t.value }))} /></div>
         <div className="em-chart"><h3>Tool calls per mission</h3><BarChart title="Tool calls per mission" rows={x.toolCallsPerMission.map(t => ({ label: t.label, value: t.value }))} digits={1} /></div>
-        <div className="em-chart wide"><h3>A2A messages per day</h3><ColumnChart title="A2A messages per day" points={x.a2aPerDay} /></div>
-        {x.cost.note ? <p className="note3">{x.cost.note}</p> : null}
+        <div className="em-chart wide"><h3>Agent messages per day</h3><ColumnChart title="Agent messages per day" points={x.a2aPerDay} /></div>
       </div>}
     </State>
   </Reveal>;

@@ -18,17 +18,28 @@ sleeping otherwise), each a Change of type `compliance_alert` with extras `{aler
 6. `owner_call`: the Steward Dispatch Line calls `INKBOX_OWNER_PHONE` through the hosted voice agent with a brief
    under 1000 characters, so a voicemail leaves the same message.
 
-A real email or call needs every gate, read from the environment at send time: Inkbox configured, the alert started by
-hand (an autoplayed walkthrough also needs `STEWARD_SCENARIO_AUTOPLAY_LIVE=true`), `STEWARD_ALLOW_EXTERNAL_MESSAGES=true`,
-`STEWARD_ALLOW_OWNER_ALERTS=true` and the recipient in `INKBOX_ALLOWED_RECIPIENTS` (`InkboxAdapter._gate` checks the last
-two again); then fewer than `STEWARD_OWNER_ALERTS_PER_DAY` (default 3) live alerts in the last 24 h and none for the
-same obligation. Otherwise the email and the call are recorded `dry_run` (or `capped`) with their full content (subject,
-HTML and text, attachment names and sizes, the call brief), so the dashboard shows exactly what would go out. Owner
-addresses are stored masked. Text is written from the records by templates; no model is called.
+A real email or call goes on the owner channel (owner, Oct 18 2026) and needs every gate, read from the environment at send
+time: Inkbox configured (the sender's identity), `STEWARD_ALLOW_OWNER_ALERTS=true` and the recipient being exactly the owner's
+own address or phone (`INKBOX_OWNER_EMAIL` / `INKBOX_OWNER_PHONE`) listed in `INKBOX_ALLOWED_RECIPIENTS`
+(`InkboxAdapter._owner_gate` checks the last two again and refuses any other recipient); then fewer than
+`STEWARD_OWNER_ALERTS_PER_DAY` (default 3) live alerts in the last 24 h and none for the same obligation. The owner channel
+does not need `STEWARD_ALLOW_EXTERNAL_MESSAGES` (that switch keeps governing contractor dispatch, notices and escalations), and
+an autoplayed walkthrough's alert sends like one started by hand: it is capped, deduplicated and only reaches the owner.
+Otherwise the email and the call are recorded `dry_run` (or `capped`) with their full content (subject, HTML and text,
+attachment names and sizes, the call brief), so the dashboard shows exactly what would go out. Owner addresses are stored
+masked. Text is written from the records by templates; no model is called.
 
 One alert per obligation per 24 h: a later walkthrough reuses the alert while it plays, once it reached the owner or hit
 the cap, and while live messaging is still off; an alert that was only a dry run gives way once every gate holds (so
 switching live messaging on and walking the site really emails and calls), and a failed one is never reused.
+
+Contract 8 (owner, Oct 18 2026): the owner hears about compliance from the Site Inspector's inspection chain
+(`inspections.py`), not from every walkthrough. `STEWARD_WALK_OWNER_ALERTS` (default false) skips steps 5 and 6: the email is
+still composed and stored (mode `skipped`) and both steps say the owner contact goes through the inspection; an alert is then
+reused for its obligation for 24 h whatever the gates say. With `STEWARD_WALK_OWNER_ALERTS=true` the email goes through the
+outbox (`service.outbox.email`, paced) and the call through `service.voice_calls.request(purpose="owner_compliance")` as a
+conversation with a goal, the facts and the options; the alert's own gates, daily cap and one-per-obligation rule still apply
+first, and the records say `queued` with the outbox item or call id until those report back.
 """
 from __future__ import annotations
 
@@ -42,7 +53,7 @@ from datetime import date as date_cls, datetime, timedelta, timezone
 from .agents import (SHORT_SITE, agent_key, compliance_id, display_name, email_for, handle_env_names, handle_for, manager_id)
 from .env import env
 from .errors import RealityError
-from .providers import InkboxAdapter, allowed_recipients, clean_env, external_messages_allowed
+from .providers import InkboxAdapter, clean_env, owner_channel_blockers
 from .sites import SITE_BY_ID, SITE_IDS
 from .store import now, uid
 from .verify import parse_time
@@ -55,6 +66,7 @@ MAX_FRAMES = 3
 MAX_PDF_BYTES = 6 * 1024 * 1024
 MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024
 MAX_BRIEF_CHARS = 1000
+SKIPPED_REASON = "owner contact goes through the inspection"
 ATTACHABLE_JURISDICTIONS = ("ENG-UK", "JP")  # OGL v3.0 and PDL1.0 allow redistribution; Victorian legislation does not
 PLACE = {"myer-plant": "the plant room", "bristol-pumps": "the pump house", "tomioka-mill": "the Silk Reeling Mill"}
 SITE_ZONES = {"myer-plant": ("Australia/Melbourne", 11), "bristol-pumps": ("Europe/London", 1), "tomioka-mill": ("Asia/Tokyo", 9)}
@@ -236,6 +248,11 @@ def flag(name: str, default: str = "false") -> bool:
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def walk_owner_alerts() -> bool:
+    """Contract 8: walkthrough alerts email and call the owner only with STEWARD_WALK_OWNER_ALERTS=true (the inspection does)."""
+    return flag("STEWARD_WALK_OWNER_ALERTS", "false")
 
 
 def per_day() -> int:
@@ -588,8 +605,8 @@ class ComplianceAlertService:
             # Reuse the alert of the last 24 h while it plays, once it reached the owner or hit the cap, and while live messaging is
             # still off. An alert that was only a dry run gives way when every gate now holds, so switching live messaging on and
             # walking the site really emails and calls the owner (the cap and the one-per-obligation rule still apply).
-            if existing and (existing.get("state") in ("queued", "running") or existing.get("liveAt") or existing.get("cappedReason")
-                             or not self.would_send(site_id, origin)):
+            if existing and (not walk_owner_alerts() or existing.get("state") in ("queued", "running") or existing.get("liveAt")
+                             or existing.get("cappedReason") or not self.would_send(site_id, origin)):
                 return existing, True
             status = "blocked" if obligation.get("status") == "blocked" else "overdue"
             days = overdue_days(obligation)
@@ -830,33 +847,23 @@ class ComplianceAlertService:
     # ---- gates ----------------------------------------------------------------------------------------------
 
     def gate(self, alert: dict, channel: str) -> list[str]:
-        """Why a real send cannot happen now (empty when every gate holds). Read from the environment at send time."""
+        """Why a real send cannot happen now (empty when every gate holds). Read from the environment at send time. The owner
+        channel: the sender's Inkbox identity, STEWARD_ALLOW_OWNER_ALERTS=true and the owner's own allowlisted address or
+        phone; STEWARD_ALLOW_EXTERNAL_MESSAGES is not needed and the walkthrough's origin (manual or autoplay) does not matter."""
         site = alert["siteId"]
         reasons = []
-        if alert.get("origin") == "autoplay" and not flag("STEWARD_SCENARIO_AUTOPLAY_LIVE"):
-            reasons.append("an autoplayed walkthrough sends only with STEWARD_SCENARIO_AUTOPLAY_LIVE=true")
         if channel == "email":
             sender = compliance_id(site)
             if not (agent_key(sender) or clean_env("INKBOX_API_KEY")):
                 reasons.append("Inkbox is not configured (INKBOX_API_KEY)")
             if not handle_for(sender):
                 reasons.append(f"no Inkbox identity for {display_name(sender)} ({(handle_env_names(sender) or ['identity'])[0]})")
-            recipient, name = self.comms.owner_email(), "INKBOX_OWNER_EMAIL"
         else:
             if not clean_env("INKBOX_API_KEY"):
                 reasons.append("Inkbox is not configured (INKBOX_API_KEY)")
             if not (clean_env("INKBOX_IDENTITY_DISPATCH") or clean_env("INKBOX_PHONE_IDENTITY")):
                 reasons.append("no dispatch line identity (INKBOX_IDENTITY_DISPATCH)")
-            recipient, name = self.comms.owner_phone(), "INKBOX_OWNER_PHONE"
-        if not external_messages_allowed():
-            reasons.append("STEWARD_ALLOW_EXTERNAL_MESSAGES is not true")
-        if not flag("STEWARD_ALLOW_OWNER_ALERTS"):
-            reasons.append("STEWARD_ALLOW_OWNER_ALERTS is not true")
-        if not recipient:
-            reasons.append(f"{name} is not set to a valid " + ("address" if channel == "email" else "phone number"))
-        elif recipient.strip().casefold() not in allowed_recipients():
-            reasons.append(f"{name} is not in INKBOX_ALLOWED_RECIPIENTS")
-        return reasons
+        return reasons + owner_channel_blockers("email" if channel == "email" else "call")
 
     def cap_reason(self, alert: dict) -> str | None:
         """The daily cap (live alerts in the last 24 h) and one live alert per obligation per 24 h."""
@@ -1025,18 +1032,25 @@ class ComplianceAlertService:
         message = self.compose_email(alert)
         recipient = self.comms.owner_email()
         sender = compliance_id(site)
-        mode, reason = self.decide(alert, "email")
-        provider_ref = None
+        provider_ref, outbox_id = None, None
+        if not walk_owner_alerts():
+            mode, reason = "skipped", SKIPPED_REASON
+        else:
+            mode, reason = self.decide(alert, "email")
         if mode == "send":
             try:
-                result = self.comms.send_email(site, recipient, message["subject"], message["text"], "", html=message["html"],
-                                               attachments=[{k: a[k] for k in ("filename", "content_type", "content_base64", "content_id") if a.get(k)}
-                                                            for a in message["attachments"]],
-                                               sender_handle=handle_for(sender), api_key=agent_key(sender) or None, idempotency_key=f"steward-{alert['id']}-email")
-                mode, provider_ref = "sent", (result or {}).get("id")
+                item = self.service.outbox.email(sender=sender, to_role="owner", subject=message["subject"], text=message["text"], html=message["html"],
+                                                 attachments=[{k: a[k] for k in ("filename", "content_type", "content_base64", "content_id", "size") if a.get(k)}
+                                                              for a in message["attachments"]],
+                                                 site_id=site, purpose="owner_alert", refs=dict(alertId=alert["id"], issueId=alert.get("issueId"),
+                                                                                                obligationId=alert.get("obligationId")),
+                                                 dedupe_key=f"alert:{alert['id']}:email")
+                outbox_id, provider_ref = item.get("id"), item.get("providerRef")
+                mode = item.get("status") or "queued"
+                reason = item.get("reason") if mode not in ("queued", "sending", "sent") else None
             except Exception as error:  # nothing is reported as delivered
-                mode, reason = "failed", f"Inkbox send failed ({type(error).__name__}); nothing reported as delivered."
-        record = dict(mode=mode, to=mask_email(recipient), fromAgent=sender, fromName=display_name(sender), fromAddress=email_for(sender),
+                mode, reason = "failed", f"The outbox did not take the email ({type(error).__name__}); nothing reported as delivered."
+        record = dict(mode=mode, to=mask_email(recipient), fromAgent=sender, fromName=display_name(sender), fromAddress=email_for(sender), outboxId=outbox_id,
                       subject=message["subject"], html=message["html"], text=message["text"],
                       attachments=[dict(filename=a["filename"], contentType=a["content_type"], size=a["size"], inline=bool(a.get("content_id")),
                                         kind=a.get("kind")) for a in message["attachments"]],
@@ -1047,45 +1061,70 @@ class ComplianceAlertService:
             fresh["email"] = record
             self._save(fresh)
         names = ", ".join(a["filename"] for a in message["attachments"])
+        if mode == "skipped":
+            self._step(alert["id"], "owner_email", f"Owner contact goes through the inspection; the email to the owner is kept on file: "
+                                                   f"\"{message['subject']}\" with {names}."[:400], mode=mode)
+            return
         self._step(alert["id"], "owner_email", f"{display_name(sender)} emailed the owner ({mode}{': ' + reason if reason and mode != 'sent' else ''}): "
-                                               f"\"{message['subject']}\" with {names}."[:400], mode=mode)
+                                               f"\"{message['subject']}\" with {names}."[:400], mode=mode, outboxId=outbox_id)
 
     # ---- owner call ---------------------------------------------------------------------------------------
 
-    def brief(self, alert: dict) -> str:
+    def call_plan(self, alert: dict) -> dict:
+        """The owner call as a task (contract 8 §3): a goal, the facts and the options, never a speech."""
         c = self.context(alert)
-        rule = ascii_only(c["rule"])
-        parts = [f"Hello, this is the Steward Dispatch Line calling for the compliance team at {ascii_only(c['site_name'])}.",
-                 sentence(f"The {lower_first(c['noun'])} for {c['tag']}"
-                          + ("" if c["asset"].casefold() in c["noun"].casefold() else f", the {lower_first(ascii_only(c['asset']))},") + f" is {c['state']}"),
-                 sentence(f"Under {ascii_only(c['cite_spoken'])}, {lower_first(c['risk'])}"),
-                 sentence(f"{ascii_only(c['owner_intro'])} owns it, and the {c['manager_role_l']} has approved telling you"),
-                 "The compliance officer has emailed you the file and the evidence from today's walkthrough.",
-                 f"Decision needed: shall we {c['step']}? Please say yes or no, or reply to the email."]
-        text = " ".join(parts)
-        if rule and len(text) + len(rule) + 1 <= MAX_BRIEF_CHARS:
-            parts.insert(3, rule)
-            text = " ".join(parts)
-        return text[:MAX_BRIEF_CHARS]
+        what = (f"The {lower_first(c['noun'])} for {c['tag']}"
+                + ("" if c["asset"].casefold() in c["noun"].casefold() else f", the {lower_first(ascii_only(c['asset']))},") + f" is {c['state']}")
+        facts = [sentence(f"{what} at {ascii_only(c['site_name'])}"),
+                 sentence(f"It falls under {ascii_only(c['cite_spoken'])}") + f" In plain words, {lower_first(c['risk'])}.",
+                 sentence(f"{ascii_only(c['owner_intro'])} owns it, and the {c['manager_role_l']} has approved telling the owner"),
+                 "The compliance officer has emailed the owner the file and the evidence from today's walkthrough.",
+                 sentence(f"Meanwhile the {c['walker_role']} will {c['hold']}")]
+        if c["rule"]:
+            facts.insert(2, ascii_only(c["rule"]))
+        goal = f"Get the owner's decision on {c['tag']} at {ascii_only(c['site_name'])}: shall we {c['step']}?"
+        options = [dict(id="yes", label=f"Yes: {c['step']}"), dict(id="not-yet", label="Not yet: keep the hold in place and decide after reading the email")]
+        brief = (f"Goal: {goal} Facts: " + " ".join(facts))[:MAX_BRIEF_CHARS]
+        return dict(goal=goal, facts=facts, options=options, brief=brief, voicemail=f"{ascii_only(c['compliance_name'])} called about {c['tag']} at "
+                                                                                     f"{ascii_only(c['site_name'])}: {lower_first(c['noun'])} {c['state']}. "
+                                                                                     f"The details are in your email.")
+
+    def brief(self, alert: dict) -> str:
+        return self.call_plan(alert)["brief"]
 
     def step_owner_call(self, alert: dict) -> None:
         site = alert["siteId"]
-        brief = self.brief(alert)
+        plan = self.call_plan(alert)
         recipient = self.comms.owner_phone()
-        mode, reason = self.decide(alert, "call")
         email_mode = (alert.get("email") or {}).get("mode")
-        provider_ref = None
+        provider_ref, call_id = None, None
+        if not walk_owner_alerts():
+            mode, reason = "skipped", SKIPPED_REASON
+        else:
+            mode, reason = self.decide(alert, "call")
         if mode == "send":
+            email = alert.get("email") or {}
+            file = dict(subject=email.get("subject") or alert["title"], text=email.get("text") or "", html=email.get("html"))
             try:
-                result = self.comms.place_call(site, recipient, brief)
-                mode, provider_ref = "sent", (result or {}).get("id")
+                call = self.service.voice_calls.request(purpose="owner_compliance", caller=compliance_id(site), callee_role="owner", callee_name="the owner",
+                                                        site_id=site, goal=plan["goal"], facts=plan["facts"], options=plan["options"],
+                                                        can_do=["email_file", "note", "callback"], file=file,
+                                                        refs=dict(alertId=alert["id"], issueId=alert.get("issueId"), obligationId=alert.get("obligationId")),
+                                                        dedupe_key=f"alert:{alert['id']}:call")
+                call_id, mode = call.get("id"), call.get("status") or "queued"
+                provider_ref = call.get("providerCallId")
+                reason = call.get("reason") if mode in ("dry_run", "capped", "failed", "canceled") else None
             except Exception as error:
-                mode, reason = "failed", f"Inkbox call failed ({type(error).__name__}); nothing reported as delivered."
-        record = {"mode": mode, "to": mask_phone(recipient), "from": "Steward Dispatch Line", "brief": brief, "voicemail": brief,
-                  "providerRef": provider_ref, "reason": reason, "at": now()}
+                mode, reason = "failed", f"The call could not be queued ({type(error).__name__}); nothing reported as delivered."
+        record = {"mode": mode, "to": mask_phone(recipient), "from": display_name(compliance_id(site)), "brief": plan["brief"], "goal": plan["goal"],
+                  "facts": plan["facts"], "options": plan["options"], "voicemail": plan["voicemail"], "callId": call_id, "providerRef": provider_ref,
+                  "reason": reason, "at": now()}
         with self.lock:
             fresh = self.get(alert["id"])
             fresh["call"] = record
             self._save(fresh)
-        self._step(alert["id"], "owner_call", f"Steward Dispatch Line called the owner ({mode}{': ' + reason if reason and mode != 'sent' else ''}); "
-                                              f"email was {email_mode or 'not sent'}.", mode=mode)
+        if mode == "skipped":
+            self._step(alert["id"], "owner_call", "Owner contact goes through the inspection; no call from the walkthrough.", mode=mode)
+            return
+        self._step(alert["id"], "owner_call", f"{display_name(compliance_id(site))} called the owner ({mode}{': ' + reason if reason and mode not in ('sent', 'queued') else ''}); "
+                                              f"email was {email_mode or 'not sent'}.", mode=mode, callId=call_id)

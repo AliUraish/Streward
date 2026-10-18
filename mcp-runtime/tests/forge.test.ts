@@ -62,7 +62,7 @@ test('contract 6: request_tool, the lifecycle authority, forge_<name> as a first
 
     // the three stable tools; nothing forged is published yet
     const tools = (await client.listTools()).tools;
-    assert.equal(tools.length, 73);
+    assert.equal(tools.length, 75);
     for (const name of ['request_tool', 'list_forged_tools', 'call_forged_tool']) {
       const tool = tools.find(t => t.name === name)!;
       assert(tool && tool.outputSchema && /NEXT/.test(tool.description!) && /cost|free/i.test(tool.description!), name);

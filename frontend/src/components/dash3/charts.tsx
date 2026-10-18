@@ -75,7 +75,8 @@ export function LineChart({ title, unit, series, spec, height = 220, yDomain, di
   /* Direct labels at the line ends, pushed apart so close values never overlap. */
   const endLabels = parsed.map((s, i) => { const last = s.pts[s.pts.length - 1]; return { id: s.id, i, x: x(last[0]) + 8, y: y(last[1]) + 4, text: `${parsed.length > 1 ? `${s.short ?? s.label} ` : ""}${fmtN(last[1], digits)}` }; })
     .sort((a, b) => a.y - b.y).reduce<{ id: string; i: number; x: number; y: number; text: string }[]>((acc, l) => { const prev = acc[acc.length - 1]; acc.push(prev && l.y - prev.y < 15 ? { ...l, y: prev.y + 15 } : l); return acc; }, []);
-  const tickCount = W < 640 ? 3 : 5;
+  /* A plot narrower than three time labels (a small multiple, a phone) gets its two ends only. */
+  const tickCount = pw < 200 ? 2 : W < 640 ? 3 : 5;
   const xticks = Array.from({ length: tickCount }, (_, i) => t0 + (span * i) / (tickCount - 1));
   const yticks = niceTicks(lo, hi, 4).filter(v => v >= lo && v <= hi);
   const stats = parsed.map(s => { const v = s.pts.map(p => p[1]); return { label: s.label, latest: v[v.length - 1], min: Math.min(...v), max: Math.max(...v) }; });

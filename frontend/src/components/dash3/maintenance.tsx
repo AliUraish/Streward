@@ -1,16 +1,16 @@
 "use client";
 
 /* /app/[site]/maintenance: the schedule the agents keep. The site's manager books each window on its own, for the
-   obligation it serves, and lines it up with the other sites' windows over a call (contract 4 section 7: Myer and
+   obligation it serves, and lines it up with the other sites' windows over a chat (contract 4 section 7: Myer and
    Bristol's examiner visit; contract 5 section 5: Tomioka and Bristol's heritage-safe sensor work); nobody here has to
    ask. Each window shows its date and the site's local time, the assets, who scheduled it, the obligation it serves and
-   the other site's window it was aligned with, with the call that coordinated it; the obligations falling due sit in
+   the other site's window it was aligned with, with the chat that coordinated it; the obligations falling due sit in
    the same agenda by date. Fields the planner has not sent yet are left out. */
 import Link from "next/link";
 import { useMemo } from "react";
 import { strings } from "@/lib/api-7";
 import { useMaintenance, useObligations } from "@/lib/hooks-3";
-import { agentName, canonicalId, isSite3, rn, roleOf, site3, siteList, type Site3 } from "@/lib/sites-3";
+import { agentName, canonicalId, isSite3, rn, site3, siteList, type Site3 } from "@/lib/sites-3";
 import type { MaintenanceWindow, Obligation, SiteId3 } from "@/lib/types-3";
 import { PageHead, Reveal, State, SynthTag, ago, day } from "./ui3";
 import { regulationName } from "./walkthrough";
@@ -91,19 +91,12 @@ function WindowItem({ w, siteId, all, obligations }: { w: MaintenanceWindow; sit
     {aligned.length || callId || note ? <span className="mw-co">
       {aligned.map((a, i) => { const s = a.siteId && isSite3(a.siteId) ? site3(a.siteId) : null; return <span key={`${a.windowId ?? a.siteId}-${i}`}>Aligned with {s ? `${s.short}'s` : "another site's"} window{a.at && s ? `, ${whenText(a.at, null, s)}` : ""}</span>; })}
       {note ? <span>{note}</span> : null}
-      {callId ? <Link className="lnk" href={`/app/conversations?id=${encodeURIComponent(callId)}`}>Read the call that coordinated it</Link> : null}
+      {callId ? <Link className="lnk" href={`/app/conversations?id=${encodeURIComponent(callId)}`}>Read the chat that coordinated it</Link> : null}
     </span> : null}
   </li>;
 }
-/* What proposes a shared window at each site, for the empty state. */
-const SHARED_SCENARIO: Record<SiteId3, string> = {
-  "myer-plant": "Myer shares examiner visits with Bristol; a window appears here once the managers propose one.",
-  "bristol-pumps": "Bristol shares examiner visits with Myer and heritage-safe sensor work with Tomioka; a window appears here once the managers propose one.",
-  "tomioka-mill": "Tomioka shares heritage-safe sensor work with Bristol; a window appears here once the managers propose one.",
-};
 
 export default function MaintenancePage({ siteId }: { siteId: SiteId3 }) {
-  const site = site3(siteId);
   /* Every site's windows, so a window lined up with another site's can name that window's day and time. */
   const all = useMaintenance();
   const mine = useMemo(() => (all.data ? all.data.filter(w => w.siteIds.includes(siteId)) : null), [all.data, siteId]);
@@ -124,9 +117,9 @@ export default function MaintenancePage({ siteId }: { siteId: SiteId3 }) {
   }, [rows]);
   const item = (w: MaintenanceWindow) => <WindowItem key={`w-${w.id}`} w={w} siteId={siteId} all={all.data ?? []} obligations={obligations.data ?? []} />;
   return <div className="page3">
-    <PageHead id="maintenance" title="Maintenance" sub={`${site.name}: the schedule the ${roleOf(siteId, "manager").title} keeps on its own. Each window is booked for the obligation it serves and lined up with the other sites' windows over a call; the obligations falling due in the next 60 days sit beside them.`} />
+    <PageHead id="maintenance" title="Maintenance" />
     <Reveal as="section" className="p3 agenda3" aria-labelledby="agenda-h">
-      <div className="p-head"><h2 id="agenda-h">Schedule</h2><span className="meta">windows and obligations by date</span></div>
+      <div className="p-head"><h2 id="agenda-h">Schedule</h2></div>
       {all.readiness !== "ready" && obligations.readiness !== "ready" ? <State remote={windows} what="the schedule">{() => null}</State>
         : rows.length === 0 ? <p className="st3 empty">Nothing scheduled in the next 60 days.</p>
         : <div className="agenda">{months.map(([m, list]) => <div key={m} className="month"><h3>{m}</h3><ol className="rows3 plain">{list.map(r => r.kind === "window"
@@ -135,7 +128,7 @@ export default function MaintenancePage({ siteId }: { siteId: SiteId3 }) {
     </Reveal>
     <Reveal as="section" className="p3 shared3" i={1} aria-labelledby="shared-h">
       <div className="p-head"><h2 id="shared-h">Shared with other sites</h2><span className="meta">{mine ? `${shared.length} window${shared.length === 1 ? "" : "s"}` : ""}</span></div>
-      <State remote={windows} what="maintenance windows" isEmpty={() => shared.length === 0} empty={`No shared windows yet. ${SHARED_SCENARIO[siteId]}`}>
+      <State remote={windows} what="maintenance windows" isEmpty={() => shared.length === 0} empty="No shared windows yet.">
         {() => <ul className="rows3 plain">{shared.map(item)}</ul>}
       </State>
     </Reveal>

@@ -12,8 +12,8 @@ from pypdf import PdfReader
 
 from .a2a import A2ABus
 from .conversations import ConversationService
-from .branding import rebrand_seed_pdfs
 from .evalruns import EvalRunner
+from .events import EventDirector
 from .eye import EyeService
 from .fixflow import FixWorkflowService
 from .forge import ForgeService
@@ -26,6 +26,7 @@ from .memory_store import MemoryStore
 from .metrics import MetricsService
 from .missions import MissionEngine
 from .ops import OpsService
+from .owner_notifications import OwnerNotifications
 from .people import PeopleService
 from .reality import RealityService
 from .regulations import RegulationService
@@ -41,6 +42,14 @@ from .telemetry import Telemetry
 from .viewer import ViewerService
 from .vision import VisionIngest
 from .waits import WaitHub
+from .walks import WalkService
+from .outbox import Outbox
+from .voice_calls import VoiceCalls
+from .chat_writer import ChatWriter
+from .attendance import AttendanceService
+from .inspections import InspectionService
+from .agent_environment import AgentEnvironment
+from .site_tours import SiteTourService
 
 
 def public(value):
@@ -66,7 +75,6 @@ class PropertyService:
         seed(self.store)
         self.site_additions = add_new_sites(self.store)
         apply_site_shape(self.store)
-        rebrand_seed_pdfs(self.store)
         self.register_sync = sync_registers(self.store)
         self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="steward-agent")
         self.submit_lock = threading.RLock()
@@ -102,6 +110,7 @@ class PropertyService:
         self.missions = MissionEngine(self)
         self.scenarios = ScenarioEngine(self)
         self.patrols = PatrolService(self)  # contract 7: walkthroughs, labels and the compliance alerts they start
+        self.walks = WalkService(self)  # each site's Engineer walks on its own; Claude looks at every stop (walks.py)
         self.autoplay = ScenarioAutoplay(self)
         self.simulator = Simulator(self)
         self.evals = EvalRunner(self)
@@ -109,20 +118,52 @@ class PropertyService:
         # drift, and the maintenance planner that books windows on its own and coordinates with the other sites.
         self.compliance_gaps = ComplianceGaps(self)
         self.maintenance_planner = MaintenancePlanner(self)
+        # The owner's notifications page, the compliance snapshot PDF, the Operations Director's digest and the agents' play
+        # reports, emailed to the owner on the owner channel (owner_notifications.py).
+        self.owner = OwnerNotifications(self)
+        # Random events at the sites (owner, Oct 18): Claude writes one every few minutes (templates when it cannot), validated and
+        # played through the same services as the scenarios; the agents react as they already do (events.py).
+        self.events = EventDirector(self)
+        # Contract 8: one paced outbox for everything that reaches a person, real conversational phone calls, long agent chats
+        # written by Claude, the employees' badge log with the People Officer, and the Site Inspector's inspection chain.
+        self.outbox = Outbox(self)
+        self.voice_calls = VoiceCalls(self)
+        self.chats = ChatWriter(self)
+        self.attendance = AttendanceService(self)
+        self.inspections = InspectionService(self)
+        # The agent environment (one read of a site as an agent sees it) and the Site Inspector's tours for any agent or MCP client.
+        self.agent_environment = AgentEnvironment(self)
+        self.site_tours = SiteTourService(self)
         if start_workers:
             self.recover_jobs()
             self.bus.start()
             self.missions.recover()
             self.simulator.start()
             self.autoplay.start()
+            self.walks.start()
             self.compliance_gaps.start()
             self.maintenance_planner.start()
+            self.owner.start()
+            self.events.start()
+            self.outbox.start()
+            self.voice_calls.start()
+            self.attendance.start()
+            self.inspections.start()
 
     def close(self):
+        self.site_tours.close()
+        self.chats.close()
+        self.inspections.close()
+        self.attendance.close()
+        self.voice_calls.close()
+        self.outbox.close()
+        self.events.close()
+        self.owner.close()
         self.maintenance_planner.close()
         self.compliance_gaps.close()
         self.simulator.stop()
         self.autoplay.close()
+        self.walks.close()
         self.scenarios.close()
         self.patrols.close()
         self.fixes.close()

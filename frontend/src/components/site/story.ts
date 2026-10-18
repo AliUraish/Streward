@@ -27,8 +27,8 @@ export const DISPATCH: V2[] = [[EDGE_X, PIPE_Y], [X.p102, PIPE_Y], [X.p102, VOLU
 export const CORRECT: V2[] = [[X.p102, VOLUTE_Y + VOLUTE_R], [X.p102, -0.25], [X.p101, -0.25], [X.p101, VOLUTE_Y + VOLUTE_R]];
 export const RETURN: V2[] = [...ASK].reverse();
 
-/* Seconds per beat, then a rest. One calm loop of about sixteen seconds. */
-export const DUR = [2.8, 2.8, 3.0, 3.8, 2.8];
+/* Seconds per beat, then a rest. The opening leaves time to sketch, hold and erase the plant. */
+export const DUR = [4.8, 2.8, 3.0, 3.8, 2.8];
 export const REST = 1.6;
 export const START = DUR.reduce<number[]>((acc, _d, i) => { acc.push(i === 0 ? 0 : acc[i - 1] + DUR[i - 1]); return acc; }, []);
 export const TOTAL = START[4] + DUR[4] + REST;

@@ -1,13 +1,15 @@
 """Scenario autoplay: scenarios start on their own in rotation with a gap, never while another run or fix workflow
-plays, never right after someone started one by hand, never while a live switch could make an auto run send real
-messages or spend, and at most a capped number a day. Runs a dead process left `running` are marked interrupted."""
+plays, never right after someone started one by hand, never while a live switch could make an auto run reach a person
+or spend (agent-to-agent messages over Inkbox and the owner-alert channel are not live switches), and at most a capped
+number a day. Runs a dead process left `running` are marked interrupted."""
 import pytest
 from fastapi.testclient import TestClient
 
+from src.autoplay import live_switches
 from src.main import create_app
 from src.store import now
 
-LIVE = ("STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_NOTICE_SMS", "STEWARD_ALLOW_AGENT_EMAIL", "STEWARD_SUPERMEMORY_LIVE")
+LIVE = ("STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_NOTICE_SMS", "STEWARD_SUPERMEMORY_LIVE")
 
 
 @pytest.fixture
@@ -68,11 +70,22 @@ def test_autoplay_never_runs_beside_another_active_run(client):
 
 def test_autoplay_pauses_while_live_switches_are_on(client, monkeypatch):
     player = autoplay(client)
+    monkeypatch.setenv("STEWARD_A2A_TRANSPORT", "inkbox")  # A2A over Inkbox only connects Steward's own identities
+    monkeypatch.setenv("STEWARD_ALLOW_OWNER_ALERTS", "true")  # the owner channel is capped on its own
+    monkeypatch.setenv("STEWARD_ALLOW_AGENT_EMAIL", "true")  # contract 8: agent mail only reaches Steward's own mailboxes
+    assert live_switches() == [] and player.tick()["origin"] == "autoplay"  # none of them pauses autoplay
     monkeypatch.setenv("STEWARD_ALLOW_EXTERNAL_MESSAGES", "true")
-    monkeypatch.setenv("STEWARD_A2A_TRANSPORT", "inkbox")
     assert player.tick() is None and player.state == "paused"
-    assert "STEWARD_ALLOW_EXTERNAL_MESSAGES" in player.reason and "STEWARD_A2A_TRANSPORT=inkbox" in player.reason
-    assert client.get("/api/scenario-autoplay").json()["liveSwitches"] == ["STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_A2A_TRANSPORT=inkbox"]
+    assert "STEWARD_ALLOW_EXTERNAL_MESSAGES" in player.reason and "STEWARD_A2A_TRANSPORT" not in player.reason and "OWNER_ALERTS" not in player.reason
+    assert client.get("/api/scenario-autoplay").json()["liveSwitches"] == ["STEWARD_ALLOW_EXTERNAL_MESSAGES"]
+    for name in ("STEWARD_ALLOW_NOTICE_SMS", "STEWARD_ALLOW_AGENT_EMAIL", "STEWARD_SUPERMEMORY_LIVE"):
+        monkeypatch.setenv(name, "true")
+    monkeypatch.setenv("STEWARD_MODEL_PROVIDER", "eve")
+    assert live_switches() == ["STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_NOTICE_SMS",
+                               "STEWARD_SUPERMEMORY_LIVE", "STEWARD_MODEL_PROVIDER=eve"]  # still live switches
+    for name in ("STEWARD_ALLOW_NOTICE_SMS", "STEWARD_ALLOW_AGENT_EMAIL", "STEWARD_SUPERMEMORY_LIVE"):
+        monkeypatch.setenv(name, "false")
+    monkeypatch.setenv("STEWARD_MODEL_PROVIDER", "local")
     monkeypatch.setenv("STEWARD_SCENARIO_AUTOPLAY_LIVE", "true")  # a deliberate override
     assert player.tick()["origin"] == "autoplay"
 

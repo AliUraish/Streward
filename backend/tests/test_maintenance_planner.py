@@ -151,13 +151,32 @@ def test_a_planner_window_is_done_once_its_obligation_closes(client):
                for c in client.get(f"/api/properties/{MY}/changes?limit=1000").json()["changes"])
 
 
+class LiveMemory:
+    """A Supermemory client stub with the live switch on; it never leaves the process."""
+    live = configured = True
+
+    def add(self, *args, **kwargs):
+        return {}
+
+    def search(self, *args, **kwargs):
+        return {"results": []}
+
+
 def test_the_planner_pauses_while_a_live_path_is_on(client, monkeypatch):
     service = svc(client)
-    monkeypatch.setattr(service.bus, "inkbox_available", lambda: True)
+    monkeypatch.setattr(service.bus, "inkbox_available", lambda: True)  # A2A over Inkbox only connects Steward's own identities
+    monkeypatch.setenv("STEWARD_ALLOW_OWNER_ALERTS", "true")  # the owner channel is capped on its own
+    assert service.maintenance_planner.live_switches() == []  # neither pauses the planner
+    original = service.memory.client
+    monkeypatch.setattr(service.memory, "client", LiveMemory())  # live Supermemory still does
     assert service.maintenance_planner.tick() == []
     status = client.get("/api/maintenance-planner").json()
-    assert status["state"] == "paused" and "Inkbox A2A" in status["reason"] and status["liveSwitches"] == ["Inkbox A2A transport"]
+    assert status["state"] == "paused" and status["liveSwitches"] == ["STEWARD_SUPERMEMORY_LIVE"] and "Inkbox" not in status["reason"]
     assert not any(planner_windows(client, site) for site in (MY, BR, TM))
+    monkeypatch.setattr(service.memory, "client", original)
+    booked = service.maintenance_planner.tick()  # Inkbox A2A still "available": the planner books and tells the teams
+    assert booked and client.get("/api/maintenance-planner").json()["state"] == "booked"
+    assert all(t["transport"] == "local" for t in client.get("/api/a2a/tasks").json())  # no identities configured: nothing left the process
 
 
 def test_people_can_still_propose_and_approve_by_hand(client):

@@ -107,7 +107,7 @@ test('real mcp-use and official clients interoperate, preserve scope, reject bad
     await official.connect(new StreamableHTTPClientTransport(new URL(listener.url), { requestInit: { headers: HARNESS } }));
     const connection = await mcpUse.connect('steward');
     const [officialTools, useTools] = await Promise.all([official.listTools(), connection.listTools()]);
-    assert.equal(officialTools.tools.length, 73, '70 tools plus Tool Forge: request_tool, list_forged_tools, call_forged_tool (the eval harness sees list_scenarios and start_scenario; everyone else 71)');
+    assert.equal(officialTools.tools.length, 75, '70 tools plus Tool Forge (request_tool, list_forged_tools, call_forged_tool) and the owner tools (get_owner_notifications, get_compliance_snapshot); the eval harness sees list_scenarios and start_scenario, everyone else 73');
     assert.deepEqual(officialTools.tools.map(tool => tool.name).sort(), useTools.map(tool => tool.name).sort());
     for (const tool of officialTools.tools) {
       assert(tool.description && tool.description.length > 40);

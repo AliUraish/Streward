@@ -61,3 +61,12 @@ def test_hosted_dashboard_origin_can_write_when_listed(tmp_path, monkeypatch):
         other = dict(headers, origin="http://insecure.example.com")
         assert hosted.post("/api/eye/myer-plant/act", json=body, headers=other).status_code == 403  # plain http origins are never added
         assert hosted.post("/api/eye/myer-plant/act", json=body, headers=dict(headers, Authorization="Bearer nope")).status_code == 401
+
+
+def test_changes_latest_returns_the_newest_rows(client):
+    for index in range(5):
+        client.app.state.service.reality.emit_change("myer-plant", "issue", f"iss-latest-{index}", f"latest test {index}")
+    newest = client.get("/api/properties/myer-plant/changes", params={"latest": "true", "limit": 2}).json()["changes"]
+    assert [c["summary"] for c in newest] == ["latest test 3", "latest test 4"]
+    oldest = client.get("/api/properties/myer-plant/changes", params={"limit": 2}).json()["changes"]
+    assert oldest[0]["version"] < newest[0]["version"]

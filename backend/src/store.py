@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from .branding import prepare_database, migrate_records
 from .sites import migrate_site_ids, retire_sites
 from .agent_migration import migrate_agent_ids
 
@@ -26,7 +25,7 @@ class Store:
         self.directory = directory.resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         (self.directory / "files").mkdir(exist_ok=True)
-        self.path = prepare_database(self.directory)
+        self.path = self.directory / "steward.sqlite3"
         self.lock = threading.RLock()
         with self.connect() as db:
             db.executescript("""
@@ -41,7 +40,6 @@ class Store:
                 CREATE INDEX IF NOT EXISTS events_property ON events(property_id,id);
                 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
             """)
-        migrate_records(self)
         migrate_site_ids(self)
         retire_sites(self)
         migrate_agent_ids(self)

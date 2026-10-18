@@ -33,7 +33,7 @@ function config(url: string, patch: Partial<RuntimeConfig> = {}): RuntimeConfig 
 /** A transport carrying the eval harness's header: with harnessTools on, only such requests see and call list_scenarios / start_scenario. */
 const harness = (url: string) => new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { [HARNESS_HEADER]: HARNESS_HEADER_VALUE } } });
 const C3_TOOLS = ['get_scene', 'focus_view', 'capture_view', 'show_factory', 'get_overview', 'get_agent_activity', 'get_board_meeting', 'get_memory', 'list_issues', 'get_issue', 'inspect_valves', 'get_inspection', 'list_crew', 'who_is_responsible', 'list_obligations', 'get_document', 'request_document', 'start_scenario', 'list_scenarios', 'assign_issue', 'wait_for', 'decide', 'get_eval_findings', 'reconfigure_agent'];
-const C4_TOOLS = ['eye_look', 'eye_move', 'eye_turn', 'eye_go_to', 'eye_orbit', 'eye_mark', 'get_portfolio_summary', 'get_metrics', 'list_conversations', 'get_conversation', 'list_regulations', 'explain_compliance_issue', 'request_fix', 'list_maintenance', 'propose_maintenance_window', 'list_notifications'];
+const C4_TOOLS = ['eye_look', 'eye_move', 'eye_turn', 'eye_go_to', 'eye_orbit', 'eye_mark', 'get_portfolio_summary', 'get_metrics', 'list_conversations', 'get_conversation', 'list_regulations', 'explain_compliance_issue', 'request_fix', 'list_maintenance', 'propose_maintenance_window', 'list_notifications', 'get_owner_notifications', 'get_compliance_snapshot'];
 const raw = async (url: string, name: string, args: Record<string, unknown>) => (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2026-07-28' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) })).text();
 const as = async (url: string, actor: string) => { const client = new Client({ name: `as-${actor}`, version: '1' }, { capabilities: {} }); await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { [ACT_AS_HEADER]: actor } } })); return client; };
 
@@ -48,7 +48,7 @@ test('addendum 3 tools: scene, viewer, captures, overview, issues, people, compl
     await client.connect(harness(listener.url));
     const call = async (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: args }) as Promise<CallToolResult>;
     const tools = (await client.listTools()).tools;
-    assert.equal(tools.length, 73);
+    assert.equal(tools.length, 75);
     for (const name of [...C3_TOOLS, ...C4_TOOLS]) {
       const tool = tools.find(t => t.name === name);
       assert(tool, name);

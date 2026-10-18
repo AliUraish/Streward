@@ -23,7 +23,7 @@ export default function AssetDrawer({ siteId, tag, asset, issues, obligations, v
     <button type="button" className="scrim3" aria-label="Close the asset drawer" onClick={onClose} tabIndex={-1} />
     <aside className="drawer3" role="dialog" aria-modal="true" aria-labelledby="drawer3-title">
       <header>
-        <div><h3 id="drawer3-title">{tag}</h3><p>{asset ? `${asset.name}${asset.kind ? `, ${words(asset.kind)}` : ""}` : "This asset is not in the register the backend returned."}<SynthTag rec={asset} /></p></div>
+        <div><h3 id="drawer3-title">{tag}</h3><p>{asset ? `${asset.name}${asset.kind ? `, ${words(asset.kind)}` : ""}` : "This asset is not in the register."}<SynthTag rec={asset} /></p></div>
         <Btn quiet small onClick={onClose}>Close</Btn>
       </header>
       <div className="d-actions"><Btn small arrow onClick={() => onFocus("focus")}>Focus</Btn><Btn small quiet onClick={() => onFocus("orbit")}>Orbit</Btn></div>
@@ -55,7 +55,7 @@ export default function AssetDrawer({ siteId, tag, asset, issues, obligations, v
       {valve || asset?.kind === "valve" ? <section>
         <h4>Valve inspection</h4>
         {valve ? <>
-          <p className={`v-res ${valve.status === "not_fixed" ? "bad" : ""}`}><span className={`sig ${valve.status === "fixed" ? "ok" : valve.status === "not_fixed" ? "bad" : "warn"}`} aria-hidden="true" />{valveWord[valve.status]}, score {fx(valve.score)} against a threshold of {fx(valve.threshold)}{valve.model ? `, ${valve.model}` : ""}</p>
+          <p className={`v-res ${valve.status === "not_fixed" ? "bad" : ""}`}><span className={`sig ${valve.status === "fixed" ? "ok" : valve.status === "not_fixed" ? "bad" : "warn"}`} aria-hidden="true" />{valveWord[valve.status]}, score {fx(valve.score)} against a threshold of {fx(valve.threshold)}</p>
           {valve.frames?.length ? <div className="v-frames">{valve.frames.slice(0, 16).map((f, i, all) => <img key={f} src={api3.frameUrl(siteId, tag, f)} alt={`Agent eye view of ${tag}, ${i + 1} of ${Math.min(all.length, 16)}`} loading="lazy" />)}</div> : <p className="st3 empty">No frames for this valve.</p>}
           {valve.explanation ? <dl className="kv3">
             <dt>Finding</dt><dd>{valve.explanation.finding}</dd>
@@ -63,7 +63,6 @@ export default function AssetDrawer({ siteId, tag, asset, issues, obligations, v
             <dt>Confidence</dt><dd>{String(valve.explanation.confidence)}</dd>
             <dt>Action</dt><dd>{valve.explanation.recommendedAction}</dd>
           </dl> : <p className="st3 empty">{valve.status === "fixed" ? "No explanation needed: the valve sits with its peers." : "No explanation yet."}</p>}
-          <p className="note3">An embedding anomaly score, not a trained defect classifier.</p>
         </> : <p className="st3 empty">This valve has not been inspected yet.</p>}
       </section> : null}
     </aside>

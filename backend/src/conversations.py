@@ -10,15 +10,20 @@ or received through Inkbox) as derived `message` conversations; see real_only.py
 - A **meeting** is convened by a manager or the director: the convener asks each participant over A2A and the
   participant's reply is its statement; the convener states the resolution and the contact is decided from the
   crew ownership table.
-- A **call** is an Inkbox A2A conversation presented as a call: each turn is a message on a task between the two
-  speakers (send, follow-up `message`, or `progress` reply), closed with `complete` at the end. Voice comes from
-  the browser's text-to-speech and the UI says so; there are no phone calls between agents on the current plan.
+- A **call** is an Inkbox A2A conversation between agents, shown as a text chat (contract 8: agent-to-agent is text,
+  there is no voice): each turn is a message on a task between the two speakers (send, follow-up `message`, or
+  `progress` reply), closed with `complete` at the end. `call()` plays scripted turns at once; `open_call` / `say` /
+  `close_call` are the same thing a line at a time, for chats written live (chat_writer.py), each line going out over
+  A2A as it is written and announced as a Change (type `conversation`, status `line`, extras `seq`, `speaker`).
 - Every other A2A exchange (missions, document deliveries, notifications) is shown as a derived **message**
   conversation grouped by A2A context, so nothing agent-to-agent is invisible.
 
 The bus picks the transport per message (Inkbox A2A when both identities and keys exist, local otherwise) and
-enforces the cross-site rule. Scripted conversations carry hand-seeded summaries; `scripts/synth/summarise.py`
-(Claude, dry-run default) writes Claude summaries through `POST /api/conversations/{id}/summary`.
+enforces the cross-site rule. Scripted conversations carry hand-seeded summaries, chats written by Claude a Claude
+summary, and `POST /api/conversations/{id}/summary` takes one for any conversation. Every conversation the API returns
+has a summary (contract 8 §4): one nobody wrote is written from the record when it is read (`auto_summary`, `summaryBy:
+"record"`; who asked whom and the answer, who emailed, texted or called whom, or the topic and the last word) and is never
+stored.
 """
 from __future__ import annotations
 
@@ -28,8 +33,13 @@ from .real_only import (INCLUDE_ALL, ORIGINS, TEXT_PREFIX, conversation_origin, 
                         tasks_are_system)
 from .store import now, uid
 
-VOICE_NOTE = "Voice is the browser's text-to-speech reading the transcript; agents talk over Inkbox A2A, not phone calls."
 SUMMARY_KEYS = ("headline", "points", "decisions", "actions")
+AUTO_SUMMARY_BY = "record"  # a summary written from the record on read; never stored
+TERMINAL_TASK_STATES = ("completed", "failed", "canceled")
+# Fields a caller's extras may not overwrite when it opens a call.
+RESERVED_FIELDS = frozenset(("id", "kind", "topic", "convener", "participants", "siteIds", "transport", "providerTaskIds", "a2aTaskIds", "contextId",
+                             "transcript", "summary", "summaryBy", "startedAt", "endedAt", "status", "synthetic", "origin", "callee"))
+CHANNEL_VERB = {"email": "emailed", "sms": "texted", "imessage": "messaged", "call": "called"}
 
 
 class SafeDict(dict):
@@ -59,6 +69,43 @@ def validate_summary(summary: dict) -> dict:
     return dict(headline=summary["headline"].strip()[:200], points=points, decisions=decisions, actions=actions)
 
 
+def _clip(text, limit: int) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def auto_summary(conversation: dict) -> dict:
+    """A summary written from the record when nobody wrote one: who asked whom and the answer (a message or an A2A thread),
+    who emailed, texted or called whom (a real text), or the topic and the last word (a call or a meeting)."""
+    transcript = [line for line in conversation.get("transcript") or [] if str(line.get("text") or "").strip()]
+    convener = conversation.get("convener") or (transcript[0].get("speaker") if transcript else None)
+    others = [p for p in conversation.get("participants") or [] if p != convener]
+    person = conversation.get("person") if isinstance(conversation.get("person"), dict) else {}
+
+    def name(agent) -> str:
+        if person and agent == person.get("id"):
+            return str(person.get("name") or agent)
+        line = next((l for l in transcript if l.get("speaker") == agent and l.get("name")), None)
+        return str(line["name"]) if line else display_name(str(agent or ""))
+    topic = _clip(conversation.get("topic") or (transcript[0]["text"] if transcript else "") or conversation.get("kind") or "conversation", 120)
+    other = others[0] if others else None
+    channel = conversation.get("channel")
+    if channel in CHANNEL_VERB:
+        body = str(transcript[0]["text"]) if transcript else str(conversation.get("text") or "")
+        rest = body.split("\n", 1)[1] if "\n" in body else body
+        headline = f"{name(convener)} {CHANNEL_VERB[channel]} {name(other) if other else 'someone'}: {topic}"
+        points = [_clip(rest, 240)] if rest.strip() and _clip(rest, 240) != topic else []
+    elif conversation.get("kind") == "message":
+        answer = next((l for l in reversed(transcript) if l.get("speaker") != convener), None)
+        headline = f"{name(convener)} asked {name(other) if other else 'a teammate'}: {topic}"
+        points = [_clip(answer["text"], 240)] if answer else []
+    else:
+        last = transcript[-1] if transcript else None
+        headline = topic
+        points = [_clip(f"{last.get('name') or name(last.get('speaker'))}: {last['text']}", 240)] if last else []
+    return dict(headline=_clip(headline, 200), points=points, decisions=[], actions=[])
+
+
 class ConversationService:
     def __init__(self, service):
         self.service = service
@@ -78,16 +125,37 @@ class ConversationService:
         tasks = [self.service.bus.task(task_id) for task_id in conversation.get("a2aTaskIds", []) if self.store.get("a2a_task", task_id)]
         conversation["providerTaskIds"] = [t["providerTaskId"] for t in tasks if t.get("providerTaskId")]
         conversation["transport"] = "inkbox" if any(t["transport"] == "inkbox" for t in tasks) else "local"
-        self.store.put("conversation", conversation, "")
-        self.service.reality.mirror.put("conversation", conversation, conversation["siteIds"][0] if conversation["siteIds"] else "")
+        stored = {k: v for k, v in conversation.items() if k != "voiceNote"}  # agent chats are text (contract 8)
+        if stored.get("summaryBy") == AUTO_SUMMARY_BY:  # written on read, never stored
+            stored.update(summary=None, summaryBy=None)
+        self.store.put("conversation", stored, "")
+        self.service.reality.mirror.put("conversation", stored, stored["siteIds"][0] if stored["siteIds"] else "")
         return conversation
 
-    def _change(self, conversation: dict, summary: str, status: str) -> None:
+    def _present(self, conversation: dict) -> dict:
+        """What the API returns: no voice note, and a summary written from the record when nobody wrote one."""
+        out = {k: v for k, v in conversation.items() if k != "voiceNote"}
+        if not out.get("summary"):
+            out.update(summary=auto_summary(out), summaryBy=AUTO_SUMMARY_BY)
+        return out
+
+    def _raw(self, conversation_id: str) -> dict:
+        """The stored record (with its origin), for internal writers; the API reads through get()."""
+        record = self.store.get("conversation", conversation_id, "")
+        if not record:
+            raise RealityError("Conversation not found.", "NOT_FOUND", "Open a call with open_call before adding lines.", 404)
+        return self._with_origin(record)
+
+    def _change(self, conversation: dict, summary: str, status: str, **more) -> None:
+        """The conversation's Change on each of its sites: `extra` for the listeners (waits, the HUD), and the status (started, line,
+        ended) with the line's `seq` and `speaker` stored on the Change itself so the dashboard can follow a live chat."""
         for site in conversation["siteIds"]:
             self.service.reality.emit_change(site, "conversation", conversation["id"], summary[:480],
                                              extra=dict(conversationId=conversation["id"], kind=conversation["kind"], status=status,
                                                         issueId=conversation.get("issueId"), scenarioId=conversation.get("scenarioId"),
-                                                        runId=conversation.get("runId"), meetingId=conversation["id"] if conversation["kind"] == "meeting" else None))
+                                                        runId=conversation.get("runId"), meetingId=conversation["id"] if conversation["kind"] == "meeting" else None,
+                                                        **more),
+                                             fields=dict(conversationId=conversation["id"], status=status, **more))
 
     def _new(self, kind: str, convener: str, participants: list[str], site_ids: list[str], topic: str, **extra) -> dict:
         for agent in participants:
@@ -98,7 +166,7 @@ class ConversationService:
         origin = creation_origin(dict(origin=extra.pop("origin", None), runId=extra.get("runId")))
         conversation = dict(id=uid("conv"), kind=kind, topic=topic[:200], convener=convener, participants=list(dict.fromkeys(participants)),
                             siteIds=sites, transport="local", providerTaskIds=[], a2aTaskIds=[], contextId=uid("ctx"), transcript=[],
-                            summary=None, summaryBy=None, startedAt=now(), endedAt=None, status="live", voiceNote=VOICE_NOTE,
+                            summary=None, summaryBy=None, startedAt=now(), endedAt=None, status="live",
                             synthetic=bool(extra.pop("synthetic", True)), origin=origin, **{k: v for k, v in extra.items() if v is not None})
         self._save(conversation)
         self._change(conversation, f"{display_name(convener)} started a {kind}: {topic[:160]}", "started")
@@ -107,7 +175,8 @@ class ConversationService:
     def _line(self, conversation: dict, speaker: str, text: str, task: dict | None = None, kind: str | None = None) -> None:
         entry = dict(seq=len(conversation["transcript"]) + 1, speaker=speaker, agentId=speaker, name=display_name(speaker), text=text[:1500], at=now())
         if task:
-            entry.update(taskId=task["id"], transport=task["transport"])
+            # each line keeps its own transport: a reply the bus kept local (hourly Inkbox cap, machine chatter) says so
+            entry.update(taskId=task["id"], transport=((task.get("messages") or [{}])[-1].get("transport") or task["transport"]))
             if task["id"] not in conversation["a2aTaskIds"]:
                 conversation["a2aTaskIds"].append(task["id"])
         if kind:
@@ -124,10 +193,11 @@ class ConversationService:
             conversation.update(summary=validate_summary(summary), summaryBy=summary_by or "hand-seed")
         self._save(conversation)
         self._change(conversation, headline, "ended")
+        written = (conversation.get("summary") or {}).get("headline") if conversation.get("summaryBy") != AUTO_SUMMARY_BY else None
         for agent in conversation["participants"]:
             if agent != OPERATOR:
                 self.service.memory.write(agent, f"{conversation['kind'].title()} on {conversation['topic'][:120]}: "
-                                                 f"{(conversation.get('resolution') or (conversation.get('summary') or {}).get('headline') or headline)[:300]}",
+                                                 f"{(conversation.get('resolution') or written or headline)[:300]}",
                                           "conversation", dict(conversationId=conversation["id"], issueId=conversation.get("issueId")),
                                           conversation["siteIds"][0] if conversation["siteIds"] else None, synthetic=conversation["synthetic"],
                                           origin=self._with_origin(conversation)["origin"])
@@ -177,40 +247,84 @@ class ConversationService:
         headline = f"Meeting resolved: {(resolution_text or topic)[:200]}" + (f" Contact: {contact['name']} ({contact['role']})." if contact else "")
         return self._finish(conversation, fill(summary, context) if summary else None, summary_by, headline)
 
+    def open_call(self, caller: str, callee: str, topic: str, participants: list[str] | None = None, site_ids: list[str] | None = None,
+                  issue_id: str | None = None, issue_kind: str | None = None, scenario_id: str | None = None, run_id: str | None = None,
+                  synthetic: bool = True, workflow_id: str | None = None, origin: str | None = None, **extra) -> dict:
+        """Start a call between `caller` and `callee` (others may join): lines follow with `say`, `close_call` ends it. `extra` fields
+        (refs such as inspectionId or maintenanceWindowId) are stored on the record."""
+        everyone = list(dict.fromkeys([caller, callee] + list(participants or [])))
+        refs = {k: v for k, v in extra.items() if k not in RESERVED_FIELDS}
+        return self._new("call", caller, everyone, site_ids or [], topic, callee=callee, issueId=issue_id, issueKind=issue_kind,
+                         scenarioId=scenario_id, runId=run_id, workflowId=workflow_id, synthetic=synthetic, origin=origin, **refs)
+
+    def say(self, conversation_id: str, speaker: str, text: str, to: str | None = None, announce: bool = True) -> dict:
+        """One line of an open call, sent over A2A the way `call()` sends a turn: the first line between two speakers opens a task,
+        later lines are the caller's follow-up `message` or the target's `progress` reply on it. `to` defaults to the callee, or to
+        the caller when the callee speaks. `announce` emits the line as a Change (status `line`) so the dashboard sees it live."""
+        conversation = self._raw(conversation_id)
+        if conversation.get("status") == "ended":
+            raise RealityError("This call has ended.", "INVALID_REQUEST", "Open a new call with open_call.", 409)
+        if speaker not in conversation["participants"]:
+            if not is_known(speaker) or speaker == "owner":
+                raise RealityError(f"{speaker} cannot take part in a conversation.", "INVALID_REQUEST", "Participants are Steward agents.")
+            conversation["participants"].append(speaker)
+            site = site_of(speaker)
+            if site and site not in conversation["siteIds"]:
+                conversation["siteIds"].append(site)
+        caller = conversation["convener"]
+        callee = conversation.get("callee") or next((p for p in conversation["participants"] if p != caller), caller)
+        listener = to or (callee if speaker != callee else caller)
+        if listener == speaker:
+            listener = next((p for p in conversation["participants"] if p != speaker), caller)
+        bus = self.service.bus
+        task = None
+        for task_id in conversation.get("a2aTaskIds") or []:
+            if not self.store.get("a2a_task", task_id):
+                continue
+            candidate = bus.task(task_id)
+            if {candidate["caller"], candidate["target"]} == {speaker, listener} and candidate["state"] not in TERMINAL_TASK_STATES:
+                task = candidate
+                break
+        if task is None:
+            task = bus.send(speaker, listener, text, dict(kind="call", conversationId=conversation["id"], issueId=conversation.get("issueId"),
+                                                          scenarioId=conversation.get("scenarioId")),
+                            self._site_for(conversation, speaker, listener), context_id=conversation["contextId"], deliver=False)
+        elif task["caller"] == speaker:
+            task = bus.message(speaker, task["id"], text, dict(kind="call", conversationId=conversation["id"]), deliver=False)
+        else:
+            task = bus.reply(speaker, task["id"], "progress", text, dict(kind="call", conversationId=conversation["id"]), deliver=False)
+        self._line(conversation, speaker, text, task)
+        if announce:
+            self._change(conversation, f"{display_name(speaker)}: {text}", "line", seq=len(conversation["transcript"]), speaker=speaker)
+        return conversation
+
+    def close_call(self, conversation_id: str, summary: dict | None = None, summary_by: str | None = None, headline: str | None = None) -> dict:
+        """End a call: every task still open is completed with "(end of call)" as `call()` does, then the call finishes (summary,
+        the ended Change, the participants' memories)."""
+        conversation = self._raw(conversation_id)
+        if conversation.get("status") == "ended":
+            return conversation
+        bus = self.service.bus
+        for task_id in list(conversation.get("a2aTaskIds") or []):
+            if not self.store.get("a2a_task", task_id):
+                continue
+            task = bus.task(task_id)
+            if task["state"] not in TERMINAL_TASK_STATES:
+                bus.reply(task["target"], task_id, "complete", "(end of call)", dict(kind="call_end", conversationId=conversation["id"]), deliver=False)
+        return self._finish(conversation, summary, summary_by, headline or f"Call ended: {conversation['topic'][:200]}")
+
     def call(self, caller: str, callee: str, topic: str, turns: list[dict], participants: list[str] | None = None, site_ids: list[str] | None = None,
              issue_id: str | None = None, issue_kind: str | None = None, scenario_id: str | None = None, run_id: str | None = None,
              context: dict | None = None, summary: dict | None = None, summary_by: str = "hand-seed", synthetic: bool = True,
              workflow_id: str | None = None, origin: str | None = None) -> dict:
-        """A multi-turn A2A conversation between `caller` and `callee` (others may join with `to` set)."""
+        """A multi-turn A2A conversation between `caller` and `callee` (others may join with `to` set), played at once."""
         everyone = list(dict.fromkeys([caller, callee] + list(participants or []) + [t["speaker"] for t in turns]))
         context = dict(context or {})
-        conversation = self._new("call", caller, everyone, site_ids or [], topic, issueId=issue_id, issueKind=issue_kind, scenarioId=scenario_id,
-                                 runId=run_id, workflowId=workflow_id, synthetic=synthetic, origin=origin)
-        bus = self.service.bus
-        open_tasks: dict[frozenset, str] = {}
+        conversation = self.open_call(caller, callee, topic, participants=everyone, site_ids=site_ids, issue_id=issue_id, issue_kind=issue_kind,
+                                      scenario_id=scenario_id, run_id=run_id, synthetic=synthetic, workflow_id=workflow_id, origin=origin)
         for turn in turns:
-            speaker = turn["speaker"]
-            listener = turn.get("to") or (callee if speaker != callee else caller)
-            text = fill(turn["text"], context)
-            pair = frozenset((speaker, listener))
-            task_id = open_tasks.get(pair)
-            if task_id is None:
-                task = bus.send(speaker, listener, text, dict(kind="call", conversationId=conversation["id"], issueId=issue_id, scenarioId=scenario_id),
-                                self._site_for(conversation, speaker, listener), context_id=conversation["contextId"], deliver=False)
-                open_tasks[pair] = task["id"]
-            else:
-                current = bus.task(task_id)
-                if current["caller"] == speaker:
-                    task = bus.message(speaker, task_id, text, dict(kind="call", conversationId=conversation["id"]), deliver=False)
-                else:
-                    task = bus.reply(speaker, task_id, "progress", text, dict(kind="call", conversationId=conversation["id"]), deliver=False)
-            self._line(conversation, speaker, text, task)
-        for pair, task_id in open_tasks.items():
-            task = bus.task(task_id)
-            if task["state"] not in ("completed", "failed", "canceled"):
-                bus.reply(task["target"], task_id, "complete", "(end of call)", dict(kind="call_end", conversationId=conversation["id"]), deliver=False)
-        headline = f"Call ended: {topic[:200]}"
-        return self._finish(conversation, fill(summary, context) if summary else None, summary_by, headline)
+            conversation = self.say(conversation["id"], turn["speaker"], fill(turn["text"], context), to=turn.get("to"), announce=False)
+        return self.close_call(conversation["id"], fill(summary, context) if summary else None, summary_by)
 
     def message(self, sender: str, recipient: str, topic: str, text: str, site_ids: list[str] | None = None, issue_id: str | None = None,
                 data: dict | None = None, synthetic: bool = False, origin: str | None = None) -> dict:
@@ -224,7 +338,8 @@ class ConversationService:
 
     def answer(self, conversation_id: str, speaker: str, text: str) -> dict:
         """Close a one-question conversation: `speaker` (the task's target) replies `complete` with the answer."""
-        conversation = self.get(conversation_id)
+        record = self.store.get("conversation", conversation_id, "")
+        conversation = self._with_origin(record) if record else self.get(conversation_id)
         task_id = next(iter(conversation.get("a2aTaskIds") or []), None)
         task = None
         if task_id:
@@ -273,8 +388,7 @@ class ConversationService:
                                 contextId=context_id, transcript=transcript, summary=(summary or {}).get("summary"), summaryBy=(summary or {}).get("summaryBy"),
                                 startedAt=tasks[0]["createdAt"], endedAt=max(t["updatedAt"] for t in tasks) if closed else None,
                                 status="ended" if closed else "live", synthetic=any(t.get("simulated") for t in tasks), derived=True,
-                                missionId=next(((t.get("steward") or {}).get("missionId") for t in tasks if (t.get("steward") or {}).get("missionId")), None),
-                                voiceNote=VOICE_NOTE))
+                                missionId=next(((t.get("steward") or {}).get("missionId") for t in tasks if (t.get("steward") or {}).get("missionId")), None)))
         return derived
 
     def _texts(self) -> list[dict]:
@@ -303,7 +417,7 @@ class ConversationService:
         if kind:
             records = [c for c in records if c["kind"] == kind]
         records.sort(key=lambda c: c["startedAt"], reverse=True)
-        return records[:limit]
+        return [self._present(c) for c in records[:limit]]
 
     def get(self, conversation_id: str, include: str | None = INCLUDE_ALL) -> dict:
         """One conversation. Internal callers see every record; the API passes its `include` (a seed record is 404 there
@@ -312,17 +426,17 @@ class ConversationService:
         if record:
             record = self._with_origin(record)
             if record["origin"] not in hidden_origins(include):
-                return record
+                return self._present(record)
             raise RealityError("Conversation not found among real records.", "NOT_FOUND",
                                f"It is a {record['origin']} record; pass ?include=all to read it.", 404)
         if conversation_id.startswith("conv-ctx-"):
             match = next((c for c in self._derived() if c["id"] == conversation_id), None)
             if match and match["origin"] not in hidden_origins(include):
-                return match
+                return self._present(match)
         if conversation_id.startswith(TEXT_PREFIX):
             match = next((c for c in self._texts() if c["id"] == conversation_id), None)
             if match:
-                return match
+                return self._present(match)
         raise RealityError("Conversation not found.", "NOT_FOUND", "List conversations with GET /api/conversations.", 404)
 
     def set_summary(self, conversation_id: str, summary: dict, summary_by: str) -> dict:
@@ -332,7 +446,7 @@ class ConversationService:
         record = self.store.get("conversation", conversation_id, "")
         if record:
             record.update(summary=clean, summaryBy=summary_by, summarizedAt=now())
-            return self._save(record)
+            return self._present(self._save(record))
         conversation = self.get(conversation_id)
         self.store.put("conversation_summary", dict(id=conversation_id, summary=clean, summaryBy=summary_by, at=now()), "")
         return {**conversation, "summary": clean, "summaryBy": summary_by}
@@ -354,9 +468,9 @@ class ConversationService:
         if meeting_id:
             record = self.store.get("conversation", meeting_id, "")
             if record and record["kind"] == "meeting" and shown(self._with_origin(record)):
-                return self.as_board_meeting(self._with_origin(record))
+                return self.as_board_meeting(self._present(self._with_origin(record)))
         if issue_id:
             matches = [c for c in map(self._with_origin, self.store.all("conversation", "")) if c["kind"] == "meeting" and c.get("issueId") == issue_id and shown(c)]
             if matches:
-                return self.as_board_meeting(sorted(matches, key=lambda c: c["startedAt"])[-1])
+                return self.as_board_meeting(self._present(sorted(matches, key=lambda c: c["startedAt"])[-1]))
         raise RealityError("Board meeting not found.", "NOT_FOUND", "List meetings with GET /api/board-meetings?siteId=.", 404)

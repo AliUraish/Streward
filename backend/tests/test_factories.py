@@ -486,7 +486,7 @@ def test_overview_is_compact_and_activity_reports_telemetry(client):
     overview = client.get("/api/overview").json()
     assert [s["id"] for s in overview["sites"]] == [MY, BR, TM] and overview["sites"][0]["issues"]["high"] >= 1
     assert {"ok", "due_soon", "overdue", "blocked"} == set(overview["sites"][0]["compliance"]) and overview["sites"][0]["crewOnShift"] == 3
-    assert len(overview["agents"]) == 14 and len(overview["lastChanges"]) == 10
+    assert len(overview["agents"]) == 17 and len(overview["lastChanges"]) == 10
     assert not any(c["type"] == "scenario" for c in overview["lastChanges"]), "scenario step rows never reach the overview"
     assert len(json.dumps(overview, separators=(",", ":"))) <= 2400  # ≤ 600 tokens at 4 characters a token
     activity = client.get("/api/agents/myer-manager/activity").json()
@@ -768,10 +768,12 @@ def test_conversations_list_derive_and_accept_summaries(client):
     assert all(set(c["siteIds"]) == {MY, BR} for c in calls if c["topic"] in ("Shared pressure-equipment examiner", "Shared examiner visit"))
     compliance = next(c for c in calls if c["topic"] == "Shared pressure-equipment examiner")
     assert [line["speaker"] for line in compliance["transcript"]] == ["bristol-compliance", "myer-compliance", "bristol-compliance"]
-    assert compliance["summaryBy"] == "hand-seed" and "examiner" in compliance["summary"]["headline"] and compliance["voiceNote"].startswith("Voice is the browser")
+    assert compliance["summaryBy"] == "hand-seed" and "examiner" in compliance["summary"]["headline"] and "voiceNote" not in compliance  # chats are text (contract 8)
     mission = client.post("/api/missions", json={"siteId": MY, "budget": 5, "assetTags": ["P-101"]}).json()
     derived = [c for c in client.get("/api/conversations?agentId=myer-manager").json() if c.get("derived")]
-    assert derived and derived[0]["kind"] == "message" and derived[0]["missionId"] == mission["id"] and derived[0]["summary"] is None
+    assert derived and derived[0]["kind"] == "message" and derived[0]["missionId"] == mission["id"]
+    # contract 8 §4: a thread nobody summarised gets one written from the record on read
+    assert derived[0]["summaryBy"] == "record" and " asked " in derived[0]["summary"]["headline"]
     posted = client.post(f"/api/conversations/{derived[0]['id']}/summary", json={"summary": {"headline": "Restart set delegated", "points": ["P-101"],
                                                                                           "decisions": [], "actions": [{"owner": "Field Technician · Myer", "task": "collect", "due": "now"}]},
                                                                               "summaryBy": "claude-opus-5-5"})

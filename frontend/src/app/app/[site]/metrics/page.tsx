@@ -1,9 +1,7 @@
-import MetricsPage from "@/components/dash3/metrics";
-import type { SiteId3 } from "@/lib/types-3";
-import { siteMeta } from "../meta";
+import { redirect } from "next/navigation";
 
-export const generateMetadata = siteMeta("Metrics");
+/* The environment's pages are tabs on its one page now (owner, Oct 18: no sidebar, one page per environment). */
 export default async function Page({ params }: { params: Promise<{ site: string }> }) {
   const { site } = await params;
-  return <MetricsPage siteId={site as SiteId3} />;
+  redirect(`/app/${site}#metrics`);
 }

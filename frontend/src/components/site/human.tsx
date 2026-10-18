@@ -95,7 +95,7 @@ function Story({ att, attLoading, still }: { att: SignedAttestation | null; attL
 
   const useCanvas = webgl === true && !reduced;
   return <section className="story" id="plant">
-    <div className="stage" ref={stageRef} aria-label="Agent team illustration: the Director delegates factory questions to the Engineer, the Technician supplies evidence, and verified results return over MCP. Gas flows through the factory pipework.">
+    <div className="stage" ref={stageRef} aria-label="Continuous agent workflow illustration: factory pumps sketch into view with gas inside, erase away, and reveal agents working through a task contract, MCP calls, and a verified result.">
       {webgl === null ? null : useCanvas ? <HeroScene control={control} attestationId={attestationId} still={still} onProgress={onProgress} /> : <HeroStatic attestationId={attestationId} />}
     </div>
     <div className="hero" data-dissolve="">
@@ -134,15 +134,15 @@ function AttestationFrag({ att, loading, live }: { att: Attestation | null; load
       <dt>verifier</dt><dd>{a.verifierVersion}</dd>
       <dt>signature</dt><dd className="sig">{a.signature}</dd>
     </dl>
-    <span className={`state ${live ? "live" : ""}`}>{loading ? "Looking for a signed attestation on Harbor Works" : live ? "A real attestation from GET /api/attestations, Ed25519, valid" : "Every accepted fact is signed in this shape."}</span>
+    <span className={`state ${live ? "live" : ""}`}>{loading ? "Looking for a signed attestation on Harbor Works" : live ? "Signed with Ed25519, valid" : "Every accepted fact is signed in this shape."}</span>
   </div>;
 }
 
 /* One work item, four states: four colour fields, the same card further along each time. */
 function Strip({ att }: { att: Attestation | null }) {
   const states = [
-    { word: "First the agent opens it.", state: "open", rows: [["requester", "Atlas"], ["budget", "$5.00"], ["attribute", "pressure_bar"], ["asked", "just now"]] },
-    { word: "Then a technician is sent.", state: "dispatched", rows: [["channel", "Runner, iMessage via Inkbox"], ["deadline", "30 min"], ["expected", "1.5 to 3.5 bar"], ["pays", "$0.50 on proof"]] },
+    { word: "First the agent opens it.", state: "open", rows: [["requester", "Site Engineer · Myer"], ["budget", "$5.00"], ["attribute", "pressure_bar"], ["asked", "just now"]] },
+    { word: "Then a technician is sent.", state: "dispatched", rows: [["channel", "Dispatch Line, SMS"], ["deadline", "30 min"], ["expected", "1.5 to 3.5 bar"], ["pays", "$0.50 on proof"]] },
     { word: "Then the wrong plate is refused.", state: "rejected", rows: [["stated tag", "P-102"], ["identity", "failed"], ["reply", `P-101 is ${METRES_WEST} m west`], ["payment", "held"]] },
     { word: "Then it closes, signed and paid.", state: "resolved", rows: [["value", att ? formatValue(att.value, att.unit) : "2.4 bar"], ["checks", "6 of 6 passed"], ["attestation", att?.id ?? SAMPLE_ATTESTATION_ID], ["paid", "$0.50"]] },
   ];
@@ -186,7 +186,7 @@ function Eyes() {
       <div className="pair">
         <Reveal className="readings" manner="settle" i={2} data-ui="">
           {(sensors.length ? sensors.map(f => { const fr = freshness(f, now); return { tag: f.assetTag, value: formatValue(f.value), when: `${fr.status}, ${age(f.observedAt, now)}` }; }) : sample).map(r => <div className="reading" key={r.tag}><span className="tag">{r.tag}</span><span className="when">{r.when}</span><span className="value">{r.value}<small>°C</small></span></div>)}
-          <span className="src">{sensors.length ? "Live from /facts, refreshed every 15 s" : facts.readiness === "loading" ? "Reading TS-801 and TS-802" : "Typical values until the sensors report."}</span>
+          <span className="src">{sensors.length ? "Live, refreshed every 15 s" : facts.readiness === "loading" ? "Reading TS-801 and TS-802" : ""}</span>
         </Reveal>
         <Reveal as="figure" className="pic rail" manner="settle" i={3}><img src="/site/rail.jpg" alt="The dashboard rail: work items, facts with freshness bars and attestations" loading="lazy" width={420} height={840} /></Reveal>
       </div>
@@ -200,7 +200,6 @@ function Record() {
     { name: "Verbs", rows: [["resolve", "known, stale, unknown or conflict"], ["attest", "accepted, rejected or needs clarification"], ["check", "valid, with the signed record"]] },
     { name: "Freshness", rows: [["reading", "1 hour"], ["condition", "24 hours"], ["document", "365 days"], ["identity", "never expires"]] },
     { name: "Checks", rows: [["scope", "same site, same asset"], ["identity", "tag plate matches"], ["geometry", "right position, not a sibling"], ["plausibility", "inside the spec range"], ["time", "inside the work-item window"], ["integrity", "SHA-256, never reused"]] },
-    { name: "Runs on", rows: [["Inkbox", "messages, email and calls"], ["Manufact", "hosts the MCP"], ["Supabase", "facts, attestations, change feed"], ["Armature", "analytics on the MCP"]] },
   ];
   return <section className="record" id="record">
     <div className="col" data-dissolve="">
@@ -222,7 +221,7 @@ function Close({ mcpUrl }: { mcpUrl: string }) {
   return <section className="close" id="connect">
     <form className="sentence" data-dissolve="" onSubmit={e => { e.preventDefault(); copy(); }}>
       <label className="blank-wrap">
-        <span className="t">Point Claude Code at</span>
+        <span className="t">Point your agent at</span>
         <input className="blank" value={url} onChange={e => setUrl(e.target.value)} aria-label="MCP URL" spellCheck={false} autoComplete="off" />
         <span className="t">and</span>
         <button type="submit" className="btn big"><span>{copied ? "copied" : "copy the command"}</span></button>
@@ -240,7 +239,7 @@ function Tiles({ mcpUrl }: { mcpUrl: string }) {
     tick(); const t = setInterval(tick, 15_000); return () => clearInterval(t);
   }, []);
   return <footer className="tiles" data-dissolve="">
-    <div className="tile statement"><p>Rule-based verification, one real signature.</p><small>Steward does not certify equipment or replace an engineer's sign-off.</small></div>
+    <div className="tile statement"><p>Rule-based verification, one real signature.</p></div>
     <nav className="tile nav" aria-label="Sections"><a href="#plant">The plant</a><a href="#work">The work item</a><a href="#eyes">Three eyes</a><a href="#record">The record</a><a href="#connect">Connect</a><a href="/llms.txt">/llms.txt</a></nav>
     <div className="tile place"><span>Harbor Works</span><span>68 Harbor Way, Oakland</span><span>{time ? `${time} local` : ""}</span></div>
     <div className="tile address"><a href={mcpUrl}>{mcpUrl}</a></div>

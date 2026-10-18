@@ -1,7 +1,8 @@
 """Walkthroughs (contract 7 §1, §3): the site's Engineer walks the scan with the agent eye and labels every asset green
 "Looks good" or blue "Looks bad" from its obligations, open issues and live readings; route selection, latest label per
-asset, patrol Changes, the summary message to the Site Manager, authority, and the autoplayer's walkthrough entries.
-The eye is stubbed (no renderer, no Chrome); nothing leaves the process."""
+asset, patrol Changes, the summary message to the Site Manager, authority, and the autoplayer (which plays scenarios only
+now: the sites are walked continuously by walks.py, tested in test_walks_claude.py). The eye is stubbed (no renderer, no
+Chrome); nothing leaves the process."""
 import hashlib
 import io
 import math
@@ -203,7 +204,8 @@ def test_patrol_changes_wait_and_summary_message(client, eye):
     message = service.conversations.get(patrol["conversationId"])
     assert message["kind"] == "message" and message["participants"] == ["bristol-engineer", "bristol-manager"] and message["siteIds"] == [BR]
     assert message["transcript"][0]["text"].startswith("Walked the pump house: 2 checked, 1 look good, 1 look bad: V-505: Safety valve lift test overdue by 1 day")
-    assert "Compliance is taking V-505 to the owner." in message["transcript"][0]["text"] and message["status"] == "ended"
+    # contract 8: the walk's alert stays in-house; the Site Inspector's inspection takes it to the owner
+    assert "Compliance has V-505 in hand for the inspection." in message["transcript"][0]["text"] and message["status"] == "ended"
     assert message["transcript"][1]["speaker"] == "bristol-manager"
 
 
@@ -266,7 +268,7 @@ def test_recover_marks_interrupted_walks_and_alerts_failed(client):
     assert service.store.get("patrol", "ptl-zombie")["state"] == "failed" and service.store.get("owner_alert", "oal-zombie")["state"] == "failed"
 
 
-# ---- autoplay (contract 7 §3) ------------------------------------------------------------------------------------
+# ---- autoplay (contract 7 §3, superseded: each site walks on its own, walks.py) -------------------------------------
 
 
 @pytest.fixture
@@ -284,34 +286,32 @@ def player(client, monkeypatch):
     return autoplay
 
 
-def test_autoplay_walks_a_site_after_every_two_scenarios(client, player, eye):
-    playlist = player.playlist()
-    walks = [entry for entry in playlist if entry.startswith("patrol:")]
-    assert playlist[2] == "patrol:myer-plant" and playlist[5] == "patrol:bristol-pumps" and playlist[8] == "patrol:tomioka-mill"
-    assert walks[:3] == ["patrol:myer-plant", "patrol:bristol-pumps", "patrol:tomioka-mill"]
-    assert [entry for entry in playlist if not entry.startswith("patrol:")] == list(dict.fromkeys(e for e in playlist if not e.startswith("patrol:")))
-    assert player.tick()["scenarioId"] == playlist[0] and player.tick()["scenarioId"] == playlist[1]
-    patrol = player.tick()
-    assert patrol["siteId"] == MY and patrol["origin"] == "autoplay" and patrol["startedBy"] == "autoplay" and patrol["agentId"] == "myer-engineer"
-    status = client.get("/api/scenario-autoplay").json()
-    assert status["current"]["kind"] == "patrol" and status["current"]["patrolId"] == patrol["id"] and status["playedToday"] == 3
-    assert status["next"] == playlist[3] and status["patrols"] is True and "patrol:bristol-pumps" in status["playlist"]
-    assert player.tick()["scenarioId"] == playlist[3]  # the walk finished inline (no workers), so the rotation moves on
-
-
-def test_autoplay_waits_for_walkthroughs_and_their_alerts(client, player):
+def test_autoplay_plays_scenarios_only_and_never_walks_a_site(client, player, eye):
     service = svc(client)
-    service.store.put("patrol", dict(id="ptl-busy", siteId=BR, state="running", origin="manual", place="the pump house", route=["V-505"], stops=[],
-                                     startedAt=now(), alertIds=[]), BR)
+    playlist = player.playlist()  # STEWARD_SCENARIO_AUTOPLAY_PATROLS=true no longer adds walks
+    assert playlist and not any(entry.startswith("patrol:") for entry in playlist)
+    assert playlist == list(dict.fromkeys(playlist)) and set(playlist) == set(service.scenarios.scripts)
+    for expected in playlist[:3]:
+        assert player.tick()["scenarioId"] == expected  # each run finished inline (no workers), so the rotation moves on
+    assert service.patrols.list() == []  # the sites are walked by the continuous loop (walks.py), never by the playlist
+    status = client.get("/api/scenario-autoplay").json()
+    assert status["current"]["kind"] == "scenario" and status["playedToday"] == 3 and status["next"] == playlist[3]
+    assert status["patrols"] is False and status["walks"]["status"] == "/api/walks/status" and not any(e.startswith("patrol:") for e in status["playlist"])
+
+
+def test_autoplay_waits_for_walks_started_by_hand_and_for_alerts_but_not_for_continuous_walks(client, player):
+    service = svc(client)
+    walk = dict(id="ptl-busy", siteId=BR, state="running", origin="manual", place="the pump house", route=["V-505"], stops=[], startedAt=now(),
+                alertIds=[])
+    service.store.put("patrol", walk, BR)
     assert player.tick() is None and player.state == "waiting" and "a walkthrough of the pump house is running (started by hand)" in player.reason
-    service.store.put("patrol", dict(id="ptl-busy", siteId=BR, state="completed", origin="manual", place="the pump house", route=["V-505"], stops=[],
-                                     startedAt=now(), alertIds=["oal-busy"]), BR)
+    service.store.put("patrol", dict(walk, origin="autoplay"), BR)  # a continuous walk runs beside the scenario rotation
+    assert player.tick()["origin"] == "autoplay" and player.state == "playing"
+    service.store.put("patrol", dict(walk, state="completed", origin="autoplay", alertIds=["oal-busy"]), BR)
     service.store.put("owner_alert", dict(id="oal-busy", siteId=BR, state="running", assetTag="V-505", obligationId="ob-br-v505-lift", at=now()), BR)
-    assert player.tick() is None and "the compliance alert for V-505 is running" in player.reason
-    player.current_patrol_id = "ptl-busy"  # an autoplayed walk counts as playing until its alerts finish
-    assert player.tick() is None and player.state == "playing" and player.reason == "Compliance alerts from the walkthrough of the pump house are playing."
+    assert player.tick() is None and player.state == "waiting" and "the compliance alert for V-505 is running" in player.reason
     service.store.put("owner_alert", dict(id="oal-busy", siteId=BR, state="completed", assetTag="V-505", obligationId="ob-br-v505-lift", at=now()), BR)
-    assert player.tick() is not None and player.current_patrol_id is None
+    assert player.tick() is not None
 
 
 def test_autoplay_continuous_pace_defaults(client, monkeypatch):
@@ -319,9 +319,11 @@ def test_autoplay_continuous_pace_defaults(client, monkeypatch):
         monkeypatch.delenv(key, raising=False)
     player = svc(client).autoplay
     assert player.speed() == 10 and player.gap() == 30
-    assert not any(entry.startswith("patrol:") for entry in player.playlist())  # walks drive the eye: only with the backend's workers by default
+    assert not any(entry.startswith("patrol:") for entry in player.playlist())
+    monkeypatch.setenv("STEWARD_SCENARIO_AUTOPLAY_PATROLS", "true")  # the old switch no longer interleaves walks
+    assert not any(entry.startswith("patrol:") for entry in player.playlist())
     monkeypatch.setenv("STEWARD_SCENARIO_AUTOPLAY_PLAYLIST", "br-sump,patrol:tomioka-mill,patrol:nowhere")
-    assert player.playlist() == ["br-sump", "patrol:tomioka-mill"]
+    assert player.playlist() == ["br-sump"]  # walking is the continuous loop's job (walks.py)
 
 
 def test_threaded_walk_paces_stops_and_can_be_canceled(client, eye, monkeypatch):

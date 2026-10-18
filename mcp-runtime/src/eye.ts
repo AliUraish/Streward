@@ -66,6 +66,29 @@ async function withProgress<T>(ctx: RequestContextLike, label: string, work: () 
   try { return await work(); } finally { clearInterval(timer); }
 }
 
+/** A frame URL from the backend as an absolute URL on the backend's own origin (null for anything else). */
+export function frameUrlOnBackend(config: RuntimeConfig, url: string | null): string | null {
+  if (!url) return null;
+  const absolute = /^https?:\/\//.test(url) ? url : `${config.backendUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  return absolute.startsWith(config.backendUrl) ? absolute : null;
+}
+
+/** Fetch one eye frame as MCP image content; only the backend's own origin is fetched (frame URLs from the backend are relative
+ *  to it). Null when the frame cannot be had (missing, not an image, too large, unreachable). */
+export async function fetchFrameImage(config: RuntimeConfig, backend: Backend, frameUrl: string | null): Promise<ContentBlock | null> {
+  const url = frameUrlOnBackend(config, frameUrl);
+  if (!url) return null;
+  try {
+    const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(15_000), headers: { Accept: 'image/jpeg,image/*', 'X-Steward-Actor': backend.actor, ...(config.backendToken ? { Authorization: `Bearer ${config.backendToken}` } : {}) } });
+    if (!response.ok) return null;
+    const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0]!.trim();
+    if (!type.startsWith('image/')) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return null;
+    return { type: 'image', data: bytes.toString('base64'), mimeType: type === 'image/jpg' ? 'image/jpeg' : type };
+  } catch { return null; }
+}
+
 export interface EyeDeps { tool: ToolFn; backend: Backend; config: RuntimeConfig; siteId: z.ZodType<PropertyId> }
 
 export function registerEyeTools({ tool, backend, config, siteId }: EyeDeps) {
@@ -74,19 +97,7 @@ export function registerEyeTools({ tool, backend, config, siteId }: EyeDeps) {
 
   async function image(frame: Frame & { inline: string | null }): Promise<ContentBlock | null> {
     if (frame.inline) return { type: 'image', data: frame.inline.replace(/^data:image\/\w+;base64,/, ''), mimeType: 'image/jpeg' };
-    const url = absolute(frame.frameUrl);
-    if (!url) return null;
-    // Only the backend's own origin is fetched (frame URLs from the backend are relative to it).
-    if (!url.startsWith(config.backendUrl)) return null;
-    try {
-      const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(15_000), headers: { Accept: 'image/jpeg,image/*', 'X-Steward-Actor': backend.actor, ...(config.backendToken ? { Authorization: `Bearer ${config.backendToken}` } : {}) } });
-      if (!response.ok) return null;
-      const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0]!.trim();
-      if (!type.startsWith('image/')) return null;
-      const bytes = Buffer.from(await response.arrayBuffer());
-      if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return null;
-      return { type: 'image', data: bytes.toString('base64'), mimeType: type === 'image/jpg' ? 'image/jpeg' : type };
-    } catch { return null; }
+    return fetchFrameImage(config, backend, frame.frameUrl);
   }
 
   async function act(id: PropertyId, action: string, params: Json, ctx: RequestContextLike, nextStep: string, timeoutMs: number) {

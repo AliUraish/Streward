@@ -1040,6 +1040,44 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
     return { status: 200, body: { toolId: tool.id, name: tool.name, version: tool.version, siteId: site, output: result.output, text: result.text, usage, ms: Date.now() - started, synthetic: true } };
   };
 
+  /** The owner's feed (GET /api/owner/notifications), newest first; the owner's address only masked, as the backend serves it. */
+  const ownerFeed = (): Json[] => {
+    const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    const links = (extra: Json = {}) => ({ issueId: null, conversationId: null, alertId: null, windowId: null, patrolId: null, digestId: null, reportId: null, obligationId: null, decisionRequestId: null, ...extra });
+    return [
+      { id: 'report:arp-1', at: at(2), kind: 'agent_report', channel: 'email', mode: 'dry_run', title: '[Bristol Dock Pump House] Compliance Officer: PV-301 pressure vessel examination 6 days overdue, Northgate Engineering Inspection booked Mon 19 Oct 09:00', summary: 'Compliance Officer · Bristol reported on its work. Prepared, not sent: owner messaging is switched off.', siteId: 'bristol-pumps', siteName: 'Bristol Dock Pump House', links: links({ reportId: 'arp-1', alertId: 'oal-1', obligationId: 'ob-br-pv301-exam' }), attachments: [{ filename: 'bristol-pumps-compliance-snapshot.pdf', contentType: 'application/pdf', size: 20480, url: '/api/owner/reports/arp-1.pdf' }], to: 'o•••@example.com', from: 'Compliance Officer · Bristol', fromAddress: 'steward-bristol-compliance@inkboxmail.com', reason: 'STEWARD_ALLOW_OWNER_ALERTS is not true', severity: null },
+      { id: 'digest:odg-1', at: at(5), kind: 'owner_digest', channel: 'email', mode: 'dry_run', title: 'Steward compliance snapshot · 18 Oct 2026 · Myer 83 %, Bristol 71 %, Tomioka 71 %', summary: "The Operations Director's compliance snapshot: Myer 83 %, Bristol 71 %, Tomioka 71 %. The PDF is attached.", siteId: null, siteName: null, links: links({ digestId: 'odg-1' }), attachments: [{ filename: 'steward-compliance-snapshot-2026-10-18-1700.pdf', contentType: 'application/pdf', size: 30720, url: '/api/owner/digests/odg-1.pdf' }], to: 'o•••@example.com', from: 'Operations Director', fromAddress: 'steward-director@inkboxmail.com', reason: 'STEWARD_ALLOW_OWNER_ALERTS is not true', severity: null },
+      { id: 'alert:oal-1:call', at: at(9), kind: 'owner_alert', channel: 'call', mode: 'dry_run', title: 'Call: PV-301: Pressure vessel examination overdue by 6 days', summary: 'The Steward Dispatch Line called you about PV-301.', siteId: 'bristol-pumps', siteName: 'Bristol Dock Pump House', links: links({ alertId: 'oal-1', issueId: 'iss-br-compliance-ob-br-pv301-exam' }), attachments: [], to: '••• ••• 0001', from: 'Steward Dispatch Line', fromAddress: null, reason: null, severity: 'medium' },
+      { id: 'alert:oal-1:email', at: at(10), kind: 'owner_alert', channel: 'email', mode: 'dry_run', title: '[Bristol Dock Pump House] Compliance: Steam receiver PV-301 examination (overdue by 6 days)', summary: 'Compliance Officer · Bristol emailed you the file and the evidence.', siteId: 'bristol-pumps', siteName: 'Bristol Dock Pump House', links: links({ alertId: 'oal-1', issueId: 'iss-br-compliance-ob-br-pv301-exam', patrolId: 'ptl-1' }), attachments: [{ filename: 'evidence-pv-301-1.jpg', contentType: 'image/jpeg', size: 4096, url: '/api/eye/frames/eyf-1.jpg' }, { filename: 'uksi_2000_128.pdf', contentType: 'application/pdf', size: 90000, url: '/api/regulations/eng-pssr-2000-reg-9-6/file' }], to: 'o•••@example.com', from: 'Compliance Officer · Bristol', fromAddress: 'steward-bristol-compliance@inkboxmail.com', reason: null, severity: 'medium' },
+      { id: 'walkthrough:ptl-1', at: at(12), kind: 'walkthrough', channel: 'dashboard', mode: 'event', title: 'Walkthrough at Bristol: 1 of 2 look bad', summary: 'Site Engineer · Bristol walked the pump house and labelled PV-301.', siteId: 'bristol-pumps', siteName: 'Bristol Dock Pump House', links: links({ patrolId: 'ptl-1' }), attachments: [{ filename: 'pv-301.jpg', contentType: 'image/jpeg', size: 4096, url: '/api/eye/frames/eyf-1.jpg' }], to: null, from: null, fromAddress: null, reason: null, severity: null },
+      { id: 'maintenance:mw-plan-1', at: at(20), kind: 'maintenance', channel: 'dashboard', mode: 'event', title: 'Maintenance booked at Myer: L-901 discharge test, lined up with Tomioka', summary: 'Plant Manager · Myer booked the discharge test.', siteId: 'myer-plant', siteName: 'Myer Plant Room', links: links({ windowId: 'mw-plan-1' }), attachments: [], to: null, from: null, fromAddress: null, reason: null, severity: null },
+      { id: 'issue:iss-tm-1:opened', at: at(30), kind: 'issue', channel: 'dashboard', mode: 'event', title: 'High-severity issue opened: HS-301: humidity high', summary: 'Relative humidity in the Silk Reeling Mill is 88 %.', siteId: 'tomioka-mill', siteName: 'Tomioka Silk Mill', links: links({ issueId: 'iss-tm-1' }), attachments: [], to: null, from: null, fromAddress: null, reason: null, severity: 'high' },
+    ];
+  };
+
+  /** GET /api/compliance/snapshot for the named sites. */
+  const complianceSnapshot = (sites: string[]): Json => {
+    const pct: Record<string, number> = { 'myer-plant': 83.3, 'bristol-pumps': 71.4, 'tomioka-mill': 71.4 };
+    const short: Record<string, string> = { 'myer-plant': 'Myer', 'bristol-pumps': 'Bristol', 'tomioka-mill': 'Tomioka' };
+    const rows = sites.map(id => ({
+      siteId: id, siteName: SITE_NAMES[id], short: short[id], compliancePct: pct[id], counts: { total: 7, compliant: 5, overdue: 1, blocked: id === 'myer-plant' ? 0 : 1, dueSoon: 2, openComplianceIssues: 2 },
+      overdue: [{ obligationId: `ob-${id}-overdue`, title: 'Periodic examination', assetTag: id === 'bristol-pumps' ? 'SP-102' : 'L-901', status: 'overdue', dueDate: '12 Oct 2026', daysOverdue: 6, dueInDays: null, owner: { label: 'Alasdair Pennock (Restoration lead)' },
+                  regulations: [{ id: id === 'myer-plant' ? 'vic-br-2018-reg-195' : 'eng-pssr-2000-reg-9-6', cite: id === 'myer-plant' ? 'Building Regulations 2018 (Vic) reg. 195' : 'PSSR 2000 reg. 9(6)-(7)', title: 'Condition on occupancy permit', url: 'https://www.legislation.gov.uk/uksi/2000/128/regulation/9', linkOnly: id === 'myer-plant' }] }],
+      blocked: id === 'myer-plant' ? [] : [{ obligationId: `ob-${id}-blocked`, title: 'Repair needing permission', assetTag: 'V-504', status: 'blocked', dueDate: '7 Oct 2026', daysOverdue: 11, blockedReason: 'The contractor has no free slot for three weeks.', owner: { label: 'Duty engineer (you)' }, regulations: [] }],
+      dueSoon: [], openComplianceIssues: [{ issueId: `iss-${id}-gap`, kind: 'compliance_overdue', severity: 'medium', assetTag: 'SP-102', summary: 'Examination overdue by 6 days.' }],
+      maintenance: [{ windowId: `mw-${id}`, date: '2026-10-19', localStart: 'Mon 19 Oct 09:00', scope: 'Examination', examiner: 'Northgate Engineering Inspection', status: 'approved', coordination: { siteId: 'myer-plant', siteName: 'Myer Plant Room', windowId: 'mw-my-tk201-exam' }, sharedWith: [] }],
+      walkthrough: { patrolId: `ptl-${id}`, finishedAt: now(), agentName: 'Site Engineer', checked: 9, bad: [{ assetTag: 'SP-102', reasons: ['Steam pipework examination overdue by 6 days'], frameUrl: '/api/eye/frames/eyf-1.jpg' }] },
+      agents: ['manager', 'engineer', 'compliance', 'technician'].map(role => ({ agentId: `${short[id]!.toLowerCase()}-${role}`, name: displayName(`${short[id]!.toLowerCase()}-${role}`), status: 'idle', currentTask: role === 'engineer' ? 'Walkthrough: stop 3 of 9' : null, why: role === 'engineer' ? 'Labelling each asset it looks at' : null, waitingOn: null, address: `steward-${short[id]!.toLowerCase()}-${role}@inkboxmail.com` })),
+      conversations: [{ id: 'conv-1', kind: 'call', headline: 'Booked the examination, lined up with Myer', participants: ['Plant Manager · Bristol', 'Plant Manager · Myer'], at: now() }],
+      changes: [{ at: now(), type: 'maintenance', summary: 'Plant Manager booked the examination.' }],
+    }));
+    const query = sites.length < SITE_IDS.length ? `?siteId=${sites.join(',')}` : '';
+    return { title: 'Steward compliance snapshot', at: now(), siteIds: sites, complianceLine: rows.map(r => `${r.short} ${Math.round(r.compliancePct!)} %`).join(', '), sites: rows,
+             decisions: [{ siteId: 'bristol-pumps', text: 'Bristol V-504: Valve repair blocked. Shall we bring in a second contractor on Tuesday?' }],
+             changes: { since: now(), baselineDigestId: null, lines: ['Compliance gap raised: PV-301: pressure vessel examination.'] },
+             attributions: ['Contains public sector information licensed under the Open Government Licence v3.0.'], disclaimer: 'Not legal advice.', pdfUrl: `/api/compliance/snapshot.pdf${query}` };
+  };
+
   const findings = () => {
     const agents = AGENT_IDS.filter(id => id !== 'operator').map(agentId => {
       const rows = state.telemetry.filter(row => row.agentId === agentId);
@@ -1282,6 +1320,20 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
       }
       if (url.pathname === '/api/maintenance') { const siteFilter = url.searchParams.get('siteId'); return send(200, state.maintenance.filter(w => !siteFilter || (w.siteIds as string[]).includes(siteFilter))); }
       if (url.pathname === '/api/notifications') { const siteFilter = url.searchParams.get('siteId'); return send(200, state.notifications.filter(n => !siteFilter || n.siteId === siteFilter).slice().reverse()); }
+      // ---- the owner's notifications page and the compliance snapshot (owner, Oct 18) ----
+      if (url.pathname === '/api/owner/notifications') {
+        const siteFilter = url.searchParams.get('siteId'); const limit = Number(url.searchParams.get('limit') ?? 50);
+        const rows = ownerFeed().filter(item => !siteFilter || item.siteId === siteFilter || item.siteId === null);
+        return send(200, { at: now(), items: rows.slice(0, limit), total: rows.length, limit, since: null, siteId: siteFilter, kinds: null, latestAt: rows[0]?.at ?? null,
+                           schedule: { enabled: true, live: false, blockers: ['STEWARD_ALLOW_OWNER_ALERTS is not true'], ownerTo: 'o•••@example.com',
+                                       digest: { everyHours: 4, perDay: 3, minGapMinutes: 60, sentLast24h: 0, lastAt: rows.find(r => r.kind === 'owner_digest')?.at ?? null, nextScheduledAt: null },
+                                       reports: { perAgentPerDay: 1, perDay: 8, minGapMinutes: 45, sentLast24h: 0 } } });
+      }
+      if (url.pathname === '/api/compliance/snapshot') {
+        const wanted = (url.searchParams.get('siteId') ?? '').split(',').filter(Boolean);
+        if (wanted.some(id => !(SITE_IDS as readonly string[]).includes(id))) return fail(404, 'Property not found.', 'NOT_FOUND', 'Check the site id.');
+        return send(200, complianceSnapshot(wanted.length ? wanted : [...SITE_IDS]));
+      }
       // ---- Tool Forge (contract 6) ----
       if (url.pathname === '/api/tools/requests' && request.method === 'POST') { const out = forgeRequest(who, body); return out.status < 300 ? send(out.status, out.body) : (() => { const e = out.body as Json; return fail(out.status, String(e.detail), String(e.code), String(e.recovery)); })(); }
       if (url.pathname === '/api/tools') {

@@ -8,7 +8,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { Remote } from "@/lib/reality";
 import { api3 } from "@/lib/api-3";
 import { useAgentConfig, useCrew, useEvalFindings, useEvals3, useFixWorkflows, useNotices, usePoll } from "@/lib/hooks-3";
-import { REGULATIONS_PACK, jurisdictionName, regsForIssue, regsForSite, siteJurisdiction } from "@/lib/regulations-3";
+import { REGULATIONS_PACK, regsForIssue, regsForSite } from "@/lib/regulations-3";
 import { DISPATCH, EVAL_SUITES3, PEERS, agentName, roleOf, site3, teamOf } from "@/lib/sites-3";
 import type { AgentConfig, EyeFrame, Issue3, SiteId3, WhyRef } from "@/lib/types-3";
 import { pairKey, useExchanges } from "./agent-map";
@@ -37,14 +37,14 @@ export default function MissionHud({ siteId, frames, issues, hidden, now, render
   const fromFeed = renderers !== undefined ? renderers > 0 : null;
   const rendererOnline = live.presence ? live.presence.rendererOnline || Boolean(fromFeed) : fromFeed;
   const watchers = live.presence?.watchers.length ?? null;
-  const presenceText = [watchers !== null ? `${watchers} watching` : "", rendererOnline === null ? "" : rendererOnline ? "eye renderer online" : "no eye renderer", live.realtime ? "realtime" : "polling"].filter(Boolean).join(" · ");
+  const presenceText = [watchers !== null ? `${watchers} watching` : "", rendererOnline === null ? "" : rendererOnline ? "agent eye online" : "agent eye offline"].filter(Boolean).join(" · ");
   /* The site clock: the site's local time, now. */
   const clock = `${fmtTime(now, tzOf(siteId))} · ${tzOf(siteId).split("/")[1].replace(/_/g, " ")}`;
   const latest = [...frames].sort((a, b) => b.at.localeCompare(a.at))[0] ?? null;
   return <div className={`mission-hud ${hidden ? "hud-off" : ""}`}>
     <header className="mh-top">
       <span className="brand"><strong>Steward</strong> · {site.name} · run by the {site.short} team</span>
-      <span className="presence" title={live.realtime ? "Presence on the site's realtime channel" : "Realtime is off; the eye feed is polled"}>{presenceText}</span>
+      <span className="presence">{presenceText}</span>
       <span className="clock" title={`Site time, ${tzOf(siteId)}`}>{clock}</span>
       <span className="mh-actions">
         <button type="button" className="mh-btn" aria-pressed={hidden} onClick={onHide}>{hidden ? "Show HUD" : "Hide HUD"}</button>
@@ -53,13 +53,13 @@ export default function MissionHud({ siteId, frames, issues, hidden, now, render
     </header>
     {!hidden ? <>
       <div className="mh-left">
-        <Panel title="Agent cameras" meta={frames.length ? `latest ${Math.min(frames.length, 6)} frame${Math.min(frames.length, 6) === 1 ? "" : "s"}` : "views of the site until the eye looks"}><Cameras siteId={siteId} frames={frames} issues={issues} onFocus={onFocus} /></Panel>
-        <Panel title="Evals per version" meta="Steward telemetry"><EvalVersions siteId={siteId} /></Panel>
+        <Panel title="Agent cameras" meta={frames.length ? `latest ${Math.min(frames.length, 6)} frame${Math.min(frames.length, 6) === 1 ? "" : "s"}` : undefined}><Cameras siteId={siteId} frames={frames} issues={issues} onFocus={onFocus} /></Panel>
+        <Panel title="Evals per version"><EvalVersions siteId={siteId} /></Panel>
         <Panel title="Changes to the next version" meta="by the Operations Director"><NextChanges siteId={siteId} /></Panel>
       </div>
       <div className="mh-right">
         <Panel title="Alerts" meta={`site time, ${tzOf(siteId).split("/")[1].replace("_", " ")}`}><Alerts siteId={siteId} issues={issues} onFocus={onFocus} /></Panel>
-        <Panel title={`Team · ${site.short}`} meta="calls, email, dispatch line"><TeamGraph siteId={siteId} actor={latest?.actor ?? null} /></Panel>
+        <Panel title={`Team · ${site.short}`} meta="chats, email, dispatch line"><TeamGraph siteId={siteId} actor={latest?.actor ?? null} /></Panel>
       </div>
       <LiveLine siteId={siteId} frame={latest} />
     </> : null}
@@ -158,7 +158,7 @@ function NextChanges({ siteId }: { siteId: SiteId3 }) {
   const T = configs.reconfigures[0]?.at ?? null;
   const after = usePoll(() => T ? api3.evalFindings(T) : Promise.resolve(null), [T], 20_000);
   if (!configs.ready) return <p className="mh-empty">Agent configs are not available yet.</p>;
-  if (!configs.reconfigures.length) return <p className="mh-empty">No changes yet. The director reconfigures an agent when telemetry shows it wasting tokens.</p>;
+  if (!configs.reconfigures.length) return <p className="mh-empty">No changes yet.</p>;
   return <ul className="mh-changes">{configs.reconfigures.slice(-4).reverse().map((h, i) => {
     const a = findings.data?.agents.find(x => x.agentId === h.agentId); const b = after.data?.agents.find(x => x.agentId === h.agentId);
     const all = a?.missions ?? 0, since = b?.missions ?? 0;
@@ -191,8 +191,8 @@ function Alerts({ siteId, issues, onFocus }: { siteId: SiteId3; issues: Issue3[]
         <span className="by">raised by {raisedBy(i)}{why[0] ? <> · cites {shortRef(why[0])}</> : null}</span>
       </button></li>;
     })}</ul> : <p className="mh-empty">No open issues at {site3(siteId).short}.</p>}
-    {(notices.data ?? []).slice(0, 2).map(n => <p key={n.id} className="mh-notice"><span className="sig warn" aria-hidden="true" />Notice to {n.to}{n.mode && n.mode !== "sent" ? `, ${n.mode.replace(/_/g, " ")}` : ""} · {fmtTime(n.sentAt, tzOf(siteId))}</p>)}
-    <p className="mh-proof">{proof ? <>Last signed proof <code>{String(proof.attestationId)}</code>, Ed25519, verified by the {agentName(teamOf(siteId).find(a => a.team === "engineer")?.id)}</> : `Signed proof appears here when a fix is verified. ${jurisdictionName(siteJurisdiction(siteId))} rules apply.`}</p>
+    {(notices.data ?? []).slice(0, 2).map(n => <p key={n.id} className="mh-notice"><span className="sig warn" aria-hidden="true" />Notice to {n.to} · {fmtTime(n.sentAt, tzOf(siteId))}</p>)}
+    <p className="mh-proof">{proof ? <>Last signed proof <code>{String(proof.attestationId)}</code>, Ed25519, verified by the {agentName(teamOf(siteId).find(a => a.team === "engineer")?.id)}</> : "No signed proof yet."}</p>
   </div>;
 }
 
@@ -235,6 +235,6 @@ function LiveLine({ siteId, frame }: { siteId: SiteId3; frame: EyeFrame | null }
     <span className="sig ok" aria-hidden="true" />
     {fresh && frame ? <><strong>{agentName(frame.actor)}</strong> · eye_{frame.action ?? "look"}{tag ? <> <code>{tag}</code></> : null}{frame.seq ? ` · frame ${frame.seq}` : ""}</>
       : working ? <><strong>{working.name}</strong> · {working.task}</>
-      : <>The {site3(siteId).short} team is idle; this line follows the next agent at work.</>}
+      : <>The {site3(siteId).short} team is idle.</>}
   </p>;
 }

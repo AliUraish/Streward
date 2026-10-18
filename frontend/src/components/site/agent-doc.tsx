@@ -22,15 +22,15 @@ export default function AgentDoc({ mcpUrl }: { mcpUrl: string }) {
   return <div className="agent-doc" data-ui="">
     <div className="doc-head">
       <h1>Steward, as text.</h1>
-      <p>This is the same page for an agent: the guide served at <code>/llms.txt</code>, rendered below as Markdown. Add the MCP and the three verbs are tools.</p>
+      <p>This is the same page for an agent. Add the MCP and the three verbs are tools.</p>
     </div>
-    <section className="connect-block" aria-label="Connect Claude Code">
-      <h2>Connect Claude Code</h2>
+    <section className="connect-block" aria-label="Connect an agent">
+      <h2>Connect an agent</h2>
       <pre><code>{cmd}</code></pre>
       <pre><code>{json}</code></pre>
     </section>
     <article className="doc-body" aria-live="polite">
-      {md ? renderMarkdown(md) : error ? <p className="doc-error">{error}. The guide lives at docs/llms.txt and is served by /llms.txt.</p> : <p className="doc-loading">Fetching /llms.txt</p>}
+      {md ? renderMarkdown(md) : error ? <p className="doc-error">The guide could not be loaded.</p> : <p className="doc-loading">Loading the guide</p>}
     </article>
   </div>;
 }

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { age, missionActive, useAgents, useChanges, useMission, useMissions, useTranscript } from "@/lib/reality";
 import { siteName } from "@/lib/site";
-import { speak, speechAvailable, type SpeakHandle } from "@/lib/speech";
 import type { A2AState, AgentInfo, Change, Mission, MissionStep, TranscriptEntry, TranscriptKind } from "@/lib/types-2";
 import { errorMessage } from "../ui";
 import { AttestationDrawer, NotReady, Panel } from "./rail";
@@ -71,40 +70,18 @@ function AgentCard({ agent, selected, onSelect, placeholder }: { agent: AgentInf
   </button>;
 }
 
-/* Chat-style transcript with Listen (Web Speech API). Voice per agent is deterministic; Stop cancels. */
+/* Chat-style transcript: agents talk in text. */
 function TranscriptPanel({ agent, entries, readiness, error, reload, onOpenAttestation, onOpenMission }: { agent: AgentInfo | undefined; entries: TranscriptEntry[]; readiness: "loading" | "ready" | "not_ready" | "error"; error: string; reload: () => void; onOpenAttestation: (id: string) => void; onOpenMission: (id: string) => void }) {
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
-  const [speakingIndex, setSpeakingIndex] = useState(-1);
-  const handle = useRef<SpeakHandle | null>(null);
-  const [available, setAvailable] = useState<boolean | null>(null);
-  useEffect(() => { setAvailable(speechAvailable()); }, []);
-  useEffect(() => () => { handle.current?.stop(); }, []);
-  useEffect(() => { handle.current?.stop(); setSelectedEntry(null); }, [agent?.id]);
+  useEffect(() => { setSelectedEntry(null); }, [agent?.id]);
   const rows = useMemo(() => [...entries].sort((a, b) => a.at.localeCompare(b.at)), [entries]);
-  const lineFor = useCallback((e: TranscriptEntry) => ({ agentId: e.direction === "out" ? e.agentId : e.counterpart, text: `${e.direction === "out" ? `${agent?.name ?? e.agentId} to ${e.counterpart}` : `${e.counterpart} to ${agent?.name ?? e.agentId}`}. ${e.text}` }), [agent]);
-  const listen = (which: "entry" | "all") => {
-    handle.current?.stop();
-    const picked = which === "entry" ? rows.filter(r => r.id === selectedEntry) : rows;
-    if (!picked.length) return;
-    const offset = which === "entry" ? rows.findIndex(r => r.id === selectedEntry) : 0;
-    handle.current = speak(picked.map(lineFor), i => setSpeakingIndex(i < 0 ? -1 : i + offset));
-  };
-  const stop = () => { handle.current?.stop(); setSpeakingIndex(-1); };
-  const speaking = speakingIndex >= 0;
   return <section className="transcript panel" aria-label="Transcript">
     <div className="panel-head">
       <h2>{agent?.name ?? "Transcript"}<span className="count"> {rows.length ? `${rows.length} entries` : ""}</span></h2>
-      <div className="listen">
-        {available === false ? <span className="note">Speech is not available in this browser</span> : <>
-          <button className="btn btn-small" onClick={() => listen("entry")} disabled={!selectedEntry || speaking}>Listen to entry</button>
-          <button className="btn btn-small" onClick={() => listen("all")} disabled={!rows.length || speaking}>Listen to all</button>
-          <button className="btn btn-small btn-quiet" onClick={stop} disabled={!speaking}>Stop</button>
-        </>}
-      </div>
     </div>
     <div className="chat">
       {rows.length === 0 ? <NotReady readiness={readiness} error={error} reload={reload} empty="No entries yet. Start a mission to watch the agents talk." /> : null}
-      {rows.map((e, i) => <div key={e.id} className={`msg ${e.direction} selectable ${selectedEntry === e.id ? "selected" : ""} ${speakingIndex === i ? "speaking" : ""}`} onClick={() => setSelectedEntry(prev => prev === e.id ? null : e.id)} role="button" tabIndex={0} onKeyDown={ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setSelectedEntry(prev => prev === e.id ? null : e.id); } }}>
+      {rows.map(e => <div key={e.id} className={`msg ${e.direction} selectable ${selectedEntry === e.id ? "selected" : ""}`} onClick={() => setSelectedEntry(prev => prev === e.id ? null : e.id)} role="button" tabIndex={0} onKeyDown={ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setSelectedEntry(prev => prev === e.id ? null : e.id); } }}>
         <div className="meta"><span className="who">{e.direction === "out" ? `to ${e.counterpart}` : `from ${e.counterpart}`}</span><span className="kind-tag">{kindWord[e.kind] ?? e.kind}</span><span>{new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>{e.simulated ? <span className="sim-tag">simulated</span> : null}</div>
         <div className="text">{e.text}</div>
         {e.audioUrl ? <audio controls preload="none" src={e.audioUrl} onClick={ev => ev.stopPropagation()} /> : null}

@@ -32,6 +32,11 @@ export interface SplatPin {
    * fuller sentence the dot's accessible name reads.
    */
   assessment?: { verdict: 'good' | 'bad'; text: string; description?: string };
+  /**
+   * Where the walking engineer marked the asset (a world point in the same frame as `position`). The dot, its chip
+   * and its card sit there, and a focus or a click goes there; the agent eye keeps using `position`.
+   */
+  mark?: Vec3Tuple | null;
 }
 
 export interface SplatFocus {

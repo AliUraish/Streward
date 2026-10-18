@@ -25,8 +25,9 @@ nothing is deleted: read endpoints hide `seed` and `system` by default; `?includ
 read-only conversation of kind `message` (`id: conv-msg-<source>-<recordId>`, `origin: "inkbox"`, `channel`,
 `direction: outbound | inbound | internal`, `providerRef`, `person`, `participants`, the text and its time): work-item
 dispatches with a provider receipt, notices and owner SMS sent for real, agent-to-agent document email sent for real,
-owner alerts whose email or call was sent, and inbound messages received through the Inkbox webhook (directly or
-replayed from the Supabase inbox queue). Dry-run, capped, failed, local and simulated records never appear.
+owner alerts whose email or call was sent, the owner's digests and the agents' play reports sent for real, and inbound
+messages received through the Inkbox webhook (directly or replayed from the Supabase inbox queue). Dry-run, capped, failed,
+local and simulated records never appear.
 """
 from __future__ import annotations
 
@@ -336,6 +337,21 @@ def real_texts(service, summaries: dict | None = None) -> list[dict]:
             entries.append(_entry("alert", alert["id"], site=site, channel="call", direction="outbound", sender=DISPATCH, recipient=OWNER, text=str(text),
                                   at=call.get("at") or alert.get("at") or "", provider_ref=str(call["providerRef"]), person=people.owner_entry(call.get("to")),
                                   topic=f"Call to the owner: {alert.get('title') or 'compliance alert'}", refs=refs, suffix="-call", summaries=summaries))
+
+    # The Operations Director's compliance digest and the agents' play reports, emailed to the owner on the owner channel.
+    for kind, source in (("owner_digest", "digest"), ("agent_report", "report")):
+        for record in store.all(kind):
+            email = record.get("email") if isinstance(record.get("email"), dict) else {}
+            if email.get("mode") != "sent" or not email.get("providerRef"):
+                continue
+            sender = email.get("fromAgent") if is_known(str(email.get("fromAgent") or "")) else DIRECTOR
+            site = record.get("siteId") or next(iter(record.get("siteIds") or []), None)
+            files = ", ".join(str(a.get("filename")) for a in email.get("attachments") or [] if isinstance(a, dict) and a.get("filename"))
+            text = "\n".join(part for part in (email.get("subject"), str(record.get("text") or ""), f"Attached: {files}" if files else "") if part)
+            entries.append(_entry(source, record["id"], site=site, channel="email", direction="outbound", sender=sender, recipient=OWNER, text=text,
+                                  at=email.get("at") or record.get("at") or "", provider_ref=str(email["providerRef"]), person=people.owner_entry(email.get("to")),
+                                  topic=email.get("subject") or "Email to the owner", suffix="-email", summaries=summaries,
+                                  refs=dict(digestId=record["id"] if kind == "owner_digest" else None, reportId=record["id"] if kind == "agent_report" else None)))
 
     # Notices delivered for real by the site's Field Technician (SMS through the dispatch line, or email).
     for notice in store.all("notice"):

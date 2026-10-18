@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import PortfolioPage from "@/components/dash3/portfolio";
+import OverviewPage from "@/components/dash3/overview";
 
-export const metadata: Metadata = { title: "Portfolio" };
-export default function Page() { return <PortfolioPage />; }
+export const metadata: Metadata = { title: "Overview" };
+export default function Page() { return <OverviewPage />; }

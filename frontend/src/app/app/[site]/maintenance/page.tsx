@@ -1,9 +1,7 @@
-import MaintenancePage from "@/components/dash3/maintenance";
-import type { SiteId3 } from "@/lib/types-3";
-import { siteMeta } from "../meta";
+import { redirect } from "next/navigation";
 
-export const generateMetadata = siteMeta("Maintenance");
+/* The environment's pages are tabs on its one page now (owner, Oct 18: no sidebar, one page per environment). */
 export default async function Page({ params }: { params: Promise<{ site: string }> }) {
   const { site } = await params;
-  return <MaintenancePage siteId={site as SiteId3} />;
+  redirect(`/app/${site}#maintenance`);
 }

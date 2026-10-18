@@ -231,7 +231,7 @@ class RealityService:
         self.store.event(property_id, f"agent-{property_id}", "subscription.created", "Subscription created", f"{requester} → {callback_url}")
         return subscription
 
-    def changes(self, property_id: str, since: int = 0, limit: int = 100, include_scenario: bool = False) -> dict:
+    def changes(self, property_id: str, since: int = 0, limit: int = 100, include_scenario: bool = False, latest: bool = False) -> dict:
         """Changes after `since`. A scenario's own step rows (type `scenario`) are left out unless `include_scenario`: each
         step's issue, fact and conversation Changes already say what happened, and the eval harness waits on the step rows
         through the WaitHub, which sees every Change. `version` stays the site's latest, scenario rows included."""
@@ -240,7 +240,8 @@ class RealityService:
                  if c["version"] > since and (include_scenario or c["type"] != "scenario")]
         items.sort(key=lambda c: c["version"])
         waiting = [w for w in self.store.all("work_item", property_id) if w["state"] in OPEN_STATES]
-        return dict(version=self.version(property_id), changes=items[:limit], waiting=waiting)
+        # `latest`: the newest `limit` changes after `since` (still oldest first), for "what just happened" views.
+        return dict(version=self.version(property_id), changes=items[-limit:] if latest else items[:limit], waiting=waiting)
 
     # ---- facts ------------------------------------------------------------------------------------------
 
@@ -966,8 +967,8 @@ class RealityService:
                         hold_seconds: float = 0) -> list[tuple[dict, dict]]:
         """One simulated reading for every reading attribute of a sensor (Tomioka's humidity sensors report humidity and
         temperature; every other sensor reports its single reading, as before). With `hold_seconds`, an attribute whose
-        latest fact is a scenario sample or a person's verified reading younger than that is left alone, so the feed
-        never overwrites a scenario ramp or a fix (the mill's humidity headline)."""
+        latest fact is a scenario sample, a site event's reading (ref `feed:events`, events.py) or a person's verified reading
+        younger than that is left alone, so the feed never overwrites a scenario or event ramp or a fix (the mill's humidity headline)."""
         table = specs_of(component)
         moment = moment or utcnow()
         out = []
@@ -975,7 +976,8 @@ class RealityService:
             if hold_seconds:
                 latest = self.latest_facts(property_id, component["tag"], attribute)
                 source = (latest[0].get("source") or {}) if latest else {}
-                held = latest and not latest[0].get("simulated") and (source.get("kind") == "human" or str(source.get("ref", "")).startswith("scenario:"))
+                held = latest and not latest[0].get("simulated") and (source.get("kind") == "human"
+                                                                      or str(source.get("ref", "")).startswith(("scenario:", "feed:events")))
                 if held and age_seconds(latest[0]["observedAt"], moment) < hold_seconds:
                     continue
             out.append(self.sensor_reading(property_id, component, moment, simulated=simulated, attribute=attribute))

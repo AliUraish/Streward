@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useId, type Ref } from "react";
 
 const TOPICS = [
   {
@@ -21,8 +21,8 @@ const TOPICS = [
 const STAGES = [
   { from: "Director", to: "Engineer", tool: "resolve", path: "M200 80 V98 H94 V116" },
   { from: "Engineer", to: "Director", tool: "context.min", path: "M94 116 V98 H200 V80" },
-  { from: "Engineer", to: "Technician", tool: "A2A task", path: "M94 196 V210 H306 V196" },
-  { from: "Technician", to: "Engineer", tool: "A2A evidence", path: "M306 196 V210 H94 V196" },
+  { from: "Engineer", to: "Technician", tool: "task", path: "M94 196 V210 H306 V196" },
+  { from: "Technician", to: "Engineer", tool: "evidence", path: "M306 196 V210 H94 V196" },
   { from: "Engineer", to: "Director", tool: "attest · check", path: "M94 116 V98 H200 V80" },
 ] as const;
 
@@ -42,16 +42,16 @@ function AgentNode({ name, role, message, kind, speaking, top }: { name: string;
 }
 
 export default function HeroAgent({ beat = 4, topic = 0, attestationId, anchorRef }: { beat?: number; topic?: number; attestationId: string; anchorRef?: Ref<HTMLDivElement> }) {
+  const arrowId = useId();
   const index = Math.min(4, Math.max(0, beat));
   const conversation = TOPICS[topic % TOPICS.length];
   const stage = STAGES[index];
   return <div className="hero-agent-console" ref={anchorRef} data-ui="" data-topic={topic % TOPICS.length} data-beat={index} aria-label={`Illustrated agent conversation about ${conversation.title}. ${stage.from} messages ${stage.to}.`}>
-    <div className="hero-agent-topic"><span>{conversation.title}</span><span>Illustrated cycle</span></div>
     <div className="hero-agent-graph">
       <svg className="hero-agent-network" viewBox="0 0 400 220" preserveAspectRatio="none" fill="none" aria-hidden="true">
-        <defs><marker id="steward-agent-arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="m0 0 4 2.5L0 5" fill="none" stroke="#ededed" /></marker></defs>
+        <defs><marker id={arrowId} markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="m0 0 4 2.5L0 5" fill="none" stroke="#ededed" /></marker></defs>
         <path className="hero-agent-link" d="M200 80 V98 H94 V116 M94 196 V210 H306 V196" />
-        <path className="hero-agent-link is-active" d={stage.path} markerEnd="url(#steward-agent-arrow)" />
+        <path className="hero-agent-link is-active" d={stage.path} markerEnd={`url(#${arrowId})`} />
       </svg>
       <AgentNode name="Director" role="All sites" kind="coordinator" message={conversation.goal} speaking={stage.from === "Director"} top />
       <AgentNode name="Engineer" role="Own site" kind="site" message={conversation.engineer[index]} speaking={stage.from === "Engineer"} />

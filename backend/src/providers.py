@@ -61,6 +61,66 @@ def allowed_recipients() -> set[str]:
     return {item.strip().casefold() for item in clean_env("INKBOX_ALLOWED_RECIPIENTS").split(",") if item.strip()}
 
 
+def owner_alerts_allowed() -> bool:
+    """The owner channel's switch (owner, Oct 18 2026): owner alert emails and calls, the compliance digest and the agents'
+    play reports reach the owner only with STEWARD_ALLOW_OWNER_ALERTS=true. Read on every call, like the external switch."""
+    return clean_env("STEWARD_ALLOW_OWNER_ALERTS", "false").strip().lower() == "true"
+
+
+# Contract 8 §1: every person outside Steward is the owner playing a role. The address of each role is read at send time.
+PERSON_ROLES = ("owner", "contractor", "employee")
+ROLE_ENV = {"owner": ("INKBOX_OWNER_EMAIL", "INKBOX_OWNER_PHONE"), "contractor": ("INKBOX_CONTRACTOR_EMAIL", "INKBOX_CONTRACTOR_PHONE"),
+            "employee": ("INKBOX_EMPLOYEE_EMAIL", "INKBOX_EMPLOYEE_PHONE")}
+INTERNAL_MAIL_DOMAIN = "@inkboxmail.com"
+
+
+def person_address(role: str, channel: str = "email") -> str:
+    """The validated address (`email`) or phone (`call`, `sms`, `phone`) of a person role, or "". The employee role falls back to
+    the owner's address and phone (the owner plays the employee)."""
+    if role not in ROLE_ENV:
+        return ""
+    email_name, phone_name = ROLE_ENV[role]
+    if channel == "email":
+        value = clean_env(email_name) or (clean_env("INKBOX_OWNER_EMAIL") if role == "employee" else "")
+        return value if EMAIL_RE.match(value) else ""
+    value = clean_env(phone_name) or (clean_env("INKBOX_OWNER_PHONE") if role == "employee" else "")
+    return value if PHONE_RE.match(value) else ""
+
+
+def person_channel_blockers(role: str, channel: str = "email") -> list[str]:
+    """Why a message cannot reach the person in `role` for real now (empty when it can), apart from the sender's identity and the
+    caps: STEWARD_ALLOW_OWNER_ALERTS (the switch for all three roles) and the role's address in INKBOX_ALLOWED_RECIPIENTS."""
+    if role not in ROLE_ENV:
+        return [f"unknown person role {role!r}"]
+    reasons = []
+    if not owner_alerts_allowed():
+        reasons.append("STEWARD_ALLOW_OWNER_ALERTS is not true")
+    email_name, phone_name = ROLE_ENV[role]
+    name = email_name if channel == "email" else phone_name
+    recipient = person_address(role, "email" if channel == "email" else "phone")
+    if not recipient:
+        reasons.append(f"{name} is not set to a valid " + ("address" if channel == "email" else "phone number"))
+    elif recipient.strip().casefold() not in allowed_recipients():
+        reasons.append(f"{name} is not in INKBOX_ALLOWED_RECIPIENTS")
+    return reasons
+
+
+def owner_channel_blockers(channel: str = "email") -> list[str]:
+    """Why the owner channel cannot send to the owner now (empty when it can), apart from the sender's Inkbox identity and the
+    caps, which the callers check. It does not need STEWARD_ALLOW_EXTERNAL_MESSAGES: that switch keeps governing contractor
+    dispatch, notices, escalation ladders and every other outbound message."""
+    reasons = []
+    if not owner_alerts_allowed():
+        reasons.append("STEWARD_ALLOW_OWNER_ALERTS is not true")
+    name = "INKBOX_OWNER_EMAIL" if channel == "email" else "INKBOX_OWNER_PHONE"
+    recipient = InkboxAdapter.owner_email() if channel == "email" else InkboxAdapter.owner_phone()
+    if not recipient:
+        reasons.append(f"{name} is not set to a valid " + ("address" if channel == "email" else "phone number"))
+    elif recipient.strip().casefold() not in allowed_recipients():
+        reasons.append(f"{name} is not in INKBOX_ALLOWED_RECIPIENTS")
+    return reasons
+
+
 class StripeSandbox:
     def __init__(self, transport=None):
         self.transport = transport
@@ -190,6 +250,8 @@ class InkboxAdapter:
     # ---- Reality-layer comms surface (SMS, email, iMessage, voice, inbound webhooks) --------------------
     # Every outbound send is gated by STEWARD_ALLOW_EXTERNAL_MESSAGES=true and an exact entry in
     # INKBOX_ALLOWED_RECIPIENTS (emails and E.164 phone numbers, comma separated). Nothing is sent otherwise.
+    # The one exception is the owner channel (`owner_channel=True`: owner alert email and call, the compliance digest, the
+    # agents' play reports): STEWARD_ALLOW_OWNER_ALERTS=true and the owner's own allowlisted address or phone, nothing else.
 
     def configured(self, property_id: str) -> bool:
         return bool(clean_env("INKBOX_API_KEY")) and bool(self.identity_handle(property_id))
@@ -276,9 +338,68 @@ class InkboxAdapter:
         if not (PHONE_RE.match(recipient.strip()) or EMAIL_RE.match(recipient.strip())):
             raise ValueError("Recipient must be a phone number (^+?[0-9]{7,15}$) or an email address.")
 
-    def send_sms(self, property_id: str, to: str, body: str, conversation_id: str | None = None, idempotency_key: str | None = None) -> dict:
-        """Send an SMS from the property identity's provisioned number. Returns {id, conversationId, raw}."""
-        self._gate(to)
+    @classmethod
+    def _owner_gate(cls, recipient: str, channel: str = "email"):
+        """The owner channel's send-time gate: the recipient is exactly the owner's own address (INKBOX_OWNER_EMAIL) or phone
+        (INKBOX_OWNER_PHONE), it is in INKBOX_ALLOWED_RECIPIENTS, and STEWARD_ALLOW_OWNER_ALERTS=true. It does not read
+        STEWARD_ALLOW_EXTERNAL_MESSAGES; any other recipient is refused here, whatever the switches say."""
+        if not owner_alerts_allowed():
+            raise ProviderNotConfigured("Owner alerts are disabled. Set STEWARD_ALLOW_OWNER_ALERTS=true and allowlist the owner's address before sending.")
+        owner = cls.owner_email() if channel == "email" else cls.owner_phone()
+        value = (recipient or "").strip()
+        if not owner or not value or value.casefold() != owner.strip().casefold():
+            raise ValueError("The owner channel sends only to the owner's own address (INKBOX_OWNER_EMAIL) or phone (INKBOX_OWNER_PHONE).")
+        if value.casefold() not in allowed_recipients():
+            raise ValueError("Every recipient must be explicitly listed in INKBOX_ALLOWED_RECIPIENTS.")
+
+    @classmethod
+    def _person_gate(cls, recipient: str, channel: str = "email", role: str = "owner"):
+        """Contract 8 §1: the send-time gate for a person role (owner, contractor, employee): STEWARD_ALLOW_OWNER_ALERTS=true, the
+        recipient is exactly the role's own address or phone, and it is in INKBOX_ALLOWED_RECIPIENTS. The owner role is the owner
+        channel (`_owner_gate`). STEWARD_ALLOW_EXTERNAL_MESSAGES is not read; any other recipient is refused here."""
+        if role == "owner":
+            return cls._owner_gate(recipient, "email" if channel == "email" else "call")
+        if role not in PERSON_ROLES:
+            raise ValueError(f"Unknown person role {role!r}; the roles are " + ", ".join(PERSON_ROLES) + ".")
+        if not owner_alerts_allowed():
+            raise ProviderNotConfigured("Person messages are disabled. Set STEWARD_ALLOW_OWNER_ALERTS=true and allowlist the address before sending.")
+        expected = person_address(role, "email" if channel == "email" else "phone")
+        value = (recipient or "").strip()
+        if not expected or not value or value.casefold() != expected.strip().casefold():
+            email_name, phone_name = ROLE_ENV[role]
+            raise ValueError(f"The {role} channel sends only to the {role}'s own address ({email_name}) or phone ({phone_name}).")
+        if value.casefold() not in allowed_recipients():
+            raise ValueError("Every recipient must be explicitly listed in INKBOX_ALLOWED_RECIPIENTS.")
+
+    @staticmethod
+    def _cc_gate(addresses: list[str]) -> list[str]:
+        """CC on a send: Steward's own identity mailboxes (internal) or allowlisted person addresses; anything else is refused."""
+        allowlist = allowed_recipients()
+        clean = []
+        for address in addresses or []:
+            value = (address or "").strip()
+            if not EMAIL_RE.match(value):
+                raise ValueError(f"CC {value[:60]!r} is not an email address.")
+            if not (value.casefold().endswith(INTERNAL_MAIL_DOMAIN) or value.casefold() in allowlist):
+                raise ValueError("CC goes only to Steward's own mailboxes or to addresses listed in INKBOX_ALLOWED_RECIPIENTS.")
+            clean.append(value)
+        return list(dict.fromkeys(clean))
+
+    @staticmethod
+    def _internal_gate(recipient: str):
+        """Agent-to-agent mail: the recipient is a Steward identity mailbox; never a person."""
+        value = (recipient or "").strip()
+        if not EMAIL_RE.match(value) or not value.casefold().endswith(INTERNAL_MAIL_DOMAIN):
+            raise ValueError("Internal mail goes only to Steward identity mailboxes.")
+
+    def send_sms(self, property_id: str, to: str, body: str, conversation_id: str | None = None, idempotency_key: str | None = None,
+                 person_role: str | None = None) -> dict:
+        """Send an SMS from the property identity's provisioned number. Returns {id, conversationId, raw}. `person_role` sends on
+        the person channel of that role (`_person_gate`) instead of the general gate."""
+        if person_role:
+            self._person_gate(to, "sms", person_role)
+        else:
+            self._gate(to)
         with self.client() as client:
             identity = self.resolve_phone_identity(client, property_id)
             if identity.phone_number is None:
@@ -314,13 +435,26 @@ class InkboxAdapter:
 
     def send_email(self, property_id: str, to: str, subject: str, body: str, reference: str, in_reply_to: str | None = None,
                    html: str | None = None, attachments: list[dict] | None = None, sender_handle: str | None = None,
-                   api_key: str | None = None, idempotency_key: str | None = None) -> dict:
+                   api_key: str | None = None, idempotency_key: str | None = None, owner_channel: bool = False,
+                   cc: list[str] | None = None, person_role: str | None = None, internal: bool = False) -> dict:
         """Send an email with the work-item reference in the subject. Returns {id, threadId, messageId, raw}.
 
         `html` goes out as `body_html` (the plain `body` stays the text part) and `attachments` as Inkbox attachments
         (`attachment()` shape). `sender_handle` sends from that agent identity (with its identity-scoped `api_key` when
-        given) instead of the site's Field Technician, the way agent document email picks its sender."""
-        self._gate(to)
+        given) instead of the site's Field Technician, the way agent document email picks its sender. `owner_channel`
+        sends on the owner channel (`_owner_gate`: the owner's own address only, STEWARD_ALLOW_OWNER_ALERTS) instead of
+        the general gate (`_gate`: STEWARD_ALLOW_EXTERNAL_MESSAGES). Contract 8: `person_role` sends on that role's channel
+        (`_person_gate`), `internal` to a Steward identity mailbox (`_internal_gate`), and `cc` copies Steward mailboxes or
+        allowlisted addresses (`_cc_gate`)."""
+        if owner_channel:
+            self._owner_gate(to, "email")
+        elif person_role:
+            self._person_gate(to, "email", person_role)
+        elif internal:
+            self._internal_gate(to)
+        else:
+            self._gate(to)
+        copies = self._cc_gate([c for c in (cc or []) if (c or "").strip().casefold() != (to or "").strip().casefold()])
         if reference and reference not in subject:
             subject = f"[{reference}] {subject}"
         with (self.client_with(api_key) if api_key else self.client()) as client:
@@ -328,6 +462,8 @@ class InkboxAdapter:
             if identity.email_address is None:
                 raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no mailbox; email is unavailable.")
             kwargs = dict(to=[to], subject=subject[:300], body_text=body, in_reply_to_message_id=in_reply_to)
+            if copies:
+                kwargs["cc"] = copies
             if html:
                 kwargs["body_html"] = html
             if attachments:
@@ -353,16 +489,65 @@ class InkboxAdapter:
             raw = self.serialize(message)
             return {"id": str(getattr(message, "id", raw.get("id", ""))), "conversationId": str(getattr(message, "conversation_id", "") or "") or None, "raw": raw}
 
-    def place_call(self, property_id: str, to: str, script: str) -> dict:
-        """Place a hosted-agent voice call (Inkbox Voice AI reads `script` as its task brief)."""
-        self._gate(to)
+    def place_call(self, property_id: str, to: str, script: str, owner_channel: bool = False, authority: str | None = None,
+                   voicemail: str | None = None) -> dict:
+        """Place a hosted-agent voice call (Inkbox Voice AI reads `script` as its task brief). `owner_channel` calls the
+        owner's own phone on the owner channel (`_owner_gate`) instead of the general gate. `authority` overrides the identity's
+        saved Voice AI authority for this call (contract 8: `contact_scoped`), `voicemail` is the message left on a machine."""
+        if owner_channel:
+            self._owner_gate(to, "call")
+        else:
+            self._gate(to)
         with self.client() as client:
             identity = self.resolve_phone_identity(client, property_id)
             if identity.phone_number is None:
                 raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no provisioned phone number; voice calls need a dedicated number. Set INKBOX_PHONE_IDENTITY to the handle that owns it.")
-            call = identity.place_call(to_number=to, mode="hosted_agent", reason=script[:2000], on_voicemail="leave_message",
-                                       voicemail_message=script[:1000])
+            kwargs = dict(to_number=to, mode="hosted_agent", reason=script[:2000], on_voicemail="leave_message",
+                          voicemail_message=(voicemail or script)[:1000])
+            if authority:
+                kwargs["hosted_agent_authority_mode"] = authority
+            call = identity.place_call(**kwargs)
             return {"id": str(call.id), "status": call.status, "raw": self.serialize(call)}
+
+    # ---- contract 8 §3: conversational calls on the person channel ----------------------------------------------------
+
+    def place_hosted_call(self, to: str, reason: str, voicemail: str | None = None, role: str = "owner",
+                          authority: str = "contact_scoped") -> dict:
+        """Place a Voice AI call to a person role's own phone from the dispatch line: `reason` is the task brief, the call runs with
+        `contact_scoped` authority (the voice agent can reach only the person on the call) and leaves `voicemail` on a machine."""
+        self._person_gate(to, "call", role)
+        with self.client() as client:
+            identity = self.resolve_phone_identity(client, SITE_IDS[0])
+            if identity.phone_number is None:
+                raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no provisioned phone number; voice calls need a dedicated number.")
+            call = identity.place_call(to_number=to, mode="hosted_agent", reason=reason[:2000], hosted_agent_authority_mode=authority,
+                                       on_voicemail="leave_message", voicemail_message=(voicemail or reason)[:1000])
+            return {"id": str(call.id), "status": str(call.status), "raw": self.serialize(call)}
+
+    @staticmethod
+    def _iso(value) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat().replace("+00:00", "Z") if hasattr(value, "isoformat") else str(value)
+
+    def call_status(self, call_id: str) -> dict:
+        """One call record from Inkbox: {id, status, hangupReason, startedAt, endedAt, actionItems: [{seq, action, details}]}."""
+        with self.client() as client:
+            call = client.calls.get(call_id)
+        return {"id": str(call.id), "status": str(call.status), "hangupReason": call.hangup_reason, "startedAt": self._iso(call.started_at),
+                "endedAt": self._iso(call.ended_at),
+                "actionItems": [{"seq": item.seq, "action": item.action, "details": item.details} for item in (call.post_call_action_items or [])]}
+
+    def call_transcripts(self, call_id: str) -> list[dict]:
+        """The call's transcript segments, oldest first: [{seq, tsMs, party: local|remote, text}]."""
+        with self.client() as client:
+            rows = client.calls.transcripts(call_id)
+        return [{"seq": row.seq, "tsMs": row.ts_ms, "party": row.party, "text": row.text} for row in rows]
+
+    def hangup(self, call_id: str) -> dict:
+        with self.client() as client:
+            call = client.calls.hangup(call_id)
+        return {"id": str(call.id), "status": str(call.status)}
 
     def ensure_webhook(self, property_id: str, public_base_url: str, inbound_secret: str) -> dict:
         """Create (or reuse) the webhook subscription that delivers inbound texts, emails and iMessages to /api/inbound/inkbox."""

@@ -608,7 +608,6 @@
 .cv-sum ul.actions { list-style: none; padding-left: 0; }
 .cv-sum ul.actions strong { color: var(--ink); font-weight: 500; margin-right: 6px; }
 .cv-tr { display: flex; flex-direction: column; gap: 10px; }
-.cv-listen { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; }
 
 /* Agent view: the HUD. */
 .agent-view { display: flex; flex-direction: column; gap: 12px; min-height: calc(100dvh - 144px); }
@@ -618,7 +617,10 @@
 .av-live { grid-column: 2; font-size: var(--f-s); color: var(--muted); text-align: right; }
 .av-clock { grid-column: 2; grid-row: 1 / span 2; font-size: var(--f-xl); font-weight: 500; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: #ffffff; }
 /* Three eyes across the top, then the stream beside the map and the meters. */
-.av-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); grid-template-areas: "eyes eyes" "stream map" "stream meters"; gap: 8px; align-items: start; }
+.av-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); grid-template-areas: "eyes eyes" "stream map" "stream meters" "log log"; gap: 8px; align-items: start; }
+.av-stream.av-log { grid-area: log; }
+.av-stream.av-log li:last-child { background: none; color: var(--ink-2); }
+.av-stream.av-log li:first-child { background: var(--s2); color: #ffffff; }
 .av-eyes { grid-area: eyes; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start; }
 .av-stream { grid-area: stream; background: var(--s1); padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .av-map { grid-area: map; background: var(--s1); padding: 16px; }
@@ -660,6 +662,24 @@
 .mini3 .pulse { fill: #ffffff; opacity: 0; }
 .mini3 text { fill: var(--ink-2); font-size: 26px; }
 .mini3 .cl { fill: var(--muted); font-size: 26px; }
+/* Who is talking to whom: lit off-chart lines, a dot running caller to callee, and the list under the map. */
+.mini3 .e.talk { stroke-width: 4; stroke-dasharray: 16 14; animation: talk3 1.4s linear infinite; }
+@keyframes talk3 { to { stroke-dashoffset: -30; } }
+.mini3 .spark { fill: #ffffff; }
+.av-talks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; font-size: var(--f-s); }
+.av-talks li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 6px 0; border-top: 1px solid var(--s3); }
+.av-talks .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-talks .who strong { font-weight: 500; }
+.av-talks .what { grid-column: 1 / -1; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-talks .quiet { color: var(--muted); border-top: 0; }
+/* The eye panels say whether their camera is moving or still, and fade in each new frame. */
+.eye3 .hud-top .mv { flex: none; color: var(--muted); }
+.eye3 .hud-top .mv.on { color: #ffffff; }
+.eye3 .hud-top .mv.on::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; background: #ffffff; vertical-align: 1px; animation: mv3 1.2s ease-in-out infinite; }
+@keyframes mv3 { 50% { opacity: .25; } }
+.eye3 .frame img.fresh { animation: fresh3 .45s ease-out; }
+@keyframes fresh3 { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mini3 .e.talk, .eye3 .hud-top .mv.on::before, .eye3 .frame img.fresh { animation: none; } }
 @media (prefers-reduced-motion: no-preference) {
   .mini3 .pulse { transform-box: fill-box; transform-origin: center; animation: pulse4 1.8s var(--ease-out) infinite; }
   .agent-view { animation: rise3 520ms var(--ease-out) both; }

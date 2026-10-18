@@ -20,8 +20,8 @@ const DEBOUNCE_MS = 350;
 
 const KIND_WORD: Record<string, string> = {
   decision: "Decision", outcome: "Outcome", scenario_outcome: "Outcome", reconfigure: "Reconfiguration", reconfiguration: "Reconfiguration",
-  finding: "Finding", document_review: "Finding", board_meeting: "Meeting", meeting: "Meeting", call: "Call", message: "Message",
-  conversation: "Conversation", note: "Note",
+  finding: "Finding", document_review: "Finding", board_meeting: "Meeting", meeting: "Meeting", call: "Chat", message: "Message",
+  conversation: "Chat", chat: "Chat", note: "Note",
 };
 const RECORD_WORDS = /\b(?:synthetic|simulated|seeded|seed|generated|demo|scenario)\b/gi;
 /* The kind as a word; a note a call or meeting left says which it was. */
@@ -128,7 +128,7 @@ export default function MemoryPage() {
   const pending = text.trim() !== query || (data !== null && !current);
 
   return <div className="page3">
-    <PageHead id="memory" title="Memory" sub="Each agent's persistent memory: the decisions it made, the outcomes, the reconfigurations and the findings, newest first. New memories appear here as the agents work.">
+    <PageHead id="memory" title="Memory">
       <div className="tabs3" role="group" aria-label="Filter by site">{[{ id: "", short: "All sites" }, ...SITES3].map(x => <button key={x.id || "all"} type="button" aria-pressed={site === x.id} className={site === x.id ? "on" : ""} onClick={() => pickSite(x.id)}>{x.short}</button>)}</div>
     </PageHead>
     <Reveal as="section" className="p3" i={1} aria-labelledby="mem-list-h">
@@ -144,7 +144,7 @@ export default function MemoryPage() {
           <input type="search" value={text} onChange={ev => setText(ev.target.value)} placeholder="Words in what the agents remember" autoComplete="off" spellCheck={false} enterKeyHint="search" />
         </label>
       </form>
-      <div className="p-head"><h2 id="mem-list-h">{heading}</h2><span className="meta">{!data ? "" : pending ? "Loading" : `${count(entries.length)}, newest first`}</span></div>
+      <div className="p-head"><h2 id="mem-list-h">{heading}</h2><span className="meta">{!data ? "" : pending ? "Loading" : count(entries.length)}</span></div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">{said}</p>
       <State remote={remote} what="memories" isEmpty={() => entries.length === 0} empty={empty}>
         {() => <>

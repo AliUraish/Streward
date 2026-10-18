@@ -57,7 +57,9 @@ export const otherSites = (id: SiteId3): SiteId3[] => SITE3_IDS.filter(x => x !=
 /* "Myer and Bristol", "Myer, Bristol and Tomioka". */
 export const siteList = (ids: string[]) => { const names = ids.map(id => isSite3(id) ? site3(id).short : id); return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] ?? ""; };
 
-/* Three teams plus a director. Levels: 1 owner's agent, 2 director, 3 manager, 4 engineer and compliance, 5 technician.
+/* Three teams plus a director, and three agents that work across all three sites like the director (contract 8: the Site
+   Inspector, the People Officer and Compliance Counsel). Levels: 1 owner's agent, 2 director, 3 manager and the
+   cross-site agents, 4 engineer and compliance, 5 technician.
    Display names are the contracts': Plant Manager and Site Engineer at the two plants (contract 4 §1), Site Manager and
    Conservation Engineer at the mill (contract 5 §2). `title` is the name without the site, for sentences. */
 export type TeamRole = "manager" | "engineer" | "compliance" | "technician";
@@ -87,6 +89,10 @@ export const AGENTS3: AgentIdentity[] = [
   ...team("myer-plant", "Myer", "myer", PLANT),
   ...team("bristol-pumps", "Bristol", "bristol", PLANT),
   ...team("tomioka-mill", "Tomioka", "tomioka", MILL, false),
+  /* Contract 8: cross-site, after the teams so every per-agent list keeps its order. */
+  { id: "site-inspector", level: 3, name: "Site Inspector", title: "Site Inspector", role: "All three sites. Formal compliance inspections with the agent eye; reports what it finds, with the evidence, to the site's Compliance Officer.", inbox: "steward-warden-harbor" },
+  { id: "people-officer", level: 3, name: "People Officer", title: "People Officer", role: "All three sites. Reads the badge log; calls an employee who is late two working days running and tells the site manager what was agreed.", inbox: "steward-atlas" },
+  { id: "compliance-counsel", level: 3, name: "Compliance Counsel", title: "Compliance Counsel", role: "All three sites. The lawyer copied on compliance mail; tells the contractor what the law requires for a job and can call them.", inbox: "steward-counsel" },
 ];
 export const DISPATCH = { id: "dispatch", name: "Steward Dispatch Line", role: "The one phone number. Every field technician sends SMS and calls to people through it." };
 export const teamOf = (siteId: SiteId3) => AGENTS3.filter(a => a.siteId === siteId);
@@ -115,17 +121,21 @@ export function agentName(id: string | null | undefined): string {
 /* Display text from records written before the migration may still carry the retired names; show the new ones. */
 const RENAMES: [RegExp, string][] = [
   [/\bAtlas\b/g, "Operations Director"], [/\bWarden · Myer\b/g, "Site Engineer · Myer"], [/\bWarden · Bristol\b/g, "Site Engineer · Bristol"],
-  [/\bWarden · Harbor Works\b/g, "Site Engineer"], [/\bWarden\b/g, "Site Engineer"], [/\bCounsel's\b/g, "the Compliance Officer's"], [/\bCounsel\b/g, "the Compliance Officer"],
+  [/\bWarden · Harbor Works\b/g, "Site Engineer"], [/\bWarden\b/g, "Site Engineer"],
+  /* The retired Counsel became the site's Compliance Officer; Compliance Counsel (contract 8) keeps its own name. */
+  [/(?<!Compliance )\bCounsel's\b/g, "the Compliance Officer's"], [/(?<!Compliance )\bCounsel\b/g, "the Compliance Officer"],
   [/\bRunner\b/g, "the Field Technician"], [/\bsteward-runner\b/g, "the Steward Dispatch Line"],
 ];
 /* Records keep provenance wording for the backend's audit trail ("(demo)", "[synthetic reply]", "on the simulated feed",
-   "Scenario outcome", a scenario's id); the dashboard shows the record without it. */
+   "Scenario outcome", a scenario's id) and delivery plumbing ("[dry_run]", "(local)", the settings a send needs, "also
+   delivered to Armature"); the dashboard shows the record without it. */
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const UNLABEL: [RegExp, string | ((...m: string[]) => string)][] = [
-  [/\s*\[(?:synthetic|simulated|demo|sample)\b[^\]]*\]/gi, ""],
+  [/\s*\[(?:synthetic|simulated|demo|sample|dry[_ ]run)\b[^\]]*\]/gi, ""],
   [/\s*\((?=[^()]*\b(?:synthetic|simulated|simulation|demo|sample|seeded|hand-seed|fictional|not statutory|not legal)\b)[^()]*\)/gi, ""],
   [/\b(S|s)ynthetic crew member with no contact details\b/g, (_m, s) => `${s === "S" ? "N" : "n"}o contact details on file`],
   [/\bsynthetic crew have no contact on file\b/g, "no contact is on file"],
+  [/\bis synthetic crew with no contact on file\b/g, "has no contact on file"],
   [/\bthe simulated (?:sensor )?feed\b/gi, "the live feed"],
   [/\bin this demo\b/gi, "here"],
   [/[;,]?\s*not a physical instrument\b\.?/gi, ""],
@@ -137,6 +147,18 @@ const UNLABEL: [RegExp, string | ((...m: string[]) => string)][] = [
   [/\b(demo)\s+(rule pack|project specification|operator|data|site|controls?)\b/gi, (_m, d, rest) => (d[0] === "D" ? cap(rest) : rest)],
   [/\bDEMO-(?=[A-Z]+\/)/g, ""],
   [/[,;]?\s*not (?:statutory|legal) advice\b\.?/gi, ""],
+  [/,?\s*also delivered to Armature\b/gi, ""],
+  /* Log lines: transport prefixes and delivery plumbing read as plain operations language. */
+  [/^A2A\s+/, ""],
+  [/\bby simulation\b/gi, "from the sensor feed"],
+  [/^local dispatch for (\S+) to local card recorded locally; no provider receipt\.?$/i, "Dispatch for $1 recorded"],
+  [/\s*recorded locally; no provider receipt\.?/gi, " recorded"],
+  [/\bA2A (?=messages?\b)/g, ""],
+  [/ \(local\)(?=:)/g, ""],
+  [/\((not_contactable|record_only)\)/g, (_m, w) => `(${w.replace(/_/g, " ")})`],
+  /* "STEWARD_ALLOW_AGENT_EMAIL is not true", "recorded only: set STEWARD_ALLOW_NOTICE_SMS=true and allowlist … to send". */
+  [/[:;,]?\s*\bset\s+[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+=[^\s,;]+(?:,\s*[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+=[^\s,;]+)*(?:,?\s+and allowlist\s+[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)?(?:\s+to send)?\b\.?/g, ""],
+  [/\s*\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+ is (?:not true|not set|unset|false)\b[;,.]?/g, ""],
 ];
 export function rn<T extends string | null | undefined>(text: T): T {
   if (!text) return text;

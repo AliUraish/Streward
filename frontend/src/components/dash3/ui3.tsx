@@ -40,11 +40,11 @@ export function LinkBtn({ href, children, quiet, small, external }: { href: stri
 }
 
 /* Records keep their provenance flags (synthetic, simulated, generator) for the audit trail; the dashboard shows the
-   record itself, untagged. The two tags stay as components so every call site is unchanged; they render nothing. */
+   record itself, untagged. The tags stay as components so every call site is unchanged; they render nothing. */
 export const isSynthetic = (r: SyntheticMark | null | undefined) => Boolean(r && (r.synthetic || r.simulated));
 export function SynthTag(_props: { rec?: SyntheticMark | null; always?: boolean }) { return null; }
 export const DemoTag = () => null;
-export const OperatorTag = () => <span className="tg demo">operator tool</span>;
+export const OperatorTag = () => null;
 
 /* Live readings: an arrow for the direction since the previous reading (none when it held) and a High or Low mark when
    the reading is outside its normal band. Both are words to a screen reader, so neither rests on its glyph or colour. A
@@ -67,7 +67,7 @@ export function State<T>({ remote, what, children, empty, isEmpty }: { remote: R
     const notReady = remote.readiness === "not_ready";
     return <div className="st3 not-ready" role="status">
       <strong>{notReady ? "Not available yet" : "Could not load"}</strong>
-      <span>{notReady ? `The backend has not shipped ${what} yet.` : remote.error || `Loading ${what} failed.`}</span>
+      {notReady ? null : <span>{remote.error || `Loading ${what} failed.`}</span>}
       <Btn quiet small onClick={remote.reload}>Retry</Btn>
     </div>;
   }
@@ -160,6 +160,6 @@ export const fx = (v: number | null | undefined, d = 3) => v === null || v === u
 export const n = (v: number | null | undefined) => v === null || v === undefined ? "–" : new Intl.NumberFormat().format(v);
 export function errorText(e: unknown) {
   const err = e as { notReady?: boolean; message?: string };
-  if (err?.notReady) return "Not available yet: the backend has not shipped this endpoint.";
+  if (err?.notReady) return "Not available yet.";
   return err?.message ?? "Request failed";
 }

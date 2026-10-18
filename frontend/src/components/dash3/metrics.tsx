@@ -25,7 +25,7 @@ const fmtV = (v: number | null, digits: number) => v === null ? "–" : new Intl
 /* The live window keeps every 5-second point it has seen: the series carries 5-second points only since its last
    5-minute boundary, so without the buffer the line would coarsen every five minutes. The live readings join it as they
    come. For the longer ranges (windowMs 0) the latest live reading is drawn after the series' last point. */
-function useRolling(data: MetricsResponse | null, key: string, windowMs: number, readings: LiveReading[] | null, at: string | null): MetricsResponse | null {
+export function useRolling(data: MetricsResponse | null, key: string, windowMs: number, readings: LiveReading[] | null, at: string | null): MetricsResponse | null {
   const store = useRef<{ key: string; series: Map<string, Map<number, number>> }>({ key: "", series: new Map() });
   return useMemo(() => {
     if (!data) return null;
@@ -58,7 +58,7 @@ export default function MetricsPage({ siteId }: { siteId: SiteId3 }) {
   const shown = useRolling(metrics.data, `${siteId}:${range.key}`, range.key === "live" ? range.hours * 3_600_000 : 0, readings, at);
   const defs = metricDefsFor(siteId);
   return <div className="page3">
-    <PageHead id="metrics" title="Metrics" sub={`${site.name}: ${defs.length} series from the site's sensors, each with its spec band. Readings update every 5 seconds; hover or use the arrow keys on a chart to read a value.`}>
+    <PageHead id="metrics" title="Metrics">
       <div className="tabs3" role="tablist" aria-label="Range">{RANGES.map(r => <button key={r.key} type="button" role="tab" aria-selected={range.key === r.key} className={range.key === r.key ? "on" : ""} onClick={() => setRange(r)}>{r.label}</button>)}</div>
     </PageHead>
     <State remote={metrics} what="metrics" isEmpty={m => m.series.length === 0} empty="No metric series for this site yet.">
@@ -73,7 +73,7 @@ export default function MetricsPage({ siteId }: { siteId: SiteId3 }) {
 
 /* A series' latest reading: the live one when it answers, else its last point against the one before (compared at the
    digits shown, so the arrow never points at a change the figure does not show). */
-function latestOf(s: MetricSeries, readings: LiveReading[] | null, at: string | null, digits: number): { id: string; name: string; value: number | null; trend: LiveTrend; state: LiveState; at: string | null } {
+export function latestOf(s: MetricSeries, readings: LiveReading[] | null, at: string | null, digits: number): { id: string; name: string; value: number | null; trend: LiveTrend; state: LiveState; at: string | null } {
   const name = s.assetTag && s.assetTag !== "SITE" ? s.assetTag : s.label ?? s.key;
   const r = readings?.find(x => x.key === s.key);
   if (r && typeof r.value === "number") return { id: s.key, name, value: r.value, trend: r.trend, state: r.state, at };

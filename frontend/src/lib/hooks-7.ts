@@ -7,8 +7,10 @@ import { api7 } from "./api-7";
 
 /* The latest label per asset, every 5 s (the 3-D markers). */
 export const useLabels = (siteId: string, intervalMs = 5_000) => usePoll(() => api7.labels(siteId), [siteId], intervalMs);
-/* The site's latest walkthrough, every 3 s (the walkthrough line). */
+/* The site's latest walkthrough, every 3 s. */
 export const usePatrols = (siteId: string, intervalMs = 3_000) => usePoll(() => api7.patrols(siteId, 1), [siteId], intervalMs);
+/* The walk at a site now, every 3 s (the walk line and the camera to follow). */
+export const useWalk = (siteId: string, intervalMs = 3_000) => usePoll(() => api7.walk(siteId), [siteId], intervalMs);
 /* Owner alerts arrive a step at a time, about 4 s apart, so the feed polls every 5 s. */
 export const useOwnerAlerts = (siteId?: string, limit = 6) => usePoll(() => api7.ownerAlerts(siteId, limit), [siteId, limit], 5_000);
 /* The latest calls across every site, every 3 s (the dashboard-wide call notifier). */

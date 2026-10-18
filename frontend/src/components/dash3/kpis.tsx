@@ -67,7 +67,7 @@ export function Kpis({ s, live, liveAt, remote, compact, only, missingText }: { 
     const value = (s?.[d.key] ?? null) as number | null;
     return { d, label: d.label, value, trend: trends[d.key] ?? "flat", state: bandOf(value, d.band), at: remote.at || null };
   });
-  if (!s && !rows.some(r => r.value !== null)) return <div className={`kpis3 ${compact ? "compact" : ""} missing`}>{remote.readiness === "ready" ? <span className="st3-inline">{missingText ?? "Not in the metrics summary yet."}</span> : <NotYet remote={remote} what="the metrics summary" />}</div>;
+  if (!s && !rows.some(r => r.value !== null)) return <div className={`kpis3 ${compact ? "compact" : ""} missing`}>{remote.readiness === "ready" ? <span className="st3-inline">{missingText ?? "No figures yet."}</span> : <NotYet remote={remote} what="the metrics summary" />}</div>;
   return <dl className={`kpis3 ${compact ? "compact" : ""}`}>
     {rows.map(({ d, label, value, trend, state, at }) => <div key={d.key} className="kpi">
       <dt>{label}<BandMark state={state} /></dt>

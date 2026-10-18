@@ -6,10 +6,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api3, normaliseFix } from "@/lib/api-3";
 import { useCrew, useDocumentEmails, useDocuments3, useIssue, useIssues3, useNotices, useNotifications, useObligations, useRegulationsWithComparison } from "@/lib/hooks-3";
-import { agentName, site3, teamOf } from "@/lib/sites-3";
+import { agentName, teamOf } from "@/lib/sites-3";
 import type { CrewMember, FixRun, Issue3, Obligation, Regulation, SiteId3, WhyRef } from "@/lib/types-3";
-import { COMPARISON_NOTE, REGULATIONS_PACK, atPage, comparisonForIssue, comparisonRegsForSite, embedAttribution, hostOf, isComparison, isJapan, isPdfUrl, jurisdictionName, linkedNote, regsForIssue, regsForSite, siteJurisdiction, sourceUrl, translationOf } from "@/lib/regulations-3";
+import { COMPARISON_NOTE, REGULATIONS_PACK, atPage, comparisonForIssue, comparisonRegsForSite, embedAttribution, hostOf, isComparison, isPdfUrl, jurisdictionName, linkedNote, regsForIssue, regsForSite, siteJurisdiction, sourceUrl, translationOf } from "@/lib/regulations-3";
 import Pdf3 from "./pdf3";
+import { LatestInspection } from "./inspections";
 import OwnerAlerts from "./owner-alerts";
 import { Btn, DemoTag, JaText, LinkedText, PageHead, Reveal, State, SynthTag, ago, day, errorText, when, words } from "./ui3";
 
@@ -25,7 +26,6 @@ const shortRef = (r: { instrument?: string | null; provision?: string | null }) 
 export const isComplianceIssue = (i: Issue3, siteRegs: Regulation[] = []) => regIds(i).length > 0 || Boolean(i.obligationId) || Boolean(i.documentId) || COMPLIANCE_KIND.test(i.kind) || regsForIssue(i, siteRegs).length > 0;
 
 export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
-  const site = site3(siteId);
   const obligations = useObligations(siteId);
   const documents = useDocuments3(siteId);
   const notices = useNotices(siteId);
@@ -43,7 +43,6 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
   const fromPack = binding.length === 0;
   const regs = useMemo(() => binding.length ? binding : regsForSite(siteId, REGULATIONS_PACK), [binding, siteId]);
   const servedCmp = useMemo(() => comparisonRegsForSite(siteId, served.filter(isComparison)), [served, siteId]);
-  const cmpFromPack = servedCmp.length === 0;
   const comparisons = useMemo(() => servedCmp.length ? servedCmp : comparisonRegsForSite(siteId, REGULATIONS_PACK), [servedCmp, siteId]);
   useEffect(() => { if (!pdf && regs.length) setPdf(regs[0].id); }, [regs, pdf]);
   useEffect(() => { if (!cmp && comparisons.length) setCmp(comparisons[0].id); }, [comparisons, cmp]);
@@ -56,7 +55,7 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
   const scrollTo = (el: string) => document.getElementById(el)?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   const openPdf = (id: string) => { if (comparisons.some(r => r.id === id) && !regs.some(r => r.id === id)) { setCmp(id); scrollTo("regs-ca"); } else { setPdf(id); scrollTo("regs"); } };
   return <div className="page3">
-    <PageHead id="compliance" title="Compliance" sub={<>{site.name} cites {jurisdictionName(siteJurisdiction(siteId))} law: what the {site.short} team must keep doing, the regulations behind it and what is broken now, kept by the {officer?.name ?? "Compliance Officer"}. The summaries are our own words.</>} />
+    <PageHead id="compliance" title="Compliance" />
 
     <Reveal as="section" className="p3 ci3" aria-labelledby="ci-h">
       <div className="p-head"><h2 id="ci-h">Compliance issues</h2><DemoTag /></div>
@@ -67,6 +66,8 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
         </>}
       </State>
     </Reveal>
+
+    <LatestInspection siteId={siteId} />
 
     <OwnerAlerts siteId={siteId} limit={6} />
 
@@ -89,21 +90,19 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
 
     <Reveal as="section" className="p3 regs3" id="regs" aria-labelledby="regs-h">
       <div className="p-head"><h2 id="regs-h">Regulations, {jurisdictionName(siteJurisdiction(siteId))}</h2></div>
-      {fromPack ? <p className="note3">{regulations.readiness === "loading" ? "Loading the regulations." : <>{regulations.readiness === "ready" ? `GET /api/regulations has no records for ${site.short} yet` : "GET /api/regulations is not available yet"}, so these come from the rule pack in the repository. <button type="button" className="retry" onClick={regulations.reload}>Retry</button></>}</p> : null}
+      {fromPack && regulations.readiness === "loading" ? <p className="note3">Loading the regulations.</p> : null}
       {regs.length ? <div className="regs-wrap">
         <ul className="rows3">{regs.map(r => <li key={r.id} className={pdf === r.id ? "sel" : ""}><button type="button" className="row-btn" aria-pressed={pdf === r.id} onClick={() => setPdf(r.id)}>
           <span className="r1"><strong><JaText text={r.title} /></strong>{r.sourceType === "guidance" ? <span className="tg">guidance, not law</span> : null}{r.servePdf ? null : <span className="tg">linked</span>}</span>
           <span className="r3"><JaText text={`${r.instrument}${r.provision ? `, ${r.provision}` : ""}`} /></span>
         </button></li>)}</ul>
         {pdf ? <RegulationView reg={regs.find(r => r.id === pdf) ?? null} /> : null}
-      </div> : <p className="st3 empty">{fromPack ? `The rule pack in the repository has no ${jurisdictionName(siteJurisdiction(siteId))} records yet; they appear here once the backend adds them.` : "No regulations recorded for this site."}</p>}
+      </div> : <p className="st3 empty">No regulations recorded for this site.</p>}
     </Reveal>
 
     <Reveal as="section" className="p3 regs3 cmp3" id="regs-ca" aria-labelledby="regs-ca-h">
       <div className="p-head"><h2 id="regs-ca-h">If this site were in California</h2><span className="meta"><span className="tg cmp">{COMPARISON_NOTE}</span></span></div>
-      <p className="note3">California&apos;s rules (US-CA) for the same duties, as a comparison only. {site.name} is bound by {jurisdictionName(siteJurisdiction(siteId))} law above; nothing here is checked, cited or acted on for this site.</p>
       {comparisons.length ? <>
-        {cmpFromPack ? <p className="note3">{regulations.readiness === "ready" ? "GET /api/regulations?include=comparison sent no California records" : "GET /api/regulations is not available yet"}, so these come from the rule pack in the repository.</p> : null}
         <div className="regs-wrap">
           <ul className="rows3">{comparisons.map(r => <li key={r.id} className={cmp === r.id ? "sel" : ""}><button type="button" className="row-btn" aria-pressed={cmp === r.id} onClick={() => setCmp(r.id)}>
             <span className="r1"><strong>{r.title}</strong><span className="tg cmp">{COMPARISON_NOTE}</span>{r.servePdf ? null : <span className="tg">linked</span>}</span>
@@ -111,7 +110,7 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
           </button></li>)}</ul>
           {cmp ? <RegulationView reg={comparisons.find(r => r.id === cmp) ?? null} comparison /> : null}
         </div>
-      </> : <p className="st3 empty">No California comparison records yet. They appear here once the rule pack or GET /api/regulations?include=comparison carries them.</p>}
+      </> : <p className="st3 empty">No California comparison records yet.</p>}
     </Reveal>
 
     <div className="comp3">
@@ -149,10 +148,10 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
       </Reveal>
       <Reveal as="section" className="p3 notif3" i={4} aria-labelledby="nf-h">
         <div className="p-head"><h2 id="nf-h">Notifications</h2></div>
-        <State remote={notifications} what="notifications" isEmpty={x => x.length === 0} empty="No notifications yet. The last step of a fix informs everyone on the roster.">
+        <State remote={notifications} what="notifications" isEmpty={x => x.length === 0} empty="No notifications yet.">
           {list => <ul className="rows3 plain">{[...list].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12).map(x => <li key={x.id}>
             <span className="r1"><strong>{agentName(x.to)}</strong>{x.role ? <span className="sev">{x.role}</span> : null}<SynthTag rec={x} />{x.mode && x.mode !== "sent" ? <span className="tg">{words(x.mode)}</span> : null}</span>
-            <span className="r2">{x.text}</span><span className="r3">{when(x.at)}{x.channel ? `, ${x.channel}` : ""}</span>
+            <span className="r2">{x.text}</span><span className="r3">{when(x.at)}{x.channel ? `, ${x.channel === "a2a" ? "message" : x.channel}` : ""}</span>
           </li>)}</ul>}
         </State>
       </Reveal>
@@ -175,7 +174,6 @@ function RegulationView({ reg, comparison }: { reg: Regulation | null; compariso
   return <article className="reg-view" aria-label={reg.title}>
     <header><span className="tg">{jurisdictionName(reg.jurisdiction)}</span>{comparison ? <span className="tg cmp">{COMPARISON_NOTE}</span> : null}{reg.sourceType === "guidance" ? <span className="tg">guidance, not law</span> : null}<h3><JaText text={reg.title} /></h3><p><JaText text={`${reg.instrument}${reg.provision ? `, ${reg.provision}` : ""}`} /></p></header>
     {reg.summary ? <p className="reg-sum">{reg.summary}</p> : null}
-    {isJapan(reg.jurisdiction) ? <p className="note3">Our summary in English; the Japanese text is the law. Article numbers are given as written in it.</p> : null}
     <dl className="kv3">
       {reg.version ? <><dt>Version</dt><dd><JaText text={reg.version} /></dd></> : null}
       {reg.officialUrl ? <><dt>Official page</dt><dd><a className="lnk" href={reg.officialUrl} target="_blank" rel="noreferrer">{reg.officialUrl.replace(/^https?:\/\//, "")}</a></dd></> : null}

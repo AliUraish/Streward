@@ -1,7 +1,8 @@
 "use client";
 
-/* /app/agents: the full agent map. The Owner's agent and the Operations Director at the top, the three site teams as
-   clusters (manager, engineer, technician, compliance officer), the Steward Dispatch Line below. In each cluster the
+/* /app/agents: the full agent map. The Owner's agent and the Operations Director at the top with the three cross-site
+   agents beside the director (Site Inspector, Compliance Counsel, People Officer), the three site teams as clusters
+   (manager, engineer, technician, compliance officer), the Steward Dispatch Line below. In each cluster the
    manager sits on top and the compliance officer at the foot, so the cross-site lines (manager to manager, compliance
    to compliance) run straight between clusters without crossing a node. Edges light up when a conversation or an A2A
    task between two agents happens; each node shows its task and status. Click a node for its activity, memory and
@@ -11,7 +12,7 @@ import type { Remote } from "@/lib/reality";
 import { useA2ATasks, useConversations } from "@/lib/hooks-3";
 import { AGENTS3, DISPATCH, SITES3, agentById, agentName } from "@/lib/sites-3";
 import { SiteTitle } from "./ui3";
-import { AgentDetail, useSpeaker } from "./agent-detail";
+import { AgentDetail } from "./agent-detail";
 import { useNowRows, type NowRow } from "./portfolio";
 import { useShared } from "./shell";
 import { NotYet, PageHead, Reveal, ago } from "./ui3";
@@ -26,6 +27,8 @@ export const CLUSTERS: { siteId: string; x: number; y: number; w: number; h: num
 const cx = (i: number) => 210 + i * 390;
 export const MAP_POS: Record<string, [number, number]> = {
   operator: [600, 62], director: [600, 190],
+  /* Contract 8: the cross-site agents share the director's row. */
+  "site-inspector": [330, 190], "compliance-counsel": [870, 190], "people-officer": [1110, 190],
   "myer-manager": [cx(0), 395], "myer-engineer": [cx(0) - 96, 545], "myer-technician": [cx(0) + 96, 545], "myer-compliance": [cx(0), 695],
   "bristol-manager": [cx(1), 395], "bristol-engineer": [cx(1) - 96, 545], "bristol-technician": [cx(1) + 96, 545], "bristol-compliance": [cx(1), 695],
   "tomioka-manager": [cx(2), 395], "tomioka-technician": [cx(2) - 96, 545], "tomioka-engineer": [cx(2) + 96, 545], "tomioka-compliance": [cx(2), 695],
@@ -72,7 +75,6 @@ export default function AgentMapPage() {
   const rows = useNowRows(overview, agents);
   const { pairs, conversations, tasks } = useExchanges();
   const [selected, setSelected] = useState<string>("director");
-  const speaker = useSpeaker();
   /* An edge flashes when its pair's latest exchange is newer than what this page has seen. */
   const seen = useRef<Map<string, string>>(new Map());
   const [flash, setFlash] = useState<Record<string, number>>({});
@@ -87,7 +89,7 @@ export default function AgentMapPage() {
   const me = agentById(selected);
   const ready = conversations.readiness === "ready" || tasks.readiness === "ready";
   return <div className="page3">
-    <PageHead id="agents" title="Agents map" sub="Fifteen seats: the Owner's agent, the Operations Director, three site teams of four and the Steward Dispatch Line. Cross-site talk runs manager to manager, compliance to compliance, or through the director." />
+    <PageHead id="agents" title="Agents map" />
     <Reveal as="section" className="p3 map-panel" aria-labelledby="map-h">
       <div className="p-head"><h2 id="map-h">Who is talking to whom</h2><span className="meta">{ready ? `lit edges: an exchange in the last 15 minutes` : <NotYet remote={conversations as Remote<unknown>} what="conversations" />}</span></div>
       <div className="map3" role="group" aria-label="Agent map">
@@ -100,8 +102,8 @@ export default function AgentMapPage() {
         {[...AGENTS3.map(a => a.id), "dispatch"].map(id => <MapNode key={id} id={id} row={rows.find(r => r.id === id)} on={selected === id} talking={[...pairs.entries()].filter(([k]) => k.split("|").includes(id) && recent(k)).map(([k]) => k.split("|").find(x => x !== id) ?? "")} onClick={() => setSelected(id)} />)}
       </div>
     </Reveal>
-    {me ? <AgentDetail key={me.id} me={me} info={agents.data?.find(x => x.id === me.id)} speaker={speaker} />
-      : <Reveal className="p3"><div className="p-head"><h2>{DISPATCH.name}</h2></div><p className="r2">{DISPATCH.role} It is a phone number, not an agent: it has no memory or tasks of its own, and only the duty engineer (the user) is ever reached through it in live mode.</p></Reveal>}
+    {me ? <AgentDetail key={me.id} me={me} info={agents.data?.find(x => x.id === me.id)} />
+      : <Reveal className="p3"><div className="p-head"><h2>{DISPATCH.name}</h2></div><p className="r2">{DISPATCH.role}</p></Reveal>}
   </div>;
 }
 
