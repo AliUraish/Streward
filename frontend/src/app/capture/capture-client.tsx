@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getSplatSite } from '@/components/splat/sites';
+import { SPLAT_SITE_IDS, getSplatSite } from '@/components/splat/sites';
 import { parseDefect, type DefectKind } from '@/components/splat/defects';
 import type { Vec3Tuple } from '@/components/splat/types';
 import type { SplatEngine } from '@/components/splat/engine';
@@ -21,7 +21,15 @@ export interface CaptureParams {
   defectRadius: number;
   /** Probe lines of sight and centre the arc on the clearest side. */
   smart: boolean;
+  /**
+   * Burn "synthetic defect: <kind>" into the bottom-left of defected frames (default, for people).
+   * With `label=0` the pixels stay clean and window.__frames holds {dataUrl, synthetic, defect, index}.
+   */
+  label: boolean;
 }
+
+/** One frame when `label=0`: the label travels as metadata instead of pixels. */
+export interface CaptureFrame { index: number; dataUrl: string; synthetic: boolean; defect: DefectKind }
 
 export interface CaptureResult {
   site: string;
@@ -41,13 +49,18 @@ export interface CaptureResult {
   source: string;
   timings: Record<string, number>;
   /** Line-of-sight probe: which of 12 directions see the pin, and the chosen centre index. */
-  probe?: { clear: boolean[]; centre: number };
+  probe?: { method: 'centres' | 'depth'; clear: boolean[]; counts?: number[]; centre: number };
+  /** Whether the defect label is burned into the pixels (false with `label=0`). */
+  labelled: boolean;
   error?: string;
 }
 
 declare global {
   interface Window {
-    __frames?: string[];
+    /** JPEG data URLs; with `label=0`, {dataUrl, synthetic, defect, index} objects. */
+    __frames?: (string | CaptureFrame)[];
+    /** Per-frame metadata in both modes. */
+    __frameMeta?: { index: number; synthetic: boolean; defect: DefectKind; labelled: boolean }[];
     __done?: boolean;
     __capture?: CaptureResult;
     __error?: string;
@@ -115,7 +128,7 @@ export default function CaptureClient(params: CaptureParams) {
     const canvas = canvasRef.current!;
     const site = getSplatSite(params.site);
     const defect = parseDefect(params.defect);
-    const label = defect === 'none' ? null : `synthetic defect: ${defect}`;
+    const label = defect === 'none' || !params.label ? null : `synthetic defect: ${defect}`;
     const t0 = performance.now();
     const timings: Record<string, number> = {};
     const mark = (k: string) => { timings[k] = Math.round(performance.now() - t0); };
@@ -123,9 +136,10 @@ export default function CaptureClient(params: CaptureParams) {
       site: params.site, asset: params.asset, pin: null, pinSource: null, pinKind: null,
       frames: params.frames, size: params.size, fov: params.fov, radius: params.radius, arc: params.arc, elev: params.elev,
       defect, defectRadius: params.defectRadius, synthetic: defect !== 'none',
-      source: site ? site.metaUrl : '', timings,
+      source: site ? site.metaUrl : '', timings, labelled: !!label,
     };
     window.__frames = [];
+    window.__frameMeta = [];
     window.__done = false;
     window.__capture = result;
     let engine: SplatEngine | null = null;
@@ -139,7 +153,7 @@ export default function CaptureClient(params: CaptureParams) {
     };
 
     (async () => {
-      if (!site) throw new Error(`unknown site ${params.site}; expected myer-plant or bristol-pumps`);
+      if (!site) throw new Error(`unknown site ${params.site}; expected one of ${SPLAT_SITE_IDS.join(', ')}`);
       setStatus('resolving pin');
       const { pin, source, kind } = await resolvePin(params.site, params.asset, params.pos);
       result.pin = pin; result.pinSource = source; result.pinKind = kind;
@@ -156,6 +170,8 @@ export default function CaptureClient(params: CaptureParams) {
           fov: params.fov,
           onDemand: false,
           reducedMotion: true,
+          // streamed captures: the headless budget (fewer chunk files per pose, frames are small)
+          splatBudget: site.lod?.headlessBudget,
           onLoaded: () => { mark('downloaded'); setStatus('preparing'); },
           onFirstFrame: () => { mark('firstFrame'); resolve(); },
           onError: reject,
@@ -184,13 +200,29 @@ export default function CaptureClient(params: CaptureParams) {
       if (params.smart) {
         setStatus('probing lines of sight');
         const steps = 12;
-        const clear: boolean[] = [];
-        for (let k = 0; k < steps; k++) {
-          const a = base + (k * 2 * Math.PI) / steps;
-          eng.setPose(poseLookingAt(fromAngle(a), pin));
-          await eng.settle({ timeoutMs: 30000, frames: 1 });
-          const [d] = await eng.surfaceDistances([{ x: params.size / 2, y: params.size / 2 }], 0.25);
-          clear.push(d === null || d > params.radius - 0.15);
+        let clear: boolean[] = [];
+        let counts: number[] | undefined;
+        let method: 'centres' | 'depth' = 'centres';
+        // a streamed (LOD) capture keeps no single centre array, and its coarse levels hold fewer, larger
+        // gaussians that a centre count underrates as occluders: it takes the depth probe
+        const centers = eng.splat?.gsplat?.resource?.centers;
+        const cams = Array.from({ length: steps }, (_, k) => fromAngle(base + (k * 2 * Math.PI) / steps));
+        if (centers && eng.splat) {
+          // the splat centres live in the model frame: bring the pin and cameras into it
+          const { Mat4, Vec3 } = await import('playcanvas');
+          const inv = new Mat4().copy(eng.splat.getWorldTransform()).invert();
+          const toModel = (p: Vec3Tuple): Vec3Tuple => { const v = inv.transformPoint(new Vec3(p[0], p[1], p[2])); return [v.x, v.y, v.z]; };
+          const { sightlineCounts } = await import('@/components/splat/sightline');
+          counts = sightlineCounts(centers, toModel(pin), cams.map(toModel));
+          clear = counts.map((c) => c < 24);
+        } else {
+          method = 'depth';
+          for (let k = 0; k < steps; k++) {
+            eng.setPose(poseLookingAt(cams[k], pin));
+            await eng.settle({ timeoutMs: 30000, frames: 1 });
+            const [d] = await eng.surfaceDistances([{ x: params.size / 2, y: params.size / 2 }], 0.25);
+            clear.push(d === null || d > params.radius - 0.15);
+          }
         }
         const half = Math.max(0, Math.round((Math.min(params.arc, 360) / 360) * steps / 2));
         let best = 0, bestScore = -Infinity;
@@ -200,7 +232,7 @@ export default function CaptureClient(params: CaptureParams) {
           score -= Math.min(k, steps - k) * 0.01; // prefer the open side on ties
           if (score > bestScore) { bestScore = score; best = k; }
         }
-        result.probe = { clear, centre: best };
+        result.probe = { method, clear, counts, centre: best };
         base += (best * 2 * Math.PI) / steps;
         mark('probe');
       }
@@ -213,12 +245,12 @@ export default function CaptureClient(params: CaptureParams) {
         setStatus(`frame ${i + 1} of ${n}`);
         await eng.settle({ timeoutMs: 60000, frames: 1 });
         out.push((await eng.captureJpeg({ width: params.size, height: params.size, quality: 0.92, label })).dataUrl);
-        window.__frames = out.slice();
+        window.__frameMeta = out.map((_, index) => ({ index, synthetic: defect !== 'none', defect, labelled: !!label }));
+        window.__frames = params.label ? out.slice() : out.map((dataUrl, index) => ({ index, dataUrl, synthetic: defect !== 'none', defect }));
         setFrames(out.slice());
       }
       mark('done');
       timings.sortMs = eng.stats.lastSortMs ?? -1;
-      window.__frames = out;
       window.__done = true;
       setStatus(`done: ${n} frames`);
     })().catch(fail);

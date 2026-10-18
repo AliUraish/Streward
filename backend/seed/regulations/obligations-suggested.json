@@ -1,0 +1,763 @@
+{
+  "family": "obligations-suggested",
+  "synthetic": true,
+  "generator": "hand-seed",
+  "note": "Demo rule pack, not legal advice. One suggested obligation per scenario and site that the compliance officer would track. regulationIds refer to backend/seed/regulations/regulations.json; relatedSeedObligationIds refer to backend/seed/synthetic/obligations.json.",
+  "records": [
+    {
+      "id": "obl-br-sump-walkway",
+      "scenarioId": "br-sump",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "sump_overflow",
+        "walkway_closure"
+      ],
+      "assetTags": [
+        "SU-201",
+        "P-103",
+        "P-104",
+        "W-1201"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-duty-engineer",
+        "crew-br-visitor-lead"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-br-walkway-check"
+      ],
+      "title": "Keep the visitor walkway W-1201 dry and the sump drainage working",
+      "why": "Sump water on the visitor walkway is a slip hazard on a traffic route (Workplace Regulations reg 12) and exposes visitors to risk (HSWA s 3). The failed duty pump also points to the maintenance duty in reg 5.",
+      "regulationIds": [
+        "eng-whswr-1992-reg-12",
+        "eng-whswr-1992-reg-5",
+        "eng-hswa-1974-s-3",
+        "eng-hswa-1974-s-2"
+      ],
+      "frequency": "Continuous while the site is open; walkway checked before each opening (site schedule: daily) and before reopening after any closure.",
+      "evidence": [
+        "Walkway closure logged with time, barrier and signage photo (agent-eye frame of W-1201 is acceptable)",
+        "SU-201 level trend back below the alarm threshold and falling",
+        "Duty pump P-103 repaired, or standby P-104 confirmed running, with run feedback at CP-402",
+        "Pre-reopening walkway inspection: surface dry and free of water, signed by the visitor operations lead",
+        "Maintenance record for the P-103 fault and repair"
+      ],
+      "closesWhen": "All evidence items are attached and the walkway reopening is recorded.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-br-pv301-examination",
+      "scenarioId": "br-vessel-cert",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "certificate_expired"
+      ],
+      "assetTags": [
+        "PV-301",
+        "SP-102"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-restoration-lead"
+      ],
+      "examinerCrewId": "crew-br-surveyor",
+      "relatedSeedObligationIds": [
+        "ob-br-pv301-exam",
+        "ob-br-steam-demo"
+      ],
+      "blocks": [
+        "ob-br-steam-demo"
+      ],
+      "title": "Examine steam receiver PV-301 under its written scheme before any further steaming",
+      "why": "The date in PV-301's last examination report has passed, so it must not be operated until a further examination is done (PSSR reg 9(6)), and the single permitted postponement had to be agreed and notified before that date (reg 9(7)). Steaming it for the public would also engage HSWA s 3.",
+      "regulationIds": [
+        "eng-pssr-2000-reg-9-6",
+        "eng-pssr-2000-reg-9",
+        "eng-pssr-2000-reg-8",
+        "eng-pssr-2000-reg-14",
+        "eng-pssr-2000-reg-2",
+        "eng-hswa-1974-s-3"
+      ],
+      "frequency": "Interval set in PV-301's written scheme of examination (site schedule: 14-monthly).",
+      "evidence": [
+        "Written scheme of examination for PV-301, drawn up or certified as suitable by a competent person",
+        "Competent person's signed and dated written report naming the parts examined, their condition, any repairs needed and the date of the next examination",
+        "If the report lists repairs, proof they were completed before the date it sets",
+        "Report filed at the pump house (reg 14), replacing the expired document",
+        "Steam demonstration block lifted only after the report is on file"
+      ],
+      "closesWhen": "A new examination report is on file with a next-examination date in the future and no outstanding repairs.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-my-pg601-overpressure",
+      "scenarioId": "my-overpressure",
+      "siteId": "myer-plant",
+      "issueKinds": [
+        "overpressure"
+      ],
+      "assetTags": [
+        "PG-601",
+        "TK-201",
+        "V-501"
+      ],
+      "trackedBy": "myer-compliance",
+      "responsibleCrewIds": [
+        "crew-my-duty-engineer"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-my-tk201-scheme"
+      ],
+      "title": "Bring the PG-601 circuit back within its 3.5 bar limit and review its pressure controls",
+      "why": "A circuit at 4.1 bar on a 3.5 bar design is an uncontrolled plant risk (OHS Regulations regs 97 and 98) and shows its protective controls did not hold, which triggers a review (reg 121). If its vessels or piping are pressure equipment (AS 4343 hazard level A to D), Part 3.5 applies in full.",
+      "regulationIds": [
+        "vic-ohsr-2017-reg-98",
+        "vic-ohsr-2017-reg-97",
+        "vic-ohsr-2017-reg-121",
+        "vic-ohsr-2017-reg-105",
+        "vic-ohsr-2017-reg-106",
+        "vic-ohsr-2017-reg-18",
+        "vic-ohsr-2017-reg-74"
+      ],
+      "frequency": "Event-driven: opened on any reading above 3.5 bar; then inspection to the extent necessary under the site plan (site schedule for TK-201: annual).",
+      "evidence": [
+        "Isolation or pressure relief action logged (for example V-501 isolated and bypass opened)",
+        "PG-601 readings back at or below 3.5 bar for a sustained period",
+        "Inspection record for the circuit's relief valve and pressure controls, with the cause found",
+        "Written review of the circuit's risk controls (reg 121), revised if they failed",
+        "Inspection and maintenance entries in the plant record (reg 106) for TK-201 if hazard level A to C"
+      ],
+      "closesWhen": "Pressure is back within the limit, the cause is fixed and the risk-control review is filed.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-my-fe1001-inspection",
+      "scenarioId": "my-extinguisher",
+      "siteId": "myer-plant",
+      "issueKinds": [
+        "inspection_overdue"
+      ],
+      "assetTags": [
+        "FE-1001"
+      ],
+      "trackedBy": "myer-compliance",
+      "responsibleCrewIds": [
+        "crew-my-safety-lead"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-my-fe1001-monthly",
+        "ob-my-hotwork-permit"
+      ],
+      "title": "Complete the overdue routine inspection of portable fire extinguisher FE-1001",
+      "why": "Portable fire extinguishers are essential safety measures (Building Regulations Sch 8), and the occupancy permit or maintenance determination fixes how often they must be inspected (regs 195, 216). Nine days overdue means the owner cannot yet state in the annual report that every measure was maintained as required (regs 223 and 224).",
+      "regulationIds": [
+        "vic-br-2018-reg-195",
+        "vic-br-2018-reg-216",
+        "vic-br-2018-sch-8",
+        "vic-br-2018-reg-226",
+        "vic-br-2018-reg-225",
+        "vic-br-2018-reg-223",
+        "vic-vba-pn-esm-02"
+      ],
+      "frequency": "As specified in the building's occupancy permit, maintenance determination or maintenance schedule, which may reference AS 1851 (site schedule: monthly).",
+      "evidence": [
+        "Signed inspection record or tag entry for FE-1001 dated on or after the due date, by a competent person",
+        "Logbook or maintenance record updated and retrievable within 24 hours (reg 225)",
+        "Any defect found repaired or the unit replaced, with the record attached",
+        "Entry carried into the next annual essential safety measures report"
+      ],
+      "closesWhen": "The inspection record is filed and the next due date is set from it.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-x-shared-examiner-bristol",
+      "scenarioId": "x-maintenance",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "certificate_expired"
+      ],
+      "assetTags": [
+        "PV-301"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-restoration-lead"
+      ],
+      "examinerCrewId": "crew-br-surveyor",
+      "relatedSeedObligationIds": [
+        "ob-br-pv301-exam"
+      ],
+      "title": "Book a competent person for PV-301 and confirm its scheme is certified for PV-301",
+      "why": "A template from Myer can inform PV-301's written scheme but cannot replace it: PSSR reg 8 requires a scheme drawn up or certified as suitable for this system by a competent person, and reg 9 requires the examination itself to be done by a competent person. The host site must also make the vessel and premises safe for the visiting examiner (reg 9(1)(b); HSWA s 4).",
+      "regulationIds": [
+        "eng-pssr-2000-reg-8",
+        "eng-pssr-2000-reg-9",
+        "eng-pssr-2000-reg-2",
+        "eng-pssr-2000-reg-14",
+        "eng-hswa-1974-s-4"
+      ],
+      "frequency": "Once per examination visit (maintenance window), then the next date in PV-301's scheme.",
+      "evidence": [
+        "Approved maintenance window naming the examiner, the date and the scope (PV-301)",
+        "Examiner's competence confirmed for PV-301 (an individual who is not an employee, or a competent body)",
+        "PV-301 written scheme drawn up or certified by a competent person (a shared template alone is not enough)",
+        "Preparation for safe examination recorded (vessel cooled, isolated and depressurised as the scheme says)",
+        "Signed examination report received and filed (reg 9(3), reg 14)"
+      ],
+      "closesWhen": "The examination report is on file, which also closes obl-br-pv301-examination.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-x-shared-examiner-myer",
+      "scenarioId": "x-maintenance",
+      "siteId": "myer-plant",
+      "issueKinds": [
+        "overpressure"
+      ],
+      "assetTags": [
+        "TK-201"
+      ],
+      "trackedBy": "myer-compliance",
+      "responsibleCrewIds": [
+        "crew-my-duty-engineer"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-my-tk201-scheme"
+      ],
+      "title": "Share Myer's examiner schedule and TK-201 inspection plan, and record Myer's own inspection",
+      "why": "Victoria's OHS Regulations 2017 (Version 017) contain no written-scheme-of-examination requirement; Myer's duties are to inspect pressure equipment as far as needed to monitor its risk (reg 105) and to keep inspection and maintenance records (reg 106). Myer's plan can be shared as a reference only.",
+      "regulationIds": [
+        "vic-ohsr-2017-reg-105",
+        "vic-ohsr-2017-reg-106",
+        "vic-ohsr-2017-reg-74"
+      ],
+      "frequency": "Per Myer's inspection plan for TK-201 (site schedule: annual).",
+      "evidence": [
+        "Myer examiner's next scheduled visit date sent to Bristol compliance",
+        "TK-201 inspection plan shared, labelled as a reference and not a UK written scheme",
+        "Myer's own inspection record for TK-201 filed after the visit (reg 106)"
+      ],
+      "closesWhen": "The shared window is approved by the director and Myer's inspection record is filed.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-tm-humidity-preservation",
+      "scenarioId": "tm-humidity",
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "humidity_high"
+      ],
+      "assetTags": [
+        "HS-301",
+        "HS-302",
+        "HS-303",
+        "TR-201",
+        "TR-202",
+        "TR-203",
+        "TR-204",
+        "RM-101",
+        "RM-102",
+        "RM-103",
+        "RM-104",
+        "RM-105",
+        "RM-106",
+        "DH-1101"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-conservation-architect",
+        "crew-tm-conservator"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-tm-humidity-watch"
+      ],
+      "title": "Bring relative humidity in the Silk Reeling Mill back under 65 % and check the trusses for mould",
+      "why": "The owner of a designated property must manage it properly (Cultural Properties Act 第31条第1項, and 第120条 for the Historic Site), and the Commissioner for Cultural Affairs can order better management where poor management puts it at risk (第36条, 第121条). Humidity of 88 % after the typhoon puts the king-post roof trusses of a National Treasure building at risk of mould; any damage found must be reported within 10 days (第33条).",
+      "regulationIds": [
+        "jp-cpa-1950-art-31",
+        "jp-cpa-1950-art-119",
+        "jp-cpa-1950-art-36",
+        "jp-cpa-1950-art-33",
+        "jp-cpa-1950-art-4"
+      ],
+      "frequency": "Continuous: humidity watched at HS-301 to HS-303 against the site preservation band of 40 to 65 % (a synthetic site setting, not a legal limit); opened whenever a reading exceeds 65 %.",
+      "evidence": [
+        "DH-1101 confirmed running and the north windows closed (an agent-eye frame is acceptable)",
+        "HS-301 to HS-303 readings back under 65 % and holding",
+        "Conservator's condition check of TR-201 to TR-204 and the reeling machines RM-101 to RM-106 for mould or moisture damage",
+        "If damage is found: written report to the Commissioner for Cultural Affairs within 10 days of learning of it (第33条)",
+        "Engineer's verification and signature"
+      ],
+      "closesWhen": "Humidity is back within the preservation band, the condition check is filed and any damage report has been sent.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-tm-bw251-alteration-permit",
+      "scenarioId": "tm-alteration-permit",
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "alteration_permit"
+      ],
+      "assetTags": [
+        "BW-251"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-conservation-architect"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-tm-bw251-permit"
+      ],
+      "title": "Hold the drilling work order on BW-251 until permission is granted, and use a non-invasive clamp mount meanwhile",
+      "why": "Drilling brackets into the brick wall of a National Treasure building alters its current state, which needs the prior permission of the Commissioner for Cultural Affairs (Cultural Properties Act 第43条第1項); the site is also a Historic Site (第125条第1項). Work without permission is an offence (第197条) and can lead to an order to restore the original state (第125条第7項). The application may be handled by a board of education where a Cabinet Order delegates it (第184条), and work described in an approved conservation and utilisation plan needs only a notification afterwards (第53条の4).",
+      "regulationIds": [
+        "jp-cpa-1950-art-43",
+        "jp-cpa-1950-art-125",
+        "jp-cpa-1950-art-197",
+        "jp-cpa-1950-art-184",
+        "jp-cpa-1950-art-53-4"
+      ],
+      "frequency": "Per work order: checked before any work that touches designated fabric; no drilling until the permit decision is in.",
+      "evidence": [
+        "Contractor's work order for BW-251 marked on hold, with the reason",
+        "Clamp-mount design checked by the conservation architect as non-invasive (no drilling, fixings or adhesive on brick or mortar)",
+        "The authority's view on whether the clamp mount itself needs permission (it may still count as an act affecting preservation)",
+        "Permission application for the remaining work filed with the competent authority (the Agency for Cultural Affairs, or the board of education if delegated), with its reference",
+        "Permission and any conditions recorded on the work order before any drilling",
+        "Photo record of BW-251 before and after installation"
+      ],
+      "closesWhen": "The clamp mount is in place without altering the wall, and the remaining work is either permitted, with its conditions recorded, or withdrawn.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-tm-fire-equipment-inspection",
+      "scenarioId": null,
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "inspection_overdue"
+      ],
+      "assetTags": [
+        "FE-501",
+        "FE-502",
+        "FE-503",
+        "FH-601"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-fire-officer"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-tm-fe-inspection",
+        "ob-tm-fh601-inspection"
+      ],
+      "title": "Inspect the extinguishers FE-501 to FE-503 and the indoor hydrant FH-601 on schedule and report the results to the fire department",
+      "why": "Buildings designated under the Cultural Properties Act are item (17) properties (Enforcement Order 別表第一（十七）項), which must have extinguishers whatever their size (令第10条) and must keep their fire-fighting equipment to the technical standards (Fire Service Act 第17条第1項). The equipment must be inspected periodically and the results reported to the fire chief (第17条の3の3), at intervals of up to a year set by the FDMA and with a report every three years for item (17) (規則第31条の6); not reporting is an offence (第44条第11号). The Order's indoor hydrant rule (令第11条) does not list item (17) buildings by floor area, so whether FH-601 is a required system is not established in this pack.",
+      "regulationIds": [
+        "jp-fsa-1948-art-17-3-3",
+        "jp-fsr-1961-art-31-6",
+        "jp-fsa-1948-art-17",
+        "jp-fso-1961-art-6",
+        "jp-fso-1961-art-10",
+        "jp-fso-1961-art-36",
+        "jp-fsa-1948-art-17-4",
+        "jp-fsa-1948-art-8"
+      ],
+      "frequency": "Inspections at the intervals the FDMA Commissioner sets for each equipment type, never more than a year apart (規則第31条の6第1項); results reported to the fire chief once every three years for item (17) buildings (第31条の6第3項第2号).",
+      "evidence": [
+        "Inspection record for each of FE-501 to FE-503 (and FH-601) dated on or after the due date, made by a qualified inspector if the fire chief has designated the building (令第36条第2項第2号) and otherwise by the persons concerned",
+        "Results entered in the maintenance ledger (維持台帳)",
+        "Any defect repaired or the extinguisher replaced, with the record attached",
+        "Inspection results report submitted to the fire chief or fire station chief at the three-yearly interval, with its receipt"
+      ],
+      "closesWhen": "The inspection record is in the maintenance ledger and the next due date is set; the report is filed when its three-yearly date comes.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-x-heritage-tomioka",
+      "scenarioId": "x-heritage",
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "alteration_permit",
+        "visitor_route"
+      ],
+      "assetTags": [
+        "BW-251",
+        "W-801",
+        "D-701",
+        "D-702"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-conservation-architect",
+        "crew-tm-visitor-safety-lead"
+      ],
+      "relatedSeedObligationIds": [
+        "ob-tm-heritage-mounting"
+      ],
+      "title": "Adapt Bristol's clamp-mount method and visitor-route closure procedure to Japanese rules before using them at Tomioka",
+      "why": "Bristol's clamp-mount method can be reused at Tomioka only if it does not alter the current state of the National Treasure buildings or the Historic Site; anything that does needs permission first (Cultural Properties Act 第43条, 第125条). Bristol's route-closure procedure has to be adapted so that closures stay short and targeted (第4条第2項), barriers and signs placed on the Historic Site do not alter it (第119条, 第120条, 第125条), and evacuation routes and the emergency exits stay usable under the fire prevention manager's plan (Fire Service Act 第8条).",
+      "regulationIds": [
+        "jp-cpa-1950-art-43",
+        "jp-cpa-1950-art-125",
+        "jp-cpa-1950-art-4",
+        "jp-cpa-1950-art-119",
+        "jp-fsa-1948-art-8"
+      ],
+      "frequency": "Once, when the shared maintenance window (heritage-safe sensor installation) is approved; the route-closure procedure is then reviewed with the fire defence plan.",
+      "evidence": [
+        "Bristol's clamp-mount method reviewed by the conservation architect, with a written view on whether it alters the current state or affects preservation",
+        "Permission, or the authority's confirmation that none is needed, for any mounting that touches designated fabric",
+        "Visitor-route closure procedure adapted for Tomioka: freestanding barriers and signs, with exits D-701 and D-702 kept clear",
+        "Procedure reconciled with the fire defence plan (消防計画) and the evacuation drills",
+        "Director's approval of the shared maintenance window recorded on both sites"
+      ],
+      "closesWhen": "The Director approves the shared window and the adapted method and procedure are filed.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-x-heritage-bristol",
+      "scenarioId": "x-heritage",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "walkway_closure"
+      ],
+      "assetTags": [
+        "W-1201"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-visitor-lead"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "Share Bristol's clamp-mount method and visitor-route closure procedure with Tomioka",
+      "why": "Bristol's own duties still govern its route closures: traffic routes must be kept free of slip and trip hazards (Workplace Regulations reg 12) and visitors must not be exposed to risk (HSWA s 3). The procedure is shared as a reference only, because Tomioka must adapt it to Japanese law; UK heritage consent rules for Bristol's historic fabric are not in this pack.",
+      "regulationIds": [
+        "eng-whswr-1992-reg-12",
+        "eng-hswa-1974-s-3"
+      ],
+      "frequency": "Once, for the shared maintenance window; then whenever Bristol revises its own procedure.",
+      "evidence": [
+        "Clamp-mount method and route-closure procedure sent to Tomioka compliance, labelled as Bristol reference practice",
+        "Walkway W-1201 closure procedure current and signed by the visitor operations lead",
+        "Director's approval of the shared maintenance window recorded on both sites"
+      ],
+      "closesWhen": "The shared window is approved by the Director and the documents are on file at both sites.",
+      "synthetic": true
+    },
+    {
+      "id": "obl-ca-br-sump",
+      "scenarioId": "br-sump",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "sump_overflow",
+        "walkway_closure"
+      ],
+      "assetTags": [
+        "SU-201",
+        "W-1201"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-duty-engineer",
+        "crew-br-visitor-lead"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: keep the walkway free of water and protected against slipping",
+      "why": "If the pump house were in California, floors would have to be kept reasonably free of water, slippery walkways protected and drainage maintained (Title 8 §§ 3273(a), 3272(d)), and accumulated water corrected (§ 3362(g)), all as part of the employer's duty to keep the workplace safe (Labor Code §§ 6400, 6401). These rules protect employees; the California sources in this pack say nothing about visitors.",
+      "regulationIds": [
+        "us-ca-t8-3273",
+        "us-ca-t8-3272",
+        "us-ca-t8-3362",
+        "us-ca-lab-6400"
+      ],
+      "frequency": "Continuous while people are on site (comparison only; not binding).",
+      "evidence": [
+        "Wet area closed or covered with mats, grates or equivalent until dry",
+        "Drainage restored and the sump level falling",
+        "Walkway inspected clear and dry before reuse"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-br-sump-walkway closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-br-vessel-cert",
+      "scenarioId": "br-vessel-cert",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "certificate_expired"
+      ],
+      "assetTags": [
+        "PV-301"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-restoration-lead"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: what a lapsed examination would mean for PV-301",
+      "why": "California requires a permit to operate, renewed after inspection, only for air tanks, LP-gas tanks and boilers (Labor Code §§ 7680, 7683; Title 8 §§ 450(a)(4), 461, 462). A steam receiver such as PV-301 would most likely fall under Title 8 § 467, which leaves the inspection and maintenance programme to the owner but still requires relief valves set at or below its allowable working pressure; inspections that are done must be made by a qualified safety engineer or certified inspector (Labor Code § 7650).",
+      "regulationIds": [
+        "us-ca-t8-467",
+        "us-ca-lab-7680",
+        "us-ca-t8-461",
+        "us-ca-t8-462",
+        "us-ca-lab-7650"
+      ],
+      "frequency": "As the owner's inspection programme requires under § 467(b); five-yearly for permitted tanks (comparison only; not binding).",
+      "evidence": [
+        "Classification of PV-301 under California definitions (tank, boiler or other pressure vessel)",
+        "Owner's inspection and maintenance record for PV-301",
+        "Relief valve set at or below the allowable working pressure"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-br-pv301-examination closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-my-overpressure",
+      "scenarioId": "my-overpressure",
+      "siteId": "myer-plant",
+      "issueKinds": [
+        "overpressure"
+      ],
+      "assetTags": [
+        "PG-601",
+        "TK-201",
+        "V-501"
+      ],
+      "trackedBy": "myer-compliance",
+      "responsibleCrewIds": [
+        "crew-my-duty-engineer"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: relief protection and an order to stop an over-pressure vessel",
+      "why": "In California, vessels must have safety valves or rupture discs set at no more than their allowable working pressure (Title 8 § 467(a); for air tanks § 465), and the Division may order an unsafe vessel out of use until repaired (Labor Code § 7687).",
+      "regulationIds": [
+        "us-ca-t8-467",
+        "us-ca-t8-465",
+        "us-ca-lab-7687"
+      ],
+      "frequency": "Event-driven (comparison only; not binding).",
+      "evidence": [
+        "Relief device set point and capacity checked against the allowable working pressure",
+        "Pressure back within limits",
+        "Repair record if the device failed"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-my-pg601-overpressure closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-my-extinguisher",
+      "scenarioId": "my-extinguisher",
+      "siteId": "myer-plant",
+      "issueKinds": [
+        "inspection_overdue"
+      ],
+      "assetTags": [
+        "FE-1001"
+      ],
+      "trackedBy": "myer-compliance",
+      "responsibleCrewIds": [
+        "crew-my-safety-lead"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: monthly inspection and annual maintenance of FE-1001",
+      "why": "In California the extinguisher would need a monthly inspection, recorded with date and initials, and annual maintenance by a concern licensed by the State Fire Marshal (Title 19 §§ 574.1, 574.5, 575, 575.1); the employer duty in Title 8 § 6151(e) says the same for monthly visual checks and annual maintenance. The California Fire Code is linked only.",
+      "regulationIds": [
+        "us-ca-t8-6151",
+        "us-ca-t19-574-1",
+        "us-ca-t19-575-1",
+        "us-ca-cfc-2025"
+      ],
+      "frequency": "Monthly inspection; annual maintenance (comparison only; not binding).",
+      "evidence": [
+        "Monthly inspection tag or checklist entry with date and initials",
+        "Annual maintenance by a licensed concern, recorded"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-my-fe1001-inspection closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-x-maintenance-bristol",
+      "scenarioId": "x-maintenance",
+      "siteId": "bristol-pumps",
+      "issueKinds": [
+        "certificate_expired"
+      ],
+      "assetTags": [
+        "PV-301"
+      ],
+      "trackedBy": "bristol-compliance",
+      "responsibleCrewIds": [
+        "crew-br-restoration-lead"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: who may examine a shared pressure vessel",
+      "why": "In California the examiner would need to be a Division safety engineer or a certified inspector holding a certificate of competency through a county, city, insurer or the vessel owner (Labor Code § 7650; Title 8 §§ 463, 779), and the owner would prepare the vessel so the inspection can be done safely (Title 8 § 462(b), for air tanks).",
+      "regulationIds": [
+        "us-ca-lab-7650",
+        "us-ca-t8-779",
+        "us-ca-t8-462"
+      ],
+      "frequency": "Per examination visit (comparison only; not binding).",
+      "evidence": [
+        "Examiner's certificate of competency and employer checked",
+        "Vessel prepared and made safe for inspection"
+      ],
+      "closesWhen": "Comparison only: closes with obl-x-shared-examiner-bristol.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-x-maintenance-myer",
+      "scenarioId": "x-maintenance",
+      "siteId": "myer-plant",
+      "issueKinds": [
+        "overpressure"
+      ],
+      "assetTags": [
+        "TK-201"
+      ],
+      "trackedBy": "myer-compliance",
+      "responsibleCrewIds": [
+        "crew-my-duty-engineer"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: who may examine a shared pressure vessel",
+      "why": "The same California rule would apply to Myer's examiner: certified inspectors must be employed by a county, city, insurer or the vessel owner and hold a certificate of competency (Labor Code § 7650; Title 8 §§ 463, 779), and reports go to the Division within 21 days (Labor Code § 7654).",
+      "regulationIds": [
+        "us-ca-lab-7650",
+        "us-ca-t8-779",
+        "us-ca-t8-462"
+      ],
+      "frequency": "Per examination visit (comparison only; not binding).",
+      "evidence": [
+        "Examiner's certificate of competency and employer checked",
+        "Inspection report filed with the Division within 21 days"
+      ],
+      "closesWhen": "Comparison only: closes with obl-x-shared-examiner-myer.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-tm-humidity",
+      "scenarioId": "tm-humidity",
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "humidity_high"
+      ],
+      "assetTags": [
+        "HS-301",
+        "HS-302",
+        "HS-303",
+        "TR-201",
+        "TR-202",
+        "TR-203",
+        "TR-204",
+        "DH-1101"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-conservation-architect",
+        "crew-tm-conservator"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: caring for a historic building after water intrusion",
+      "why": "California has no general duty for private or municipal owners to manage a historic building like Japan's 第31条: the preservation duty in Public Resources Code § 5024 binds state agencies for state-owned resources only. The State Historical Building Code statutes give alternative standards for repairs to qualified historical buildings (Health and Safety Code §§ 18954, 18955), and the workplace rule in Title 8 § 3362(g) requires water intrusion to be corrected because of mould.",
+      "regulationIds": [
+        "us-ca-prc-5024",
+        "us-ca-hsc-18954",
+        "us-ca-chbc-2025",
+        "us-ca-t8-3362"
+      ],
+      "frequency": "Event-driven after water intrusion (comparison only; not binding).",
+      "evidence": [
+        "Water intrusion stopped and the space dried",
+        "Any repair to historic fabric checked against the historical building code"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-tm-humidity-preservation closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-tm-alteration-permit",
+      "scenarioId": "tm-alteration-permit",
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "alteration_permit"
+      ],
+      "assetTags": [
+        "BW-251"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-conservation-architect"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: drilling into a listed historic wall",
+      "why": "If the mill were a state-owned resource on California's master list, the owning state agency would have to notify the State Historic Preservation Officer early and allow 30 days for comment before altering its historic fabric (Public Resources Code § 5024.5). Otherwise the closest controls are the historical building code applied when the work is permitted (Health and Safety Code § 18954) and the environmental review that treats a substantial adverse change to a historical resource as a significant effect (Public Resources Code § 21084.1).",
+      "regulationIds": [
+        "us-ca-prc-5024-5",
+        "us-ca-prc-5024",
+        "us-ca-prc-21084-1",
+        "us-ca-hsc-18954",
+        "us-ca-chbc-2025"
+      ],
+      "frequency": "Per proposed alteration (comparison only; not binding).",
+      "evidence": [
+        "Ownership and register status of the building established",
+        "Notice to the State Historic Preservation Officer if state-owned and listed",
+        "Building permit under the historical building code"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-tm-bw251-alteration-permit closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    },
+    {
+      "id": "obl-ca-tm-fire-equipment",
+      "scenarioId": null,
+      "siteId": "tomioka-mill",
+      "issueKinds": [
+        "inspection_overdue"
+      ],
+      "assetTags": [
+        "FE-501",
+        "FE-502",
+        "FE-503"
+      ],
+      "trackedBy": "tomioka-compliance",
+      "responsibleCrewIds": [
+        "crew-tm-fire-officer"
+      ],
+      "relatedSeedObligationIds": [],
+      "title": "California comparison: extinguisher inspection and maintenance at the mill",
+      "why": "In California the extinguishers would need a monthly inspection by the owner, occupant or their agent, recorded on a tag or checklist, and annual maintenance by a concern licensed by the State Fire Marshal (Title 19 §§ 574.1, 574.5, 575, 575.1), and as an employer the site would also owe the Title 8 § 6151(e) checks. The indoor hydrant FH-601 is not covered by these extinguisher rules.",
+      "regulationIds": [
+        "us-ca-t19-574-1",
+        "us-ca-t19-575-1",
+        "us-ca-t8-6151",
+        "us-ca-cfc-2025"
+      ],
+      "frequency": "Monthly inspection; annual maintenance (comparison only; not binding).",
+      "evidence": [
+        "Monthly inspection record for FE-501 to FE-503",
+        "Annual maintenance by a licensed concern, recorded"
+      ],
+      "closesWhen": "Comparison only: closes when the binding obligation obl-tm-fire-equipment-inspection closes.",
+      "synthetic": true,
+      "jurisdiction": "US-CA",
+      "binding": false
+    }
+  ]
+}

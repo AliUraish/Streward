@@ -1,0 +1,166 @@
+{
+ "family": "conversations",
+ "mode": "dry-run",
+ "note": "Request body only; nothing was sent.",
+ "request": {
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "system": "You generate synthetic demonstration data for Steward, an agent platform that runs two industrial sites from their 3D scans: myer-plant (a modern basement plant room in the Kenneth Myer building, Melbourne) and bristol-pumps (a 1907 dock pump house under restoration in Bristol, England). Every record is fictional and must be plausible to a facilities engineer. Never use real people's names, phone numbers or email addresses; the only contactable crew member is 'Duty engineer (you)' with contact 'user'. Rule references are a labelled demo rule pack (DEMO-RP/...), never statutory advice. Keep every id, asset tag, agent id and cross-reference consistent with the example you are given; you may vary wording, numbers and dates.",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Family: conversations. Agent calls and meetings: turns per speaker, resolution, and a summary {headline, points, decisions, actions}. Keep placeholders such as {value}.\n\nReturn JSON with a `records` array of 9 records in exactly this shape. Every record must keep `synthetic: true`. Example (the current hand-written seed):\n\n[\n {\n  \"id\": \"cv-my-overpressure\",\n  \"kind\": \"meeting\",\n  \"scenarioId\": \"my-overpressure\",\n  \"convener\": \"myer-manager\",\n  \"participants\": [\n   \"myer-manager\",\n   \"myer-engineer\",\n   \"myer-compliance\",\n   \"myer-technician\"\n  ],\n  \"topic\": \"PG-601 overpressure on the primary circuit\",\n  \"issueKind\": \"overpressure\",\n  \"turns\": [\n   {\n    \"speaker\": \"myer-manager\",\n    \"text\": \"Call convened on PG-601: {value} bar against the 3.5 bar limit. Engineer first, then compliance, then the technician.\"\n   },\n   {\n    \"speaker\": \"myer-engineer\",\n    \"text\": \"PG-601 has risen from 3.2 to {value} bar in 40 minutes. P-101 is running and TK-201 is the likely cause: a low membrane pre-charge. Isolate at V-501 and open the bypass before the relief valve lifts at 3.8 bar.\"\n   },\n   {\n    \"speaker\": \"myer-compliance\",\n    \"text\": \"TK-201's inspection plan records 3.5 bar as the circuit's limit. Plant running outside its safe limits is a risk we must control and then review under the Victorian OHS Regulations (regs 97, 98 and 121), and the inspection and the fix go in the plant record (regs 105 and 106).\"\n   },\n   {\n    \"speaker\": \"myer-technician\",\n    \"text\": \"I can reach {contactName} ({contactRole}) by {contactChannel} through the dispatch line; nobody else on shift has contact details on file.\"\n   }\n  ],\n  \"resolution\": \"Isolate the primary circuit at V-501 and open the bypass; {contactName} attends to check the TK-201 pre-charge and confirm PG-601 back below 3.5 bar.\",\n  \"summary\": {\n   \"headline\": \"PG-601 at {value} bar: isolate at V-501, duty engineer to attend\",\n   \"points\": [\n    \"PG-601 rose from 3.2 to {value} bar over 40 minutes on a 3.5 bar circuit.\",\n    \"TK-201's membrane pre-charge is the likely cause.\",\n    \"Only the duty engineer has contact details on file.\"\n   ],\n   \"decisions\": [\n    \"Isolate the primary circuit at V-501 and open the bypass.\",\n    \"Duty engineer attends to check the TK-201 pre-charge.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Field Technician · Myer\",\n     \"task\": \"Text {contactName} through the dispatch line\",\n     \"due\": \"now\"\n    },\n    {\n     \"owner\": \"{contactName}\",\n     \"task\": \"Check TK-201 pre-charge and confirm PG-601 below 3.5 bar\",\n     \"due\": \"within 1 hour\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-my-extinguisher\",\n  \"kind\": \"meeting\",\n  \"scenarioId\": \"my-extinguisher\",\n  \"convener\": \"myer-manager\",\n  \"participants\": [\n   \"myer-manager\",\n   \"myer-compliance\",\n   \"myer-engineer\"\n  ],\n  \"topic\": \"FE-1001 monthly inspection overdue\",\n  \"issueKind\": \"inspection_overdue\",\n  \"turns\": [\n   {\n    \"speaker\": \"myer-manager\",\n    \"text\": \"Call convened on FE-1001: the monthly inspection is 9 days overdue. Compliance first.\"\n   },\n   {\n    \"speaker\": \"myer-compliance\",\n    \"text\": \"Portable fire extinguishers are an essential safety measure under the Victorian Building Regulations and need their routine check recorded. The last tag record is 39 days old, and the V-504 hot-work permit is suspended by its own condition until the tag is re-signed.\"\n   },\n   {\n    \"speaker\": \"myer-engineer\",\n    \"text\": \"FE-1001 is on the east wall by the panels. I can point the agent eye at it, but a camera frame does not sign the tag; a person has to.\"\n   }\n  ],\n  \"resolution\": \"Compliance sends a notice to {contactName} ({contactRole}); the hot-work permit stays suspended until the FE-1001 tag is signed and uploaded.\",\n  \"summary\": {\n   \"headline\": \"FE-1001 inspection 9 days overdue: notice to {contactName}\",\n   \"points\": [\n    \"Last FE-1001 tag record is 39 days old.\",\n    \"The V-504 hot-work permit is suspended by its condition.\"\n   ],\n   \"decisions\": [\n    \"Send a compliance notice to {contactName}.\",\n    \"Keep the hot-work permit suspended until the tag is signed.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Compliance Officer · Myer\",\n     \"task\": \"Send the inspection notice\",\n     \"due\": \"today\"\n    },\n    {\n     \"owner\": \"{contactName}\",\n     \"task\": \"Inspect FE-1001 and sign the tag\",\n     \"due\": \"today\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-br-sump\",\n  \"kind\": \"meeting\",\n  \"scenarioId\": \"br-sump\",\n  \"convener\": \"bristol-manager\",\n  \"participants\": [\n   \"bristol-manager\",\n   \"bristol-engineer\",\n   \"bristol-compliance\",\n   \"bristol-technician\"\n  ],\n  \"topic\": \"SU-201 sump rising toward the visitor walkway\",\n  \"issueKind\": \"sump_overflow\",\n  \"turns\": [\n   {\n    \"speaker\": \"bristol-manager\",\n    \"text\": \"Call convened on SU-201: {value} % and rising, overflow onto W-1201 in about {minutes} minutes. Engineer first.\"\n   },\n   {\n    \"speaker\": \"bristol-engineer\",\n    \"text\": \"SU-201 is at {value} % and climbing 0.16 % a minute. Duty pump P-103 shows no run feedback at CP-402; standby P-104 is on manual start. V-504 suction valve was last seen open.\"\n   },\n   {\n    \"speaker\": \"bristol-compliance\",\n    \"text\": \"W-1201 is a public route. Floors and traffic routes must be kept free of anything that makes people slip, so close it to visitors before the water reaches the lip, and log the closure.\"\n   },\n   {\n    \"speaker\": \"bristol-technician\",\n    \"text\": \"I can reach {contactName} ({contactRole}) by {contactChannel} through the dispatch line now; the visitor operations lead has no contact details on file, so the closure notice is recorded for the log.\"\n   }\n  ],\n  \"resolution\": \"Close W-1201 to visitors now; {contactName} attends to start standby pump P-104 at CP-402 and check P-103; compliance logs the walkway closure.\",\n  \"summary\": {\n   \"headline\": \"SU-201 at {value} %: close W-1201, start P-104\",\n   \"points\": [\n    \"SU-201 rising 0.16 %/min; overflow onto W-1201 in about {minutes} min.\",\n    \"P-103 shows no run feedback; P-104 is on manual start.\"\n   ],\n   \"decisions\": [\n    \"Close the visitor walkway W-1201 now.\",\n    \"{contactName} starts P-104 and checks P-103.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Field Technician · Bristol\",\n     \"task\": \"Text {contactName} through the dispatch line\",\n     \"due\": \"now\"\n    },\n    {\n     \"owner\": \"Compliance Officer · Bristol\",\n     \"task\": \"Log the walkway closure\",\n     \"due\": \"now\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-br-vessel-cert\",\n  \"kind\": \"meeting\",\n  \"scenarioId\": \"br-vessel-cert\",\n  \"convener\": \"bristol-manager\",\n  \"participants\": [\n   \"bristol-manager\",\n   \"bristol-compliance\",\n   \"bristol-engineer\"\n  ],\n  \"topic\": \"PV-301 examination certificate expired\",\n  \"issueKind\": \"certificate_expired\",\n  \"turns\": [\n   {\n    \"speaker\": \"bristol-manager\",\n    \"text\": \"Call convened on PV-301: the examination certificate has expired and the public steam demonstration depends on it. Compliance first.\"\n   },\n   {\n    \"speaker\": \"bristol-compliance\",\n    \"text\": \"BR-WSE-PV301-2025 expired 2 days ago. Under the Pressure Systems Safety Regulations a pressure system must not be operated after the date its written-scheme examination was due, so PV-301 cannot be steamed for the public until it is re-examined.\"\n   },\n   {\n    \"speaker\": \"bristol-engineer\",\n    \"text\": \"PV-301 is cold and isolated at V-501. V-505's lift test is due with the same examination, so one competent-person visit clears both.\"\n   }\n  ],\n  \"resolution\": \"The public steam demonstration stays blocked; {contactName} ({contactRole}) books the competent person and confirms the cancellation; compliance sends the site engineer the expired certificate for the file.\",\n  \"summary\": {\n   \"headline\": \"PV-301 certificate expired: steam demo blocked until re-examined\",\n   \"points\": [\n    \"BR-WSE-PV301-2025 expired 2 days ago.\",\n    \"V-505's lift test falls due with the same examination.\"\n   ],\n   \"decisions\": [\n    \"Keep the public steam demonstration blocked.\",\n    \"Book one competent-person visit for PV-301 and V-505.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"{contactName}\",\n     \"task\": \"Book the competent person and confirm the cancellation\",\n     \"due\": \"this week\"\n    },\n    {\n     \"owner\": \"Compliance Officer · Bristol\",\n     \"task\": \"Email the expired certificate to the site engineer\",\n     \"due\": \"today\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-ops-tokens\",\n  \"kind\": \"call\",\n  \"scenarioId\": \"ops-counsel-tokens\",\n  \"convener\": \"director\",\n  \"callee\": \"bristol-compliance\",\n  \"participants\": [\n   \"director\",\n   \"bristol-compliance\"\n  ],\n  \"topic\": \"Compliance Officer · Bristol token use\",\n  \"turns\": [\n   {\n    \"speaker\": \"director\",\n    \"text\": \"Your tokens per sweep are {ratio}x your peers' median in Steward telemetry, also delivered to Armature. What is each poll doing?\"\n   },\n   {\n    \"speaker\": \"bristol-compliance\",\n    \"text\": \"Each poll re-reads every certificate and permit PDF to check expiry dates, even when nothing changed.\"\n   },\n   {\n    \"speaker\": \"director\",\n    \"text\": \"I am switching you to a document cache and change subscriptions, with an 8000-token budget per sweep, then rerunning the efficiency eval.\"\n   },\n   {\n    \"speaker\": \"bristol-compliance\",\n    \"text\": \"Understood. I will cache documents by content hash and wait on obligation and document changes instead of polling.\"\n   }\n  ],\n  \"summary\": {\n   \"headline\": \"Director reconfigures Bristol compliance: cache + subscribe\",\n   \"points\": [\n    \"Bristol compliance spent {ratio}x its peers' median tokens per sweep.\",\n    \"Every poll re-read every certificate PDF.\"\n   ],\n   \"decisions\": [\n    \"documentCache=true, pollStrategy=subscribe, maxTokensPerMission=8000.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Operations Director\",\n     \"task\": \"Rerun the efficiency eval\",\n     \"due\": \"now\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-x-compliance\",\n  \"kind\": \"call\",\n  \"scenarioId\": \"x-maintenance\",\n  \"convener\": \"bristol-compliance\",\n  \"callee\": \"myer-compliance\",\n  \"participants\": [\n   \"bristol-compliance\",\n   \"myer-compliance\"\n  ],\n  \"topic\": \"Shared pressure-equipment examiner\",\n  \"turns\": [\n   {\n    \"speaker\": \"bristol-compliance\",\n    \"text\": \"Bristol's PV-301 examination certificate has expired and our public steam demonstration is blocked. When is Myer's pressure-equipment examiner next on site, and do you hold a written scheme template we could adapt?\"\n   },\n   {\n    \"speaker\": \"myer-compliance\",\n    \"text\": \"Our examiner is booked for TK-201 on {myerExamDate}. Victoria has no written-scheme rule, but we keep an inspection plan and maintenance record for TK-201 (MY-IMR-TK201-2026); I will email it as a starting point. Your PV-301 scheme must still be drawn up or certified as suitable by a competent person under PSSR regulation 8.\"\n   },\n   {\n    \"speaker\": \"bristol-compliance\",\n    \"text\": \"Thank you. If the examiner can also cover PV-301 and the V-505 lift test, we clear the demonstration in one visit. I will ask our manager to agree it with yours.\"\n   }\n  ],\n  \"summary\": {\n   \"headline\": \"Compliance officers line up one examiner for both factories\",\n   \"points\": [\n    \"Myer's examiner is booked for TK-201 on {myerExamDate}.\",\n    \"Myer shares its TK-201 inspection plan as a starting point; PV-301's written scheme needs a competent person (PSSR reg 8).\"\n   ],\n   \"decisions\": [\n    \"Ask the managers to share one examiner visit.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Compliance Officer · Myer\",\n     \"task\": \"Email the TK-201 inspection plan to Bristol\",\n     \"due\": \"today\"\n    },\n    {\n     \"owner\": \"Plant Manager · Bristol\",\n     \"task\": \"Agree a shared visit with Myer\",\n     \"due\": \"today\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-x-managers\",\n  \"kind\": \"call\",\n  \"scenarioId\": \"x-maintenance\",\n  \"convener\": \"bristol-manager\",\n  \"callee\": \"myer-manager\",\n  \"participants\": [\n   \"bristol-manager\",\n   \"myer-manager\"\n  ],\n  \"topic\": \"Shared examiner visit\",\n  \"turns\": [\n   {\n    \"speaker\": \"bristol-manager\",\n    \"text\": \"Our compliance officers want one shared examiner visit: TK-201's inspection at Myer, then PV-301's examination and the V-505 lift test at Bristol. Can we share the booking on {windowDate}?\"\n   },\n   {\n    \"speaker\": \"myer-manager\",\n    \"text\": \"Yes. Myer keeps the morning for TK-201; the examiner travels to Bristol for the afternoon. We split the call-out fee.\"\n   },\n   {\n    \"speaker\": \"bristol-manager\",\n    \"text\": \"Agreed. I will put it to the Operations Director for approval as a cross-site window.\"\n   }\n  ],\n  \"summary\": {\n   \"headline\": \"Managers agree a shared examiner visit on {windowDate}\",\n   \"points\": [\n    \"Myer morning: TK-201. Bristol afternoon: PV-301 and V-505.\"\n   ],\n   \"decisions\": [\n    \"Share the booking and split the call-out fee.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Plant Manager · Bristol\",\n     \"task\": \"Request the Operations Director's approval\",\n     \"due\": \"today\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-x-approval\",\n  \"kind\": \"call\",\n  \"scenarioId\": \"x-maintenance\",\n  \"convener\": \"bristol-manager\",\n  \"callee\": \"director\",\n  \"participants\": [\n   \"bristol-manager\",\n   \"director\"\n  ],\n  \"topic\": \"Approval: cross-site maintenance window\",\n  \"turns\": [\n   {\n    \"speaker\": \"bristol-manager\",\n    \"text\": \"Requesting approval for a shared examiner visit on {windowDate}: TK-201 at Myer, PV-301 and V-505 at Bristol, with Northgate Engineering Inspection.\"\n   },\n   {\n    \"speaker\": \"director\",\n    \"text\": \"Approved. It clears the Bristol steam demonstration block and keeps Myer's TK-201 examination on schedule. Book it as a cross-site maintenance window.\"\n   }\n  ],\n  \"summary\": {\n   \"headline\": \"Director approves the shared examiner window on {windowDate}\",\n   \"points\": [\n    \"One visit covers TK-201, PV-301 and V-505.\"\n   ],\n   \"decisions\": [\n    \"Cross-site maintenance window approved.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Plant Manager · Bristol\",\n     \"task\": \"Confirm the booking with the examiner\",\n     \"due\": \"tomorrow\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"cv-fix-call\",\n  \"kind\": \"call\",\n  \"template\": true,\n  \"topic\": \"Fix: {assetTag} {issueKind}\",\n  \"turns\": [\n   {\n    \"speakerRole\": \"engineer\",\n    \"toRole\": \"manager\",\n    \"text\": \"{assetTag}: {issueSummary} Evidence from the agent eye: {evidence}.\"\n   },\n   {\n    \"speakerRole\": \"manager\",\n    \"toRole\": \"engineer\",\n    \"text\": \"Decision: fix it now. {crewName} ({crewRole}) owns {issueKind} on our crew table; the technician contacts them through the dispatch line.\"\n   },\n   {\n    \"speakerRole\": \"compliance\",\n    \"toRole\": \"manager\",\n    \"text\": \"Regulation reason: {regulationReason}\"\n   },\n   {\n    \"speakerRole\": \"manager\",\n    \"toRole\": \"compliance\",\n    \"text\": \"Noted. Close {obligationTitle} once the fix is verified.\"\n   }\n  ],\n  \"summary\": {\n   \"headline\": \"{assetTag}: fix decided, {crewName} to act\",\n   \"points\": [\n    \"{issueSummary}\",\n    \"Why it matters: {regulationReason}\"\n   ],\n   \"decisions\": [\n    \"Fix now; {crewName} ({crewRole}) is responsible.\"\n   ],\n   \"actions\": [\n    {\n     \"owner\": \"Field Technician\",\n     \"task\": \"Contact {crewName} through the dispatch line\",\n     \"due\": \"now\"\n    },\n    {\n     \"owner\": \"Site Engineer\",\n     \"task\": \"Verify the fix with the agent eye and an attestation\",\n     \"due\": \"after the reply\"\n    }\n   ]\n  },\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n }\n]"
+   }
+  ],
+  "output_config": {
+   "effort": "high",
+   "format": {
+    "type": "json_schema",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "records": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "kind": {
+          "type": "string"
+         },
+         "scenarioId": {
+          "type": "string"
+         },
+         "convener": {
+          "type": "string"
+         },
+         "participants": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "topic": {
+          "type": "string"
+         },
+         "issueKind": {
+          "type": "string"
+         },
+         "turns": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "speaker": {
+             "type": "string"
+            },
+            "text": {
+             "type": "string"
+            },
+            "speakerRole": {
+             "type": "string"
+            },
+            "toRole": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "text"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "resolution": {
+          "type": "string"
+         },
+         "summary": {
+          "type": "object",
+          "properties": {
+           "headline": {
+            "type": "string"
+           },
+           "points": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           },
+           "decisions": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           },
+           "actions": {
+            "type": "array",
+            "items": {
+             "type": "object",
+             "properties": {
+              "owner": {
+               "type": "string"
+              },
+              "task": {
+               "type": "string"
+              },
+              "due": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "owner",
+              "task",
+              "due"
+             ],
+             "additionalProperties": false
+            }
+           }
+          },
+          "required": [
+           "headline",
+           "points",
+           "decisions",
+           "actions"
+          ],
+          "additionalProperties": false
+         },
+         "synthetic": {
+          "type": "boolean"
+         },
+         "generator": {
+          "type": "string"
+         },
+         "callee": {
+          "type": "string"
+         },
+         "template": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "id",
+         "kind",
+         "topic",
+         "turns",
+         "summary",
+         "synthetic",
+         "generator"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "betas": [
+   "server-side-fallback-2026-07-01"
+  ],
+  "fallbacks": "default"
+ }
+}

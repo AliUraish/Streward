@@ -2,7 +2,7 @@
 
 > Steward is a reality layer for industrial agents. An agent asks for a fact about a physical asset at a plant; Steward answers with a fresh, signed fact, or sends a human to get one and calls the agent back. Three verbs: resolve, attest, check. Every answer is known, stale, unknown or conflict; never a made-up value.
 
-Steward is an MCP server (Streamable HTTP). Hosted endpoint: https://dark-wave-okfom.run.mcp-use.com/mcp. Local: http://127.0.0.1:8002/mcp. Backend REST: /api/... on the same host as STEWARD_BACKEND_URL. Site IDs are `harbor-works` (Harbor Works, fixture twin, the demo site), `myer-plant` (Myer Plant Room, Gaussian-splat capture) and `bristol-pumps` (Bristol Dock Machine Room, Gaussian-splat capture). Each site has 24 tagged assets such as P-101, V-501, TS-801. Work-item references are prefixed HW-, MY- or BR-.
+Steward is an MCP server (Streamable HTTP). Hosted endpoint: https://dark-wave-okfom.run.mcp-use.com/mcp. Local: http://127.0.0.1:8002/mcp. Backend REST: /api/... on the same host as STEWARD_BACKEND_URL. Site IDs are `harbor-works` (Harbor Works, digital twin), `myer-plant` (Myer Plant Room, Gaussian-splat capture) and `bristol-pumps` (Bristol Dock Machine Room, Gaussian-splat capture). Each site has 24 tagged assets such as P-101, V-501, TS-801. Work-item references are prefixed HW-, MY- or BR-.
 
 ## The three verbs
 
@@ -31,7 +31,7 @@ TTL by attribute class: reading 1 h, condition 24 h, document 365 d, identity ne
 
 ## Honesty
 
-Fictional plant, labelled props, rule-based verification. Steward does not certify equipment or replace an engineer's sign-off. Facts carry provenance (`source.kind` ∈ scan|camera|sensor|patrol|human|agent|owner).
+Rule-based verification. Steward does not certify equipment or replace an engineer's sign-off. Facts carry provenance (`source.kind` ∈ scan|camera|sensor|patrol|human|agent|owner).
 
 ## Docs
 

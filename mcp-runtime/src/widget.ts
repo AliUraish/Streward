@@ -6,8 +6,11 @@
  *
  *  - talks to the host over the MCP Apps postMessage bridge (ui/initialize, ui/notifications/tool-result) and also
  *    reads the ChatGPT Apps SDK globals (window.openai.toolOutput), so one page serves Claude and ChatGPT;
- *  - loads the PlayCanvas engine from a pinned CDN URL and renders the site's SOG scan straight from the CloudFront
- *    meta.json (never rehosted), in black and white (grayscale canvas, white ink);
+ *  - loads the PlayCanvas engine from a pinned CDN URL and renders the site's scan straight from CloudFront (never
+ *    rehosted), in black and white (grayscale canvas, white ink): a SOG meta.json, or for a streamed level-of-detail
+ *    capture (Tomioka) its lod-meta.json, which PlayCanvas 2.23 loads as an octree whose SOG chunks stream in by camera
+ *    distance under the engine's splat budget (unified gsplat rendering). The scan entity is turned 180° about Z into
+ *    the SuperSplat viewer frame, the frame the camera presets and the asset pins are in (as the dashboard does);
  *  - projects every asset's 3-D pin into a DOM dot each frame (hidden behind the camera), sized by issue severity,
  *    dashed when the pin is estimated; hover shows the issue card; click focuses the camera and asks the host to
  *    call focus_view so the dashboard viewer follows;
@@ -208,17 +211,44 @@ function boot(pc, data) {
   canvas.addEventListener("wheel", function (e) { e.preventDefault(); dist = Math.max(0.3, Math.min(40, dist * (1 + Math.sign(e.deltaY) * 0.1))); goal = null; place(); }, { passive: false });
   canvas.addEventListener("dblclick", function () { goal = { target: home.target.clone(), dist: home.dist }; yaw = home.yaw; pitch = home.pitch; });
   view = { focus: function (p) { goal = { target: new pc.Vec3(p.x, p.y, p.z), dist: Math.min(dist, 1.8) }; } };
+  // A lod-meta.json URL selects PlayCanvas's octree parser (by file name); its SOG chunks stream around the camera under
+  // the splat budget, and only with unified rendering. Settings follow the dashboard's (a smaller budget for a chat
+  // iframe): the coarsest level shows first, then the full range opens.
+  var lod = data.scanFormat === "lod" || /\/lod-meta\.json$/i.test(String(data.sogUrl || ""));
+  var gs = app.scene.gsplat;
+  if (lod && gs) { gs.splatBudget = 1500000; gs.lodBehindPenalty = 5; gs.radialSorting = true; }
   var asset = new pc.Asset("scan", "gsplat", { url: data.sogUrl });
   asset.on("load", function () {
     var entity = new pc.Entity("scan");
-    entity.addComponent("gsplat", { asset: asset });
+    // The SuperSplat viewer frame (scan data turned 180 degrees about Z): camera presets and asset pins are in it.
+    entity.setLocalEulerAngles(0, 0, 180);
+    var octree = lod && asset.resource && asset.resource.octree;
+    if (!octree) {
+      entity.addComponent("gsplat", { asset: asset, unified: true });
+      app.root.addChild(entity);
+      status("");
+      return;
+    }
+    var coarsest = Math.max(0, (octree.lodLevels || 1) - 1);
+    if (octree.assetLoader) octree.assetLoader.maxConcurrentLoads = 4;
+    entity.addComponent("gsplat", { asset: asset, unified: true, lodBaseDistance: 5, lodMultiplier: 3, lodRangeMin: coarsest, lodRangeMax: coarsest });
     app.root.addChild(entity);
-    status("");
+    status("Coarse view first; finer levels stream in around the camera.");
+    var refined = false;
+    var refine = function (camera, layer, ready, loading) {
+      if (refined || (ready === false || loading > 0)) return;
+      refined = true;
+      if (app.systems.gsplat) app.systems.gsplat.off("frame:ready", refine);
+      entity.gsplat.lodRangeMin = 0; entity.gsplat.lodRangeMax = coarsest;
+      setTimeout(function () { status(""); }, 6000);
+    };
+    if (app.systems.gsplat) app.systems.gsplat.on("frame:ready", refine);
+    setTimeout(function () { refine(null, null, true, 0); }, 15000);
   });
   asset.on("error", function (err) { status("The scan could not be loaded (" + err + "); the list below is the full summary."); });
   app.assets.add(asset);
   app.assets.load(asset);
-  status("Loading " + data.gaussians + " gaussians from the hosted capture…");
+  status(lod ? "Streaming the scan in levels of detail (" + data.gaussians + ") from the hosted capture…" : "Loading " + data.gaussians + " gaussians from the hosted capture…");
   var screen = new pc.Vec3(), world = new pc.Vec3(), toPin = new pc.Vec3();
   app.on("update", function () {
     if (goal) {
@@ -252,7 +282,7 @@ export function factorySummary(scene: Scene): string {
   return [
     `${scene.name} (${scene.siteId}): ${scene.counts.assets} assets, ${scene.counts.openIssues} open issue${scene.counts.openIssues === 1 ? '' : 's'}; pins ${scene.counts.pinned} (${scene.counts.estimated} estimated).`,
     ...(lines.length ? lines : ['- No open issues.']),
-    `Scan: ${scene.credit.text}. Loaded at runtime from ${scene.sogUrl}; never rehosted.`,
+    `Scan: ${scene.credit.text}. ${scene.scanFormat === 'lod' ? 'Streamed at runtime in levels of detail' : 'Loaded at runtime'} from ${scene.sogUrl}; never rehosted.`,
     'Clients with MCP Apps support render this as an interactive 3-D view (black and white, issue dots on the scan); this text is the same content for every other client.',
   ].join('\n');
 }

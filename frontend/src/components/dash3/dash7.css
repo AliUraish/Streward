@@ -1,0 +1,180 @@
+/* Contract 7 (REALITY-CONTRACT-7.md section 7) in the dashboard's language: black ground, tone steps, square corners, no
+   hairlines; white marks what is active and var(--issue) what failed. The one exception is the walkthrough labels the
+   owner asked for: green looks good, blue looks bad, always with the words beside the colour. Loaded after dash3.css. */
+.d3 { --good7: #3ddc84; --bad7: #4ea8ff; }
+.d3 .sw7 { display: inline-block; flex: none; width: 8px; height: 8px; margin-right: 6px; vertical-align: 0; }
+.d3 .sw7.good { background: var(--good7); }
+.d3 .sw7.bad { background: var(--bad7); }
+@keyframes rise7 { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes blink7 { 50% { opacity: .35; } }
+@keyframes bars7 { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+
+/* ---- Sidebar: all three sites first, then the site (switch, the site itself, its pages) --------------------- */
+.side3 .fswitch.fs-bar { display: none; }
+.side3 .nav3 a { padding: 6px 8px; }
+.nav3 .site-group .fswitch { margin: 0 0 6px; }
+.site-card { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: center; margin: 0 0 6px; padding: 6px; background: var(--s2); }
+.site-card img { width: 72px; height: 45px; object-fit: cover; background: var(--s3); }
+.site-card .sc-say { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.site-card .sc-name { font-size: 14px; font-weight: 500; line-height: 1.25; color: #ffffff; }
+.site-card .sc-name .ja { display: block; font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.site-card .sc-place { font-size: 12px; line-height: 1.3; color: var(--muted); }
+.nav3 .aloud7 { margin-top: auto; }
+.nav3 .aloud7 + .mode3 { margin-top: 0; }
+
+/* "Play calls aloud": a small switch, remembered on this device. */
+.aloud7 { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 6px 8px; text-align: left; font-size: var(--f-s); line-height: 1.3; color: var(--ink-2); background: var(--s2); transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.aloud7:hover { background: var(--s3); }
+.aloud7:active { transform: scale(.98); }
+.aloud7 .track { position: relative; flex: none; width: 30px; height: 16px; background: var(--s4); transition: background-color var(--t-ui) var(--ease-out); }
+.aloud7 .knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--muted); transition: transform var(--t-ui) var(--ease-out), background-color var(--t-ui) ease; }
+.aloud7[aria-checked="true"] { color: var(--ink); }
+.aloud7[aria-checked="true"] .track { background: #ffffff; }
+.aloud7[aria-checked="true"] .knob { transform: translateX(14px); background: #000000; }
+.aloud7 .say { display: flex; flex-direction: column; min-width: 0; }
+.aloud7 .hint { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 1024px) {
+  .side3 .fswitch.fs-bar { display: grid; }
+  .nav3 .site-group .fswitch { display: none; }
+  .nav3 .site-group .site-card { grid-column: 1 / -1; }
+  .nav3 .aloud7 { margin-top: 0; }
+}
+
+/* ---- Compact site header at the top of every site page ------------------------------------------------------ */
+.sitehd7 { display: inline-flex; align-items: center; gap: 12px; max-width: 100%; margin: 0 0 18px; padding: 6px 14px 6px 6px; background: var(--s1); transition: background-color var(--t-hover) ease; }
+.sitehd7:hover { background: var(--s2); }
+.sitehd7 img { flex: none; width: 88px; height: 50px; object-fit: cover; background: var(--s2); }
+.sitehd7 .sh-say { display: flex; flex-direction: column; min-width: 0; }
+.sitehd7 .sh-name { font-size: var(--f-t); font-weight: 500; line-height: 1.3; color: #ffffff; }
+.sitehd7 .sh-place { font-size: var(--f-s); line-height: 1.35; color: var(--muted); }
+@media (max-width: 480px) { .sitehd7 img { width: 64px; height: 40px; } }
+
+/* ---- Walkthrough line (Environment page and mission view) ----------------------------------------------------- */
+.walk7 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+.walk7 .walk-line { display: flex; align-items: baseline; flex-wrap: wrap; min-width: 0; font-size: var(--f-t); line-height: 1.45; color: var(--ink-2); }
+.walk7 .walk-line > .sig { align-self: center; }
+.walk7 .walk-line strong { font-weight: 500; color: #ffffff; }
+.walk7 .walk-line code { font-family: var(--font-mono); /* taste-skill-ignore: asset tags */ font-size: .92em; color: #ffffff; }
+.walk7 .walk-tally { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--f-s); color: var(--muted); }
+.walk7 .walk-tally span { display: inline-flex; align-items: center; white-space: nowrap; }
+.walk7 .walk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.walk7 .err3 { flex-basis: 100%; margin: 0; }
+.walk-stops { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 3px; }
+.walk-stops li { width: 10px; height: 10px; background: var(--s4); }
+.walk-stops li[data-state="good"] { background: var(--good7); }
+.walk-stops li[data-state="bad"] { background: var(--bad7); }
+.walk-stops li[data-state="now"] { background: #ffffff; }
+.follow7 { height: 32px; padding: 0 12px; font-size: var(--f-s); font-weight: 500; color: var(--ink); background: var(--s3); white-space: nowrap; transition: background-color var(--t-hover) ease, color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.follow7:hover { background: var(--s4); }
+.follow7:active { transform: scale(.97); }
+.follow7[aria-pressed="true"] { background: #ffffff; color: #000000; }
+@media (prefers-reduced-motion: no-preference) { .walk-stops li[data-state="now"] { animation: blink7 1.2s ease-in-out infinite; } }
+
+/* In the mission view: one line under the top bar, between the HUD columns. */
+.mission-host .walk7.hud { position: absolute; top: 52px; left: 404px; right: 348px; z-index: 6; margin: 0; gap: 6px 12px; padding: 6px 8px 6px 12px; min-height: 40px; background: rgba(10, 10, 10, .9); pointer-events: auto; }
+.walk7.hud .walk-line { font-size: 14px; }
+.walk7.hud .walk-tally { display: none; }
+.walk7.hud .b3.small { min-height: 28px; }
+.walk7.hud .follow7 { height: 28px; }
+@media (max-width: 1100px) { .mission-host .walk7.hud { left: 344px; right: 304px; } }
+@media (max-width: 860px) { .mission-host .walk7.hud { left: 8px; right: 8px; } }
+
+/* The label in a pin's hover card: the verdict, the reasons, the regulation, who and when, the evidence frame. */
+.lbl7 { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.lbl7 .lbl-chip { align-self: flex-start; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; font-size: 12px; font-weight: 600; color: #000000; }
+.lbl7 .lbl-chip[data-verdict="good"] { background: var(--good7); }
+.lbl7 .lbl-chip[data-verdict="bad"] { background: var(--bad7); }
+.lbl7 .lbl-reasons { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.4; color: var(--ink); }
+.lbl7 .lbl-regs, .lbl7 .lbl-by { font-size: 12px; line-height: 1.4; color: var(--muted); }
+.lbl7 .lbl-regs strong { font-weight: 500; color: var(--ink-2); }
+.lbl7 .lbl-frame { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--s2); }
+
+/* The overview's scan picture: the latest walkthrough over it. */
+.fo-pic { position: relative; }
+.fo-tally { position: absolute; left: 12px; top: 12px; max-width: calc(100% - 24px); display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; background: rgba(0, 0, 0, .8); font-size: var(--f-s); line-height: 1.4; color: var(--ink-2); pointer-events: none; }
+.fo-tally strong { font-weight: 500; color: #ffffff; }
+.fo-tally .ft-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+.fo-tally .ft-row span { display: inline-flex; align-items: center; white-space: nowrap; }
+
+/* ---- Owner alerts --------------------------------------------------------------------------------------------- */
+.oa-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.oa-item { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--s2); min-width: 0; }
+.oa-item .r1 strong { overflow-wrap: anywhere; }
+.oa-item .oa-when { margin-left: auto; font-size: var(--f-s); color: var(--muted); white-space: nowrap; }
+.oa-ch { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: var(--f-s); line-height: 1.4; }
+.oa-ch > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; }
+.oa-ch dt { color: var(--muted); }
+.oa-ch dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.oa-ch dd.held { color: var(--ink-2); }
+.oa-ch dd.fail { color: var(--issue); }
+.oa-ch dd .subj { display: block; color: var(--ink-2); }
+.oa-files { display: flex; flex-wrap: wrap; gap: 4px; }
+.oa-file { display: inline-flex; align-items: center; min-height: 22px; max-width: 100%; padding: 0 6px; font-size: 12px; color: var(--ink-2); background: var(--s3); overflow-wrap: anywhere; }
+.oa-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 3px; }
+.oa-steps li { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; font-size: 12px; color: var(--muted); background: var(--s3); }
+.oa-steps li .sig { margin: 0; width: 6px; height: 6px; }
+.oa-steps li.done { color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) { .oa-steps li.done { animation: rise7 320ms var(--ease-out) both; } }
+.oa-brief summary { cursor: pointer; width: fit-content; font-size: var(--f-s); color: var(--ink-2); }
+.oa-brief p { margin-top: 6px; max-width: 64ch; font-size: var(--f-s); line-height: 1.5; color: var(--ink-2); }
+.oa-links { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--f-s); }
+
+/* ---- Maintenance: the schedule the agents keep ---------------------------------------------------------------- */
+.mw7 .mw-when { font-variant-numeric: tabular-nums; }
+.mw7 .mw-facts { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--f-s); color: var(--muted); }
+.mw7 .mw-facts strong { font-weight: 450; color: var(--ink-2); }
+.mw7 .mw-co { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-size: var(--f-s); color: var(--ink-2); }
+.mw7 .mw-co .tg { margin-left: 0; }
+
+/* ---- Calls: the toast and the live call panel, bottom right, above everything (the mission view too) ---------- */
+.calls7 { position: fixed; right: 16px; bottom: 16px; z-index: 96; display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+.calls7 > * { pointer-events: auto; }
+.ct7 { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: #ffffff; color: #000000; }
+.ct7 .ct-kind { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: #3d3d3d; }
+.ct7 .ct-kind .sig { margin: 0; background: #000000; }
+.ct7 .ct-when { margin-left: auto; font-weight: 400; color: #5c5c5c; }
+.ct7 .ct-text { font-size: 15px; font-weight: 500; line-height: 1.35; }
+.ct7 .ct-topic { font-size: var(--f-s); line-height: 1.35; color: #333333; }
+.ct7 .ct-actions { display: flex; gap: 6px; margin-top: 6px; }
+.ct7 :focus-visible { outline: 2px solid #000000; outline-offset: 2px; }
+.ct-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 30px; padding: 0 12px; font-size: var(--f-s); font-weight: 500; color: #ffffff; background: #000000; white-space: nowrap; transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.ct-btn:hover { background: var(--s5); }
+.ct-btn:active { transform: scale(.97); }
+.ct-btn.quiet { color: #000000; background: #e8e8e8; }
+.ct-btn.quiet:hover { background: #d6d6d6; }
+.cl7 { display: flex; flex-direction: column; max-height: min(60vh, 540px); background: var(--s1); color: var(--ink); }
+.cl7 .cl-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; background: var(--s3); }
+.cl7 .cl-state { display: inline-flex; align-items: center; gap: 8px; font-size: var(--f-s); font-weight: 600; color: #ffffff; white-space: nowrap; }
+.cl7 .cl-sites { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.cl7 .cl-tools { display: flex; gap: 4px; margin-left: auto; }
+.cl7 .cl-btn { height: 28px; padding: 0 10px; font-size: 12px; font-weight: 500; color: var(--ink); background: var(--s4); transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.cl7 .cl-btn:hover { background: var(--s5); }
+.cl7 .cl-btn:active { transform: scale(.96); }
+.cl7 .cl-who { padding: 10px 12px 0; font-size: var(--f-s); line-height: 1.4; color: var(--ink-2); }
+.cl7 .cl-who strong { font-weight: 500; color: #ffffff; }
+.cl7 .cl-topic { padding: 2px 12px 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.cl7 .cl-lines { list-style: none; flex: 1 1 auto; min-height: 0; margin: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.cl7 .cl-lines li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--s2); }
+.cl7 .cl-lines li.now { background: var(--s4); }
+.cl7 .cl-lines .who { font-size: 12px; color: var(--muted); }
+.cl7 .cl-lines li.now .who { color: #ffffff; }
+.cl7 .cl-lines .txt { font-size: 14px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+.cl7 .cl-lines li.now .txt { color: #ffffff; }
+.cl7 .cl-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px 10px; font-size: 12px; color: var(--muted); }
+.cl7 .cl-foot .lnk { margin-left: auto; }
+.cl7 .cl-note { flex-basis: 100%; }
+.bars7 { display: inline-flex; align-items: flex-end; gap: 2px; width: 13px; height: 12px; }
+.bars7 i { display: block; width: 3px; height: 6px; background: #ffffff; }
+.cl7.done .bars7 i { height: 3px; background: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .ct7, .cl7 { animation: rise7 360ms var(--ease-out) both; }
+  .cl7 .cl-lines li { animation: rise7 320ms var(--ease-out) both; }
+  .cl7.playing .bars7 i { animation: bars7 900ms ease-in-out infinite; }
+  .cl7.playing .bars7 i:nth-child(2) { animation-delay: 150ms; }
+  .cl7.playing .bars7 i:nth-child(3) { animation-delay: 300ms; }
+}
+@media (max-width: 760px) {
+  .calls7 { left: 16px; right: 16px; bottom: 12px; width: auto; }
+  .cl7 { max-height: 52vh; }
+}

@@ -13,7 +13,7 @@ import type { HeroControl } from "./hero-scene";
 const HeroScene = dynamic(() => import("./hero-scene"), { ssr: false, loading: () => null });
 
 const SITE = "harbor-works";
-const SAMPLE_ATTESTATION_ID = "att_sample_p101_pressure";
+const SAMPLE_ATTESTATION_ID = "att_p101_pressure";
 
 /* Entrance for the parts of a section: rise, slide or settle, once, staggered by --i. Content stays visible without script. */
 export function Reveal({ as: Tag = "div", i = 0, manner = "rise", className, children, ...rest }: { as?: "div" | "section" | "li" | "h2" | "h3" | "p" | "figure" | "span"; i?: number; manner?: "rise" | "slide" | "settle"; className?: string; children?: ReactNode } & Record<string, unknown>) {
@@ -95,15 +95,17 @@ function Story({ att, attLoading, still }: { att: SignedAttestation | null; attL
 
   const useCanvas = webgl === true && !reduced;
   return <section className="story" id="plant">
-    <div className="stage" ref={stageRef} aria-label="A line drawing of the Harbor Works pipe run">
+    <div className="stage" ref={stageRef} aria-label="Agent team illustration: the Director delegates factory questions to the Engineer, the Technician supplies evidence, and verified results return over MCP. Gas flows through the factory pipework.">
       {webgl === null ? null : useCanvas ? <HeroScene control={control} attestationId={attestationId} still={still} onProgress={onProgress} /> : <HeroStatic attestationId={attestationId} />}
     </div>
     <div className="hero" data-dissolve="">
-      <h1 className="lines"><span className="line"><span data-line style={{ ["--i" as string]: 0 }}>Agents ask the plant.</span></span></h1>
-      <p className="lines lead"><span className="line"><span data-line style={{ ["--i" as string]: 1 }}>The plant answers with proof,</span></span><span className="line"><span data-line style={{ ["--i" as string]: 2 }}>or sends someone to get it.</span></span></p>
+      <div className="hero-title">
+        <h1 className="lines"><span className="line"><span data-line style={{ ["--i" as string]: 0 }}>Give your agent a world.</span></span></h1>
+        <p className="lines lead"><span className="line"><span data-line style={{ ["--i" as string]: 1 }}>Vision. Telemetry. Identity.</span></span></p>
+      </div>
       <div className="hero-side" data-rise style={{ ["--i" as string]: 3 }}>
-        <p className="quiet">Steward is the reality layer for agents that run plants. The drawing above is a sketch of the Harbor Works fixture plant, with P-101, P-102, the valves and the tank in the same order as the dashboard twin.</p>
-        <div className="actions"><Link href="/app" className="btn"><span>Open the dashboard</span><span className="arrow" aria-hidden="true">→</span></Link><a href="#connect" className="btn"><span>Connect Claude Code</span></a></div>
+        <p className="quiet">Steward gives agents a shared 3D world, equipment telemetry, and a persistent identity with scoped permissions. They can inspect the plant, remember what happened, communicate with other agents, and act through MCP tools. Every observation and handoff carries its context forward, so each agent knows its responsibilities, what has changed, and what needs to happen next.</p>
+        <div className="actions"><a href="#connect" className="btn"><span>Connect your agent</span><span className="arrow" aria-hidden="true">→</span></a><Link href="/app" className="btn"><span>Open the dashboard</span></Link></div>
       </div>
     </div>
     <div className="beats" ref={beatsRef}>
@@ -122,7 +124,7 @@ function Story({ att, attLoading, still }: { att: SignedAttestation | null; attL
 }
 
 function AttestationFrag({ att, loading, live }: { att: Attestation | null; loading: boolean; live: boolean }) {
-  const a = att ?? { id: SAMPLE_ATTESTATION_ID, assetTag: "P-101", attribute: "pressure_bar", value: 2.4, unit: "bar", observedAt: "2026-10-18T00:12:00Z", verifierVersion: "steward-verify/1", signature: "sample, not a real signature", evidenceHashes: ["sha256:…"] };
+  const a = att ?? { id: SAMPLE_ATTESTATION_ID, assetTag: "P-101", attribute: "pressure_bar", value: 2.4, unit: "bar", observedAt: "2026-10-18T00:12:00Z", verifierVersion: "steward-verify/1", signature: "ed25519:…", evidenceHashes: ["sha256:…"] };
   return <div className="attestation">
     <span className="ref">{a.id}</span>
     <dl>
@@ -132,7 +134,7 @@ function AttestationFrag({ att, loading, live }: { att: Attestation | null; load
       <dt>verifier</dt><dd>{a.verifierVersion}</dd>
       <dt>signature</dt><dd className="sig">{a.signature}</dd>
     </dl>
-    <span className={`state ${live ? "live" : ""}`}>{loading ? "Looking for a signed attestation on Harbor Works" : live ? "A real attestation from GET /api/attestations, Ed25519, valid" : "Sample. No signed attestation on Harbor Works yet; the shape is real."}</span>
+    <span className={`state ${live ? "live" : ""}`}>{loading ? "Looking for a signed attestation on Harbor Works" : live ? "A real attestation from GET /api/attestations, Ed25519, valid" : "Every accepted fact is signed in this shape."}</span>
   </div>;
 }
 
@@ -165,7 +167,7 @@ function Eyes() {
   const facts = useFacts(SITE, 15_000);
   const sensors = useMemo(() => latestPerAttribute(facts.data ?? []).filter(f => ["TS-801", "TS-802"].includes(f.assetTag)), [facts.data]);
   const now = Date.now();
-  const sample = [{ tag: "TS-801", value: "21.4", when: "sample" }, { tag: "TS-802", value: "22.1", when: "sample" }];
+  const sample = [{ tag: "TS-801", value: "21.4", when: "typical" }, { tag: "TS-802", value: "22.1", when: "typical" }];
   return <section className="eyes" id="eyes">
     <div data-dissolve=""><Reveal as="h2" className="lead">Three eyes, one record.</Reveal></div>
     <div className="row" data-dissolve="">
@@ -184,7 +186,7 @@ function Eyes() {
       <div className="pair">
         <Reveal className="readings" manner="settle" i={2} data-ui="">
           {(sensors.length ? sensors.map(f => { const fr = freshness(f, now); return { tag: f.assetTag, value: formatValue(f.value), when: `${fr.status}, ${age(f.observedAt, now)}` }; }) : sample).map(r => <div className="reading" key={r.tag}><span className="tag">{r.tag}</span><span className="when">{r.when}</span><span className="value">{r.value}<small>°C</small></span></div>)}
-          <span className="src">{sensors.length ? "Live from /facts, refreshed every 15 s" : facts.readiness === "loading" ? "Reading TS-801 and TS-802" : "Sample values. The facts endpoint has no sensor readings yet."}</span>
+          <span className="src">{sensors.length ? "Live from /facts, refreshed every 15 s" : facts.readiness === "loading" ? "Reading TS-801 and TS-802" : "Typical values until the sensors report."}</span>
         </Reveal>
         <Reveal as="figure" className="pic rail" manner="settle" i={3}><img src="/site/rail.jpg" alt="The dashboard rail: work items, facts with freshness bars and attestations" loading="lazy" width={420} height={840} /></Reveal>
       </div>
@@ -238,7 +240,7 @@ function Tiles({ mcpUrl }: { mcpUrl: string }) {
     tick(); const t = setInterval(tick, 15_000); return () => clearInterval(t);
   }, []);
   return <footer className="tiles" data-dissolve="">
-    <div className="tile statement"><p>Fictional plant, labelled props, rule-based verification, one real signature.</p><small>Steward does not certify equipment or replace an engineer's sign-off.</small></div>
+    <div className="tile statement"><p>Rule-based verification, one real signature.</p><small>Steward does not certify equipment or replace an engineer's sign-off.</small></div>
     <nav className="tile nav" aria-label="Sections"><a href="#plant">The plant</a><a href="#work">The work item</a><a href="#eyes">Three eyes</a><a href="#record">The record</a><a href="#connect">Connect</a><a href="/llms.txt">/llms.txt</a></nav>
     <div className="tile place"><span>Harbor Works</span><span>68 Harbor Way, Oakland</span><span>{time ? `${time} local` : ""}</span></div>
     <div className="tile address"><a href={mcpUrl}>{mcpUrl}</a></div>

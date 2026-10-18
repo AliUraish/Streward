@@ -20,6 +20,32 @@ from .registers import estimated_pin
 from .store import now, uid
 
 ACTIONS = ("focus", "orbit", "reset", "highlight")
+
+
+def _vec3(value) -> list[float] | None:
+    if isinstance(value, dict):
+        value = [value.get("x"), value.get("y"), value.get("z")]
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    out = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(float(item)) or abs(float(item)) > 1000:
+            return None
+        out.append(round(float(item), 4))
+    return out
+
+
+def parse_view_pose(value) -> dict | None:
+    """`{position, target, fov?}` with [x, y, z] (or {x, y, z}) vectors in the viewer world frame; None when unusable."""
+    if not isinstance(value, dict):
+        return None
+    position, target = _vec3(value.get("position")), _vec3(value.get("target"))
+    if not position or not target or math.dist(position, target) < 1e-3:
+        return None
+    fov = value.get("fov")
+    if fov is not None and (isinstance(fov, bool) or not isinstance(fov, (int, float)) or not 10 <= float(fov) <= 120):
+        return None
+    return dict(position=position, target=target, fov=float(fov) if fov is not None else None)
 ROOT = Path(__file__).resolve().parents[2]
 FRAME_RE = re.compile(r"^f\d{2}\.(jpg|jpeg|png|webp)$")
 
@@ -67,10 +93,22 @@ class ViewerService:
         commands = sorted((c for c in self.store.all("viewer_command", site_id) if c["seq"] > since), key=lambda c: c["seq"])
         return dict(siteId=site_id, latest=int(self.store.meta(f"viewer:seq:{site_id}") or 0), commands=commands[:limit])
 
-    def set_pin(self, site_id: str, asset_tag: str, x: float, y: float, z: float, source: str, actor: str) -> dict:
+    def set_pin(self, site_id: str, asset_tag: str, x: float, y: float, z: float, source: str, actor: str, view_pose: dict | None = None,
+                view_pose_given: bool = False) -> dict:
         component = self.reality.component_by_tag(site_id, asset_tag)
         if source not in ("placed", "estimated"):
             raise RealityError("source must be placed or estimated.", "INVALID_REQUEST", "Send source 'placed' from the pin tool.")
+        pose = parse_view_pose(view_pose) if view_pose_given and view_pose is not None else None
+        if view_pose_given and view_pose is not None and pose is None:
+            raise RealityError("viewPose needs position and target as [x, y, z] (or {x, y, z}) within ±1000 m, apart, and fov 10-120 if given.",
+                               "INVALID_REQUEST", "Send the camera pose of the frame that verified the pin.")
+        if view_pose_given and x is None and y is None and z is None and source == "placed":
+            # Pose-only update: the pin and its source stay as they are.
+            component["viewPose"] = dict(pose, setBy=actor, setAt=now()) if pose else None
+            self.store.put("component", component, site_id)
+            self.reality.emit_change(site_id, "pin", component["id"], f"{component['tag']} view pose {'set' if pose else 'cleared'}.", component["tag"],
+                                     extra=dict(assetTag=component["tag"], viewPose=bool(pose)))
+            return component
         if source == "estimated":
             pin = estimated_pin(site_id, component)
         else:
@@ -79,6 +117,10 @@ class ViewerService:
                 raise RealityError("x, y and z must be finite numbers within ±1000 m of the scan origin.", "INVALID_REQUEST", "Pick the point again.")
             pin = dict(x=round(float(x), 4), y=round(float(y), 4), z=round(float(z), 4))
         component.update(pin=pin, pinSource=source, pinPlacedAt=now() if source == "placed" else None, pinPlacedBy=actor if source == "placed" else None)
+        if view_pose_given:
+            component["viewPose"] = dict(pose, setBy=actor, setAt=now()) if pose else None
+        elif source == "estimated":
+            component["viewPose"] = None  # an estimate is not where the verified pose looked
         self.store.put("component", component, site_id)
         self.reality.emit_change(site_id, "pin", component["id"], f"{component['tag']} pin {'placed' if source == 'placed' else 'reset to estimate'} at "
                                  f"({pin['x']}, {pin['y']}, {pin['z']}).", component["tag"], extra=dict(assetTag=component["tag"], source=source))
@@ -95,8 +137,12 @@ class ViewerService:
             top = max((i["severity"] for i in issues), key=lambda s: severity_rank.get(s, 0), default="none")
             assets.append(dict(assetTag=component["tag"], componentId=component["id"], name=component["name"], kind=component["kind"],
                                pin=component.get("pin"), pinSource=component.get("pinSource", "estimated"), severity=top,
-                               issueIds=[i["id"] for i in issues]))
+                               issueIds=[i["id"] for i in issues], viewPose=component.get("viewPose"),
+                               **({"specKind": component["specKind"]} if component.get("specKind") else {})))
+        content = environment.get("lodMetaUrl") or environment.get("sogUrl") or environment.get("sogMetaUrl")
         return dict(siteId=site_id, name=prop["name"], environment=environment, sogMetaUrl=environment.get("sogMetaUrl"),
+                    sogUrl=content, contentUrl=content, scanFormat=environment.get("format") or "sog",
+                    **({"lodMetaUrl": environment["lodMetaUrl"]} if environment.get("lodMetaUrl") else {}),
                     credit=environment.get("credit"), viewerUrl=environment.get("viewerUrl"), cameraPresets=environment.get("cameraPresets", []),
                     assets=assets, openIssues=sum(len(v) for v in by_asset.values()),
                     estimatedPins=sum(1 for a in assets if a["pinSource"] != "placed"),

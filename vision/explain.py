@@ -49,7 +49,8 @@ SYSTEM = (
     "You review frames for a facilities inspection tool. The frames are rendered from a third-party "
     "Gaussian-splat scan of a plant room, orbiting one valve; splat renders are soft and can show "
     "floaters or smearing that are rendering artefacts, not damage. An embedding anomaly score (not a "
-    "defect classifier) flagged this valve as different from its peers. Explain, from what is visible, "
+    "defect classifier) flagged this valve as different from its peer valves or from its own earlier "
+    "accepted-good capture. Explain, from what is visible, "
     "why the valve may not be fixed: look for leaks or wet patches, corrosion or rust colouring, a missing "
     "or damaged handwheel, misalignment, or obstruction. If nothing defect-like is visible, say so plainly "
     "and give low confidence; never invent damage. You do not certify equipment and your answer does not "
@@ -96,7 +97,7 @@ def asset_spec(site: str, tag: str, clip_dir: Path, backend: str | None) -> dict
     return {k: v for k, v in spec.items() if v not in (None, "", [], {})}
 
 
-def build_request(site: str, valve: dict, spec: dict, clip_dir: Path) -> dict:
+def build_request(site: str, valve: dict, spec: dict, clip_dir: Path, mode: str = "peer") -> dict:
     # The synthetic-defect label is deliberately NOT given to the model: the explanation must come
     # from the pixels, not from being told the answer. The results file keeps synthetic: true.
     frames = [clip_dir / f"f{i:02d}.jpg" for i in FRAME_PICK]
@@ -110,8 +111,12 @@ def build_request(site: str, valve: dict, spec: dict, clip_dir: Path) -> dict:
         f"Asset record (data): {json.dumps(spec, ensure_ascii=False)}\n"
         f"Inspection status: {valve['status']} (anomaly score {valve['score']:.4f}, threshold "
         f"{valve['threshold']:.4f}; {valve.get('reason', '')}).\n"
-        + (f"The embedding differs most from peer valves around the {valve['anomalyPeak']['where']} of the "
-           "frames (patch grid of the centre crop).\n" if valve.get("anomalyPeak") else "")
+        + ("The score measures how much this valve's frames changed since its accepted-good baseline capture.\n"
+           if mode == "baseline" else "The score measures how much this valve's frames differ from the other "
+                                      "valves at the site.\n")
+        + (f"The embedding differs most from {'its baseline' if mode == 'baseline' else 'the peer valves'} around "
+           f"the {valve['anomalyPeak']['where']} of the frames (patch grid of the centre crop).\n"
+           if valve.get("anomalyPeak") else "")
         +
         "Why may this valve not be fixed? Answer with the JSON object only: finding, evidence (each item "
         "names its frame), confidence (low/medium/high), recommendedAction."
@@ -179,7 +184,7 @@ def main(argv=None):
         for v in flagged:
             clip_dir = frames_root / v["assetTag"]
             spec = asset_spec(a.site, v["assetTag"], clip_dir, None if a.no_backend else a.backend)
-            body = build_request(a.site, v, spec, clip_dir)
+            body = build_request(a.site, v, spec, clip_dir, results.get("mode", "peer"))
             req_path = a.requests_dir / f"{a.site}__{v['assetTag']}.json"
             write_json(req_path, {
                 "dryRun": not a.live, "builtAt": now_iso(), "requestedBy": results.get("inspectedBy"),

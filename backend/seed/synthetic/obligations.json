@@ -1,274 +1,414 @@
 {
   "family": "obligations",
   "synthetic": true,
-  "generator": "hand-seed",
-  "note": "Dates are relative to the first load (lastDoneDaysAgo, dueInDays). ruleRef points at a labelled demo rule pack entry; never statutory advice.",
+  "generator": "claude-opus-5-5",
+  "note": "Dates are relative to the first load (lastDoneDaysAgo, dueInDays). ruleRef names a labelled demo rule pack entry; regulationIds point at backend/seed/regulations/regulations.json (real sources, our own summaries). Demo rule pack, not legal advice. Records with `gap` (overdue | blocked) are the compliance gaps of contract 7 §6: past due dates, and blocked ones name their blocker (blockedBy, blockedReason); they also reach existing databases through the compliance-gaps seed migration.",
   "records": [
     {
       "id": "ob-my-fe1001-monthly",
       "siteId": "myer-plant",
       "assetTag": "FE-1001",
-      "title": "Fire extinguisher monthly visual inspection",
+      "title": "Fire extinguisher monthly visual inspection and tag sign-off",
       "ruleRef": "DEMO-RP/FIRE-07 (demo rule pack, not statutory advice)",
       "frequency": "monthly",
-      "lastDoneDaysAgo": 22,
-      "dueInDays": 8,
+      "lastDoneDaysAgo": 19,
+      "dueInDays": 11,
       "documentId": "doc-my-fe1001-tag",
       "ownerId": "crew-my-safety-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "VIC-AU",
-          "instrument": "Building Regulations 2018",
-          "provision": "Part 15",
-          "keywords": [
-            "essential safety measures",
-            "fire extinguishers",
-            "maintenance"
-          ]
-        }
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "vic-br-2018-reg-195",
+        "vic-br-2018-reg-216",
+        "vic-br-2018-sch-8",
+        "vic-br-2018-reg-226",
+        "vic-br-2018-reg-225",
+        "vic-br-2018-reg-223",
+        "vic-vba-pn-esm-02"
       ]
     },
     {
       "id": "ob-my-tk201-scheme",
       "siteId": "myer-plant",
       "assetTag": "TK-201",
-      "title": "Expansion vessel written scheme of examination",
+      "title": "TK-201 expansion vessel annual inspection, pre-charge check and maintenance record",
       "ruleRef": "DEMO-RP/PRESS-02 (demo rule pack, not statutory advice)",
       "frequency": "annual",
-      "lastDoneDaysAgo": 140,
-      "dueInDays": 225,
+      "lastDoneDaysAgo": 158,
+      "dueInDays": 207,
       "documentId": "doc-my-tk201-scheme",
       "ownerId": "crew-my-duty-engineer",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "VIC-AU",
-          "instrument": "Occupational Health and Safety Regulations 2017",
-          "provision": "Part 5.1",
-          "keywords": [
-            "pressure equipment",
-            "plant",
-            "inspection"
-          ]
-        }
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "vic-ohsr-2017-reg-105",
+        "vic-ohsr-2017-reg-106",
+        "vic-ohsr-2017-reg-74"
       ]
     },
     {
       "id": "ob-my-db401-periodic",
       "siteId": "myer-plant",
       "assetTag": "DB-401",
-      "title": "Distribution board periodic inspection and test",
+      "title": "Distribution board periodic inspection, RCD trip test and thermal scan",
       "ruleRef": "DEMO-RP/ELEC-05 (demo rule pack, not statutory advice)",
       "frequency": "5-yearly",
-      "lastDoneDaysAgo": 700,
-      "dueInDays": 1125,
+      "lastDoneDaysAgo": 735,
+      "dueInDays": 1090,
       "documentId": "doc-my-db401-test",
       "ownerId": "crew-my-facilities-manager",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "VIC-AU",
-          "instrument": "Occupational Health and Safety Regulations 2017",
-          "provision": "Part 5.1",
-          "keywords": [
-            "plant",
-            "maintenance"
-          ]
-        }
-      ]
+      "generator": "claude-opus-5-5",
+      "regulationIds": [],
+      "note": "Electrical installation rules are outside this demo rule pack; track test date only."
     },
     {
       "id": "ob-my-hotwork-permit",
       "siteId": "myer-plant",
       "assetTag": "V-504",
-      "title": "Hot-work permit, supply manifold brazing",
+      "title": "Hot-work permit, supply manifold brazing at V-504",
       "ruleRef": "DEMO-RP/PERMIT-03 (demo rule pack, not statutory advice)",
       "frequency": "per job",
-      "lastDoneDaysAgo": 1,
-      "dueInDays": 6,
+      "lastDoneDaysAgo": 2,
+      "dueInDays": 5,
       "documentId": "doc-my-hotwork-permit",
       "ownerId": "crew-my-safety-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "VIC-AU",
-          "instrument": "Building Regulations 2018",
-          "provision": "Part 15",
-          "keywords": [
-            "essential safety measures"
-          ]
-        },
-        {
-          "jurisdiction": "VIC-AU",
-          "instrument": "Occupational Health and Safety Regulations 2017",
-          "provision": "Part 5.1",
-          "keywords": [
-            "plant"
-          ]
-        }
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "vic-br-2018-sch-8",
+        "vic-br-2018-reg-216"
       ]
     },
     {
       "id": "ob-my-contractor-report",
       "siteId": "myer-plant",
       "assetTag": "V-504",
-      "title": "Contractor service report on file after each visit",
+      "title": "Contractor service report filed within two weeks of each visit",
       "ruleRef": "DEMO-RP/CONTR-01 (demo rule pack, not statutory advice)",
       "frequency": "per visit",
-      "lastDoneDaysAgo": 2,
-      "dueInDays": 12,
+      "lastDoneDaysAgo": 3,
+      "dueInDays": 11,
       "documentId": "doc-my-contractor-v504",
       "ownerId": "crew-my-facilities-manager",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "VIC-AU",
-          "instrument": "Occupational Health and Safety Regulations 2017",
-          "provision": "Part 5.1",
-          "keywords": [
-            "plant",
-            "records",
-            "maintenance"
-          ]
-        }
-      ]
+      "generator": "claude-opus-5-5",
+      "regulationIds": []
     },
     {
       "id": "ob-br-pv301-exam",
       "siteId": "bristol-pumps",
       "assetTag": "PV-301",
-      "title": "Steam receiver written-scheme examination certificate",
+      "title": "Steam receiver PV-301 written-scheme thorough examination certificate",
       "ruleRef": "DEMO-RP/PRESS-01 (demo rule pack, not statutory advice)",
       "frequency": "14-monthly",
-      "lastDoneDaysAgo": 400,
-      "dueInDays": 25,
+      "lastDoneDaysAgo": 392,
+      "dueInDays": 33,
       "documentId": "doc-br-pv301-cert",
       "ownerId": "crew-br-restoration-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "ENG-UK",
-          "instrument": "Pressure Systems Safety Regulations 2000",
-          "provision": "regulation 9",
-          "keywords": [
-            "periodic examination",
-            "examination"
-          ]
-        },
-        {
-          "jurisdiction": "ENG-UK",
-          "instrument": "Pressure Systems Safety Regulations 2000",
-          "provision": "regulation 8",
-          "keywords": [
-            "written scheme"
-          ]
-        }
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "eng-pssr-2000-reg-9-6",
+        "eng-pssr-2000-reg-9",
+        "eng-pssr-2000-reg-8",
+        "eng-pssr-2000-reg-14",
+        "eng-pssr-2000-reg-2",
+        "eng-hswa-1974-s-3"
       ]
     },
     {
       "id": "ob-br-steam-demo",
       "siteId": "bristol-pumps",
       "assetTag": "SP-102",
-      "title": "Public steam demonstration permit",
+      "title": "Public steam demonstration permit for SP-102 open day",
       "ruleRef": "DEMO-RP/PUBLIC-04 (demo rule pack, not statutory advice)",
       "frequency": "per event",
-      "lastDoneDaysAgo": 30,
-      "dueInDays": 10,
+      "lastDoneDaysAgo": 27,
+      "dueInDays": 13,
       "documentId": "doc-br-steam-demo-permit",
       "ownerId": "crew-br-visitor-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "ENG-UK",
-          "instrument": "Pressure Systems Safety Regulations 2000",
-          "provision": "regulation 9",
-          "keywords": [
-            "examination"
-          ]
-        }
-      ]
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "eng-pssr-2000-reg-9-6",
+        "eng-hswa-1974-s-3"
+      ],
+      "note": "Permit is conditional on PV-301 certificate remaining in date on the event day."
     },
     {
       "id": "ob-br-v505-lift",
       "siteId": "bristol-pumps",
       "assetTag": "V-505",
-      "title": "Receiver safety valve lift test",
+      "title": "Receiver safety valve V-505 lift and reseat test",
       "ruleRef": "DEMO-RP/PRESS-03 (demo rule pack, not statutory advice)",
       "frequency": "annual",
-      "lastDoneDaysAgo": 330,
-      "dueInDays": 35,
+      "lastDoneDaysAgo": 341,
+      "dueInDays": 24,
       "documentId": "doc-br-v505-lift",
       "ownerId": "crew-br-restoration-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "ENG-UK",
-          "instrument": "Pressure Systems Safety Regulations 2000",
-          "provision": "regulation 9",
-          "keywords": [
-            "examination",
-            "protective devices"
-          ]
-        }
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "eng-pssr-2000-reg-8",
+        "eng-pssr-2000-reg-9"
       ]
     },
     {
       "id": "ob-br-fe1001-monthly",
       "siteId": "bristol-pumps",
       "assetTag": "FE-1001",
-      "title": "Fire extinguisher monthly visual inspection",
+      "title": "Fire extinguisher monthly visual inspection, engine hall",
       "ruleRef": "DEMO-RP/FIRE-07 (demo rule pack, not statutory advice)",
       "frequency": "monthly",
-      "lastDoneDaysAgo": 15,
-      "dueInDays": 15,
+      "lastDoneDaysAgo": 12,
+      "dueInDays": 18,
       "documentId": "doc-br-fe1001-tag",
       "ownerId": "crew-br-restoration-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "ENG-UK",
-          "instrument": "Health and Safety at Work etc. Act 1974",
-          "provision": "section 2",
-          "keywords": [
-            "general duties",
-            "employers"
-          ]
-        }
-      ]
+      "generator": "claude-opus-5-5",
+      "regulationIds": []
     },
     {
       "id": "ob-br-walkway-check",
       "siteId": "bristol-pumps",
       "assetTag": "W-1201",
-      "title": "Visitor walkway pre-opening check",
+      "title": "Visitor walkway pre-opening check: handrails, toe boards, lighting and trip hazards",
       "ruleRef": "DEMO-RP/PUBLIC-02 (demo rule pack, not statutory advice)",
       "frequency": "daily",
       "lastDoneDaysAgo": 0,
       "dueInDays": 1,
       "ownerId": "crew-br-visitor-lead",
       "synthetic": true,
-      "generator": "hand-seed",
-      "cites": [
-        {
-          "jurisdiction": "ENG-UK",
-          "instrument": "Workplace (Health, Safety and Welfare) Regulations 1992",
-          "provision": "regulation 12",
-          "keywords": [
-            "floors",
-            "traffic routes"
-          ]
-        }
+      "generator": "claude-opus-5-5",
+      "regulationIds": [
+        "eng-whswr-1992-reg-12",
+        "eng-whswr-1992-reg-5",
+        "eng-hswa-1974-s-3",
+        "eng-hswa-1974-s-2"
       ]
+    },
+    {
+      "id": "ob-tm-humidity-watch",
+      "siteId": "tomioka-mill",
+      "assetTag": "HS-301",
+      "title": "Silk Reeling Mill humidity watch: keep HS-301 to HS-303 under 65 % RH and check the trusses for mould",
+      "ruleRef": "DEMO-RP/HERITAGE-02 (demo rule pack, not statutory advice)",
+      "frequency": "daily",
+      "lastDoneDaysAgo": 0,
+      "dueInDays": 1,
+      "documentId": "doc-tm-humidity-log",
+      "ownerId": "crew-tm-conservation-architect",
+      "regulationIds": [
+        "jp-cpa-1950-art-31",
+        "jp-cpa-1950-art-119",
+        "jp-cpa-1950-art-36",
+        "jp-cpa-1950-art-33",
+        "jp-cpa-1950-art-4"
+      ],
+      "note": "The 40 to 65 % band is the site's preservation setting (synthetic), not a legal limit; the law sets the duty to manage.",
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-tm-bw251-permit",
+      "siteId": "tomioka-mill",
+      "assetTag": "BW-251",
+      "title": "Permission before altering the current state of BW-251 (National Treasure fabric)",
+      "ruleRef": "DEMO-RP/HERITAGE-05 (demo rule pack, not statutory advice)",
+      "frequency": "per job",
+      "lastDoneDaysAgo": 120,
+      "dueInDays": 60,
+      "documentId": "doc-tm-permit-request",
+      "ownerId": "crew-tm-conservation-architect",
+      "regulationIds": [
+        "jp-cpa-1950-art-43",
+        "jp-cpa-1950-art-125",
+        "jp-cpa-1950-art-197",
+        "jp-cpa-1950-art-184",
+        "jp-cpa-1950-art-53-4"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-tm-fe-inspection",
+      "siteId": "tomioka-mill",
+      "assetTag": "FE-501",
+      "title": "Fire extinguishers FE-501 to FE-503: periodic inspection and report to the fire department",
+      "ruleRef": "DEMO-RP/FIRE-11 (demo rule pack, not statutory advice)",
+      "frequency": "6-monthly",
+      "lastDoneDaysAgo": 120,
+      "dueInDays": 62,
+      "documentId": "doc-tm-fire-inspection",
+      "ownerId": "crew-tm-fire-officer",
+      "regulationIds": [
+        "jp-fsa-1948-art-17-3-3",
+        "jp-fsr-1961-art-31-6",
+        "jp-fsa-1948-art-17",
+        "jp-fso-1961-art-6",
+        "jp-fso-1961-art-10",
+        "jp-fso-1961-art-36"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-tm-fh601-inspection",
+      "siteId": "tomioka-mill",
+      "assetTag": "FH-601",
+      "title": "Indoor fire hydrant FH-601: periodic inspection and report to the fire department",
+      "ruleRef": "DEMO-RP/FIRE-12 (demo rule pack, not statutory advice)",
+      "frequency": "6-monthly",
+      "lastDoneDaysAgo": 150,
+      "dueInDays": 32,
+      "documentId": "doc-tm-fire-inspection",
+      "ownerId": "crew-tm-fire-officer",
+      "regulationIds": [
+        "jp-fsa-1948-art-17-3-3",
+        "jp-fsr-1961-art-31-6",
+        "jp-fsa-1948-art-17",
+        "jp-fsa-1948-art-17-4"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-tm-heritage-mounting",
+      "siteId": "tomioka-mill",
+      "assetTag": "W-801",
+      "title": "Heritage-safe sensor mounting method and visitor route closure procedure for W-801",
+      "ruleRef": "DEMO-RP/HERITAGE-07 (demo rule pack, not statutory advice)",
+      "frequency": "annual",
+      "lastDoneDaysAgo": 345,
+      "dueInDays": 20,
+      "documentId": null,
+      "ownerId": "crew-tm-visitor-safety-lead",
+      "regulationIds": [
+        "jp-cpa-1950-art-43",
+        "jp-cpa-1950-art-125",
+        "jp-cpa-1950-art-4",
+        "jp-cpa-1950-art-119",
+        "jp-fsa-1948-art-8"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-my-l901-esm",
+      "siteId": "myer-plant",
+      "assetTag": "L-901",
+      "title": "Exit sign and emergency luminaire L-901: six-monthly 90-minute discharge test and ESM logbook entry",
+      "ruleRef": "DEMO-RP/ESM-04 (demo rule pack, not statutory advice)",
+      "frequency": "6-monthly",
+      "lastDoneDaysAgo": 191,
+      "dueInDays": -9,
+      "documentId": null,
+      "ownerId": "crew-my-safety-lead",
+      "regulationIds": [
+        "vic-br-2018-reg-195",
+        "vic-br-2018-reg-216",
+        "vic-br-2018-reg-226",
+        "vic-br-2018-reg-223",
+        "vic-br-2018-reg-225",
+        "vic-vba-pn-esm-02"
+      ],
+      "note": "The electrical contractor's visit for the half-yearly discharge test did not happen; the essential safety measures logbook has no entry for this half-year.",
+      "gap": "overdue",
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-br-sp102-pipework",
+      "siteId": "bristol-pumps",
+      "assetTag": "SP-102",
+      "title": "No. 2 engine SP-102 steam supply pipework and drain valves: examination under the written scheme",
+      "ruleRef": "DEMO-RP/PRESS-04 (demo rule pack, not statutory advice)",
+      "frequency": "14-monthly",
+      "lastDoneDaysAgo": 431,
+      "dueInDays": -6,
+      "documentId": null,
+      "ownerId": "crew-br-restoration-lead",
+      "regulationIds": [
+        "eng-pssr-2000-reg-9-6",
+        "eng-pssr-2000-reg-9",
+        "eng-pssr-2000-reg-8",
+        "eng-pssr-2000-reg-14",
+        "eng-hswa-1974-s-3"
+      ],
+      "note": "The date in the last examination report for the steam supply pipework has passed; SP-102 must not be steamed until the pipework is examined again.",
+      "gap": "overdue",
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-br-v504-gland",
+      "siteId": "bristol-pumps",
+      "assetTag": "V-504",
+      "title": "Sump suction valve V-504: free the seized spindle, repack the gland and prove the drainage changeover",
+      "ruleRef": "DEMO-RP/DRAIN-02 (demo rule pack, not statutory advice)",
+      "frequency": "annual",
+      "lastDoneDaysAgo": 376,
+      "dueInDays": -11,
+      "documentId": null,
+      "ownerId": "crew-br-duty-engineer",
+      "regulationIds": [
+        "eng-whswr-1992-reg-5",
+        "eng-whswr-1992-reg-12",
+        "eng-hswa-1974-s-2"
+      ],
+      "blockedBy": "Contractor slot: the pump and valve contractor's next free visit",
+      "blockedReason": "The pump and valve contractor has no free slot for three weeks, and the seized spindle needs their gland-packing tools; P-104 covers drainage meanwhile.",
+      "note": "Seized during the last sump high-level test; the duty pump P-103 is drawing through the standby suction line.",
+      "gap": "blocked",
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-tm-exit-drill",
+      "siteId": "tomioka-mill",
+      "assetTag": "D-701",
+      "title": "Visitor emergency exits D-701 and D-702: six-monthly evacuation drill, exit route and guide-light check under the fire defence plan",
+      "ruleRef": "DEMO-RP/FIRE-13 (demo rule pack, not statutory advice)",
+      "frequency": "6-monthly",
+      "lastDoneDaysAgo": 188,
+      "dueInDays": -6,
+      "documentId": null,
+      "ownerId": "crew-tm-fire-officer",
+      "regulationIds": [
+        "jp-fsa-1948-art-8",
+        "jp-fsa-1948-art-17",
+        "jp-fsa-1948-art-17-3-3",
+        "jp-fso-1961-art-6"
+      ],
+      "note": "The fire prevention manager's drill was postponed during the autumn visitor peak and has not been rebooked.",
+      "gap": "overdue",
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "ob-tm-tr202-strap",
+      "siteId": "tomioka-mill",
+      "assetTag": "TR-202",
+      "title": "Roof truss TR-202: annual structural survey and stainless strap repair at the split tie-beam joint",
+      "ruleRef": "DEMO-RP/HERITAGE-08 (demo rule pack, not statutory advice)",
+      "frequency": "annual",
+      "lastDoneDaysAgo": 374,
+      "dueInDays": -9,
+      "documentId": null,
+      "ownerId": "crew-tm-conservation-architect",
+      "regulationIds": [
+        "jp-cpa-1950-art-31",
+        "jp-cpa-1950-art-43",
+        "jp-cpa-1950-art-125",
+        "jp-cpa-1950-art-184"
+      ],
+      "blockedBy": "Heritage consent: permission to alter the current state (Act on Protection of Cultural Properties art. 43)",
+      "blockedReason": "The strap is fixed into National Treasure timber, so it needs permission to alter the current state; the application is with the Tomioka City board of education and no decision has been issued.",
+      "note": "The survey found the split at the tie-beam joint; the repair cannot start until the permission is granted.",
+      "gap": "blocked",
+      "synthetic": true,
+      "generator": "hand-seed"
     }
   ]
 }

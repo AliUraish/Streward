@@ -80,7 +80,20 @@ class TestScoring(unittest.TestCase):
         res, thr = scoring.score_site(np.concatenate([maps, odd]))
         self.assertEqual([r.status for r in res], ["fixed"] * 5 + ["not_fixed"])
         self.assertGreater(res[-1].score, thr["value"])
-        self.assertEqual(thr["method"], "median + k * MAD")
+        self.assertTrue(thr["method"].startswith("max(median + k * MAD"))
+
+    def test_threshold_bars(self):
+        # MAD collapses (three equal scores): the absolute floor and the 5 % practical bar decide.
+        thr = scoring.robust_threshold([0.30, 0.30, 0.30, 0.29, 0.31])
+        self.assertAlmostEqual(thr["madEffective"], scoring.ABS_FLOOR)
+        self.assertAlmostEqual(thr["value"], max(0.30 + 3 * scoring.ABS_FLOOR, 0.30 * 1.05))
+        self.assertEqual(scoring.classify(0.31, thr), "fixed")
+        self.assertEqual(scoring.classify(0.3125, thr), "uncertain")
+        self.assertEqual(scoring.classify(0.33, thr), "not_fixed")
+        # Real-scan numbers from 2026-10-17 (Myer, estimated pins, synthetic leak on V-503).
+        thr = scoring.robust_threshold([0.4408, 0.4378, 0.4788, 0.4377, 0.4272])
+        self.assertEqual([scoring.classify(x, thr) for x in (0.4408, 0.4378, 0.4788, 0.4377, 0.4272)],
+                         ["fixed", "fixed", "not_fixed", "fixed", "fixed"])
 
     def test_identical_peers_flag_nothing(self):
         maps, _ = peer_maps(noise=0.0)
@@ -106,6 +119,16 @@ class TestScoring(unittest.TestCase):
         res1, _ = scoring.score_site(maps, {"fixed": maps[:2]})
         self.assertGreater(sum(r.ref_term for r in res1), 0)
         self.assertGreaterEqual(res1[3].score, res0[3].score)
+
+    def test_baseline_mode_ignores_location_spread(self):
+        rng = np.random.default_rng(3)
+        # five valves that look nothing alike (different places), each re-rendered almost identically
+        base = np.stack([unit(rng.normal(size=(8, 16, 16, 32))) for _ in range(5)]).astype(np.float32)
+        now = np.stack([unit(b + 0.01 * rng.normal(size=b.shape)) for b in base]).astype(np.float32)
+        now[2] = unit(base[2] + 0.6 * rng.normal(size=base[2].shape))   # valve 2 changed since its baseline
+        res, thr = scoring.score_site(now, baselines=base)
+        self.assertEqual(thr["mode"], "baseline")
+        self.assertEqual([r.status for r in res], ["fixed", "fixed", "not_fixed", "fixed", "fixed"])
 
     def test_peak_cell(self):
         g = np.zeros((16, 16))
@@ -211,6 +234,36 @@ class TestMixedSources(unittest.TestCase):
             out = jepa.run("fixture", tmp, tmp / "r.json", tmp / "no-ref", embedder_name="pixel-stats", quiet=True,
                            allow_mixed=True)
             self.assertEqual(len(out["frameSource"]), 2)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestBaselineMode(unittest.TestCase):
+    def test_reference_site_fixed_baselines(self):
+        tmp = Path(tempfile.mkdtemp(prefix="vision-base-"))
+        try:
+            make_fixture.make(tmp / "base")
+            make_fixture.make(tmp / "now")
+            noisy = np.random.default_rng(9).integers(0, 256, size=(256, 256, 3), dtype=np.uint8)
+            from PIL import Image
+            for i in range(16):  # FX-03 changed since its baseline; the outlier FX-06 is unchanged
+                Image.fromarray(noisy).save(tmp / "now" / "FX-03" / f"f{i:02d}.jpg", quality=92)
+            ref = tmp / "reference" / "fixture"
+            ref.mkdir(parents=True)
+            shutil.copytree(tmp / "base", ref / "fixed")
+            out = jepa.run("fixture", tmp / "now", tmp / "r.json", tmp / "reference", embedder_name="pixel-stats",
+                           quiet=True)
+            self.assertEqual(out["mode"], "baseline")
+            status = {v["assetTag"]: v["status"] for v in out["valves"]}
+            self.assertEqual(status, {"FX-01": "fixed", "FX-02": "fixed", "FX-03": "not_fixed", "FX-04": "fixed",
+                                      "FX-05": "fixed", "FX-06": "fixed"})
+            peer = jepa.run("fixture", tmp / "now", tmp / "p.json", tmp / "reference", embedder_name="pixel-stats",
+                            quiet=True, mode="peer")
+            self.assertEqual(peer["mode"], "peer")
+            shutil.rmtree(ref / "fixed" / "FX-05")
+            with self.assertRaises(common.VisionError):
+                jepa.run("fixture", tmp / "now", tmp / "r.json", tmp / "reference", embedder_name="pixel-stats",
+                         quiet=True, mode="baseline")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

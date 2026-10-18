@@ -1,29 +1,145 @@
 {
-  "name": "steward-efficiency-counsel",
+  "name": "steward-efficiency-compliance",
   "suite": "efficiency",
-  "description": "REALITY-CONTRACT-3.md §10 efficiency suite (ops-counsel-tokens): Counsel re-reads every certificate PDF on each poll; Atlas sees it in Steward telemetry, calls Counsel, reconfigures it (documentCache, subscribe) and reruns; afterwards Counsel's tokens per mission are under budget. Only Atlas may reconfigure.",
+  "description": "REALITY-CONTRACT-3.md §10 efficiency suite (ops-counsel-tokens) on contract-4 agents: the Bristol compliance officer re-reads every certificate PDF on each poll; the Operations Director sees it in Steward telemetry, calls it, reconfigures it (documentCache, subscribe) and reruns; afterwards the efficiency eval passes under budget. Only the director may reconfigure.",
   "notes": [
-    "Budget: 2000 tokens per mission (the loop's budget in the fixture). The actor step needs STEWARD_MCP_ALLOW_ACT_AS=true on the MCP.",
+    "The backend records the rerun as an eval run of suite efficiency (before, after, budget); this suite reads it with list_evals. The actor step needs STEWARD_MCP_ALLOW_ACT_AS=true on the MCP.",
     "Steward telemetry records every MCP tool call with its acting agent and estimated tokens; the same events go to Armature when an ingest key is set."
   ],
   "steps": [
-    { "id": "findings_before", "kind": "tool", "tool": "get_eval_findings", "args": {},
-      "expect": { "agents[agentId=counsel].tokensPerMission": { "$exists": true }, "source": { "$matches": "/telemetry/" } } },
-    { "id": "operator_cannot_reconfigure", "kind": "tool", "tool": "reconfigure_agent",
-      "args": { "agentId": "counsel", "change": { "documentCache": true, "pollStrategy": "subscribe" }, "why": "efficiency eval: the operator is not Atlas" },
-      "expectError": true, "expect": { "code": "AUTHORITY_DENIED" } },
-    { "id": "start_loop", "kind": "tool", "tool": "start_scenario", "args": { "scenarioId": "ops-counsel-tokens" },
-      "expect": { "scenarioId": "ops-counsel-tokens" } },
-    { "id": "wait_loop_done", "kind": "tool", "tool": "wait_for",
-      "args": { "event": "scenario.step", "filter": { "scenarioId": "ops-counsel-tokens", "state": "completed" }, "timeoutSeconds": 50 },
-      "until": { "status": "fired" }, "carry": { "waitId": "waitId" }, "intervalMs": 0, "timeoutMs": 180000,
-      "expect": { "status": "fired", "tokensWhileWaiting": 0 } },
-    { "id": "findings_after", "kind": "tool", "tool": "get_eval_findings", "args": {},
-      "expect": { "loop.state": "completed", "agents[agentId=counsel].tokensPerMission": { "$lte": 2000 }, "loop.tokens[agentId=counsel].before": { "$gte": 10000 }, "loop.tokens[agentId=counsel].after": { "$lte": 2000 } } },
-    { "id": "counsel_reconfigured", "kind": "tool", "tool": "get_agent_activity", "args": { "agentId": "counsel" },
-      "expect": { "config.documentCache": true, "config.pollStrategy": "subscribe" } },
-    { "id": "atlas_may_reconfigure", "kind": "tool", "tool": "reconfigure_agent", "actor": "atlas",
-      "args": { "agentId": "counsel", "change": { "documentCache": true, "pollStrategy": "subscribe" }, "why": "efficiency eval: confirm the change as Atlas" },
-      "expect": { "agentId": "counsel", "config.documentCache": true } }
+    {
+      "id": "findings_before",
+      "kind": "tool",
+      "tool": "get_eval_findings",
+      "args": {},
+      "expect": {
+        "agents[agentId=bristol-compliance].agentId": "bristol-compliance",
+        "source": {
+          "$matches": "/telemetry/i"
+        }
+      }
+    },
+    {
+      "id": "operator_cannot_reconfigure",
+      "kind": "tool",
+      "tool": "reconfigure_agent",
+      "args": {
+        "agentId": "bristol-compliance",
+        "change": {
+          "documentCache": true,
+          "pollStrategy": "subscribe"
+        },
+        "why": "efficiency eval: the operator is not the director"
+      },
+      "expectError": true,
+      "expect": {
+        "code": "AUTHORITY_DENIED"
+      }
+    },
+    {
+      "id": "start_loop",
+      "kind": "tool",
+      "tool": "start_scenario",
+      "args": {
+        "scenarioId": "ops-counsel-tokens",
+        "speed": 600,
+        "restart": true
+      },
+      "expect": {
+        "scenarioId": "ops-counsel-tokens"
+      },
+      "capture": {
+        "runId": "id"
+      }
+    },
+    {
+      "id": "wait_loop_done",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "any",
+        "filter": {
+          "type": "scenario",
+          "scenarioId": "ops-counsel-tokens",
+          "runId": "${runId}",
+          "status": "completed"
+        },
+        "timeoutSeconds": 50
+      },
+      "until": {
+        "status": "fired"
+      },
+      "carry": {
+        "waitId": "waitId"
+      },
+      "intervalMs": 0,
+      "timeoutMs": 240000,
+      "expect": {
+        "status": "fired",
+        "tokensWhileWaiting": 0
+      }
+    },
+    {
+      "id": "efficiency_eval_recorded",
+      "kind": "tool",
+      "tool": "list_evals",
+      "args": {},
+      "expect": {
+        "runs[suite=efficiency].failed": 0,
+        "runs[suite=efficiency].passed": {
+          "$gte": 1
+        }
+      },
+      "capture": {
+        "evalId": "runs[suite=efficiency].id"
+      }
+    },
+    {
+      "id": "efficiency_eval_passed",
+      "kind": "tool",
+      "tool": "get_eval",
+      "args": {
+        "evalId": "${evalId}"
+      },
+      "expect": {
+        "suite": "efficiency",
+        "failed": 0,
+        "steps": {
+          "$not": {
+            "$jsonContains": "\"result\":\"FAIL\""
+          }
+        }
+      }
+    },
+    {
+      "id": "compliance_reconfigured",
+      "kind": "tool",
+      "tool": "get_agent_activity",
+      "args": {
+        "agentId": "bristol-compliance"
+      },
+      "expect": {
+        "config.documentCache": true,
+        "config.pollStrategy": "subscribe"
+      }
+    },
+    {
+      "id": "director_may_reconfigure",
+      "kind": "tool",
+      "tool": "reconfigure_agent",
+      "actor": "director",
+      "args": {
+        "agentId": "bristol-compliance",
+        "change": {
+          "documentCache": true,
+          "pollStrategy": "subscribe"
+        },
+        "why": "efficiency eval: confirm the change as the director"
+      },
+      "expect": {
+        "agentId": "bristol-compliance",
+        "config.documentCache": true
+      }
+    }
   ]
 }

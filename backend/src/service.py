@@ -11,19 +11,27 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from .a2a import A2ABus
-from .boards import BoardService
+from .conversations import ConversationService
 from .branding import rebrand_seed_pdfs
 from .evalruns import EvalRunner
+from .eye import EyeService
+from .fixflow import FixWorkflowService
+from .forge import ForgeService
 from .integrations import ModelAdapter, SupermemoryAdapter
 from .issues import IssueService
+from .maintenance import MaintenanceService
 from .memory_store import MemoryStore
+from .metrics import MetricsService
 from .missions import MissionEngine
 from .ops import OpsService
 from .people import PeopleService
 from .reality import RealityService
+from .regulations import RegulationService
 from .registers import room_for
+from .autoplay import ScenarioAutoplay
+from .patrol import PatrolService
 from .scenarios import ScenarioEngine
-from .seed import seed, sync_registers
+from .seed import add_new_sites, seed, sync_registers
 from .simulate import Simulator
 from .sites import apply_site_shape
 from .store import Store, now, uid
@@ -54,6 +62,7 @@ class PropertyService:
     def __init__(self, data_directory: Path, start_workers: bool = True):
         self.store = Store(data_directory)
         seed(self.store)
+        self.site_additions = add_new_sites(self.store)
         apply_site_shape(self.store)
         rebrand_seed_pdfs(self.store)
         self.register_sync = sync_registers(self.store)
@@ -74,16 +83,24 @@ class PropertyService:
         self.memory = MemoryStore(self)
         self.reality = RealityService(self, start_workers=start_workers)
         self.issues = IssueService(self)
+        self.regulations = RegulationService(self)
         self.people = PeopleService(self)
         self.waits = WaitHub(self)
         self.reality.change_listeners.append(self.waits.on_change)
         self.bus = A2ABus(self)
         self.ops = OpsService(self)
         self.viewer = ViewerService(self)
-        self.boards = BoardService(self)
+        self.conversations = ConversationService(self)
         self.vision = VisionIngest(self)
+        self.maintenance = MaintenanceService(self)
+        self.eye = EyeService(self)
+        self.metrics = MetricsService(self)
+        self.fixes = FixWorkflowService(self)
+        self.forge = ForgeService(self)
         self.missions = MissionEngine(self)
         self.scenarios = ScenarioEngine(self)
+        self.patrols = PatrolService(self)  # contract 7: walkthroughs, labels and the compliance alerts they start
+        self.autoplay = ScenarioAutoplay(self)
         self.simulator = Simulator(self)
         self.evals = EvalRunner(self)
         if start_workers:
@@ -91,10 +108,15 @@ class PropertyService:
             self.bus.start()
             self.missions.recover()
             self.simulator.start()
+            self.autoplay.start()
 
     def close(self):
         self.simulator.stop()
+        self.autoplay.close()
         self.scenarios.close()
+        self.patrols.close()
+        self.fixes.close()
+        self.eye.close()
         self.missions.close()
         self.memory.close()
         self.bus.close()

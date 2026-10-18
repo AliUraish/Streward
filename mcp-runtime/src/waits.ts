@@ -15,7 +15,8 @@
 import { AdapterError, type Backend } from './upstream.js';
 import { UpWaitCreatedSchema, UpWaitResultSchema } from './schemas3.js';
 
-export const WAIT_EVENTS = ['work_item.resolved', 'issue.changed', 'reply.received', 'board.resolved', 'scenario.step', 'any'] as const;
+/** The backend also accepts scenario.step; it is not offered here (the eval harness waits with event any, filter {type: "scenario"}). */
+export const WAIT_EVENTS = ['work_item.resolved', 'issue.changed', 'reply.received', 'board.resolved', 'any'] as const;
 export type WaitEvent = typeof WAIT_EVENTS[number];
 export const PROGRESS_INTERVAL_MS = 15_000;
 export const MAX_WAIT_SECONDS = 300;
@@ -95,7 +96,7 @@ export async function holdWait(input: WaitInput, deps: WaitDeps): Promise<WaitOu
       }
       const status = result.status;
       if (status === 'fired') {
-        return done('fired', flattenEvent(result.event), 'The event fired. Read it (event.name, event.type, event.issueId / scenarioId / workItemId / refId) and act: get_issue, get_board_meeting, get_conversation or get_receipt for the record it names.');
+        return done('fired', flattenEvent(result.event), 'The event fired. Read it (event.name, event.type, event.issueId / workItemId / refId) and act: get_issue, get_board_meeting, get_conversation or get_receipt for the record it names.');
       }
       if (status !== 'still_waiting' && status !== 'waiting') {
         return done(status, null, `The backend ended this wait with status "${status}". Open a new wait with wait_for (no waitId) if you still need the event.`);

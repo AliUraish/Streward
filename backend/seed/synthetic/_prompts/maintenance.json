@@ -1,0 +1,91 @@
+{
+ "family": "maintenance",
+ "mode": "dry-run",
+ "note": "Request body only; nothing was sent.",
+ "request": {
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "system": "You generate synthetic demonstration data for Steward, an agent platform that runs two industrial sites from their 3D scans: myer-plant (a modern basement plant room in the Kenneth Myer building, Melbourne) and bristol-pumps (a 1907 dock pump house under restoration in Bristol, England). Every record is fictional and must be plausible to a facilities engineer. Never use real people's names, phone numbers or email addresses; the only contactable crew member is 'Duty engineer (you)' with contact 'user'. Rule references are a labelled demo rule pack (DEMO-RP/...), never statutory advice. Keep every id, asset tag, agent id and cross-reference consistent with the example you are given; you may vary wording, numbers and dates.",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Family: maintenance. Maintenance windows per site with inDays, scope, examiner and status.\n\nReturn JSON with a `records` array of 5 records in exactly this shape. Every record must keep `synthetic: true`. Example (the current hand-written seed):\n\n[\n {\n  \"id\": \"mw-my-tk201-exam\",\n  \"siteIds\": [\n   \"myer-plant\"\n  ],\n  \"inDays\": 9,\n  \"scope\": \"TK-201 inspection and relief valve check (inspection plan, records under OHS regs 105-106)\",\n  \"examiner\": \"Synthetic competent person (demo)\",\n  \"status\": \"approved\",\n  \"assetTags\": [\n   \"TK-201\"\n  ],\n  \"obligationId\": \"ob-my-tk201-scheme\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"mw-my-db401-survey\",\n  \"siteIds\": [\n   \"myer-plant\"\n  ],\n  \"inDays\": 20,\n  \"scope\": \"DB-401 thermographic survey and CP-402 label fix\",\n  \"examiner\": \"Synthetic electrical contractor (demo)\",\n  \"status\": \"proposed\",\n  \"assetTags\": [\n   \"DB-401\",\n   \"CP-402\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"mw-my-p103-overhaul\",\n  \"siteIds\": [\n   \"myer-plant\"\n  ],\n  \"inDays\": 31,\n  \"scope\": \"P-103 standby pump seal replacement\",\n  \"examiner\": \"Shift technician (synthetic)\",\n  \"status\": \"proposed\",\n  \"assetTags\": [\n   \"P-103\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"mw-br-walkway-deck\",\n  \"siteIds\": [\n   \"bristol-pumps\"\n  ],\n  \"inDays\": 12,\n  \"scope\": \"W-1201 deck board replacement near the sump lip\",\n  \"examiner\": \"Restoration volunteers (synthetic)\",\n  \"status\": \"approved\",\n  \"assetTags\": [\n   \"W-1201\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"mw-br-p103-service\",\n  \"siteIds\": [\n   \"bristol-pumps\"\n  ],\n  \"inDays\": 3,\n  \"scope\": \"P-103 drainage pump float switch service\",\n  \"examiner\": \"Synthetic pump contractor (demo)\",\n  \"status\": \"proposed\",\n  \"assetTags\": [\n   \"P-103\",\n   \"CP-402\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n }\n]"
+   }
+  ],
+  "output_config": {
+   "effort": "high",
+   "format": {
+    "type": "json_schema",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "records": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "siteIds": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "inDays": {
+          "type": "integer"
+         },
+         "scope": {
+          "type": "string"
+         },
+         "examiner": {
+          "type": "string"
+         },
+         "status": {
+          "type": "string"
+         },
+         "assetTags": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "obligationId": {
+          "type": "string"
+         },
+         "synthetic": {
+          "type": "boolean"
+         },
+         "generator": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "id",
+         "siteIds",
+         "inDays",
+         "scope",
+         "examiner",
+         "status",
+         "assetTags",
+         "synthetic",
+         "generator"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "betas": [
+   "server-side-fallback-2026-07-01"
+  ],
+  "fallbacks": "default"
+ }
+}

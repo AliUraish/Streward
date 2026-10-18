@@ -1,7 +1,7 @@
 {
   "family": "armature_traces",
   "synthetic": true,
-  "generator": "hand-seed",
+  "generator": "claude-opus-5-5",
   "note": "Armature-style session traces (the shape of the tool-call events the MCP ships to Armature) for the efficiency eval baseline. Replayed into Steward telemetry with source armature-trace:<generator>.",
   "records": [
     {
@@ -11,11 +11,11 @@
       "calls": [
         {
           "tool": "get_overview",
-          "tokens": 520
+          "tokens": 535
         },
         {
           "tool": "list_issues",
-          "tokens": 310
+          "tokens": 295
         },
         {
           "tool": "wait_for",
@@ -23,11 +23,11 @@
         },
         {
           "tool": "get_board_meeting",
-          "tokens": 280
+          "tokens": 305
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-atlas-sweep-2",
@@ -36,11 +36,15 @@
       "calls": [
         {
           "tool": "get_overview",
-          "tokens": 540
+          "tokens": 550
         },
         {
           "tool": "get_agent_activity",
-          "tokens": 260
+          "tokens": 275
+        },
+        {
+          "tool": "list_issues",
+          "tokens": 320
         },
         {
           "tool": "wait_for",
@@ -48,7 +52,7 @@
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-warden-my-1",
@@ -57,11 +61,11 @@
       "calls": [
         {
           "tool": "resolve",
-          "tokens": 240
+          "tokens": 235
         },
         {
           "tool": "list_issues",
-          "tokens": 330
+          "tokens": 345
         },
         {
           "tool": "wait_for",
@@ -69,15 +73,15 @@
         },
         {
           "tool": "attest",
-          "tokens": 410
+          "tokens": 400
         },
         {
           "tool": "focus_view",
-          "tokens": 70
+          "tokens": 75
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-warden-my-2",
@@ -86,11 +90,11 @@
       "calls": [
         {
           "tool": "resolve",
-          "tokens": 250
+          "tokens": 245
         },
         {
           "tool": "get_issue",
-          "tokens": 300
+          "tokens": 315
         },
         {
           "tool": "wait_for",
@@ -98,11 +102,15 @@
         },
         {
           "tool": "attest",
-          "tokens": 390
+          "tokens": 380
+        },
+        {
+          "tool": "focus_view",
+          "tokens": 70
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-warden-br-1",
@@ -111,11 +119,11 @@
       "calls": [
         {
           "tool": "resolve",
-          "tokens": 260
+          "tokens": 270
         },
         {
           "tool": "list_issues",
-          "tokens": 350
+          "tokens": 360
         },
         {
           "tool": "wait_for",
@@ -123,11 +131,11 @@
         },
         {
           "tool": "attest",
-          "tokens": 420
+          "tokens": 435
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-warden-br-2",
@@ -136,11 +144,15 @@
       "calls": [
         {
           "tool": "resolve",
-          "tokens": 240
+          "tokens": 250
         },
         {
           "tool": "get_scene",
-          "tokens": 610
+          "tokens": 640
+        },
+        {
+          "tool": "get_issue",
+          "tokens": 290
         },
         {
           "tool": "wait_for",
@@ -148,7 +160,7 @@
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-runner-1",
@@ -157,11 +169,11 @@
       "calls": [
         {
           "tool": "who_is_responsible",
-          "tokens": 210
+          "tokens": 220
         },
         {
           "tool": "dispatch",
-          "tokens": 380
+          "tokens": 370
         },
         {
           "tool": "wait_for",
@@ -169,11 +181,11 @@
         },
         {
           "tool": "collect_evidence",
-          "tokens": 460
+          "tokens": 480
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-runner-2",
@@ -182,19 +194,23 @@
       "calls": [
         {
           "tool": "who_is_responsible",
-          "tokens": 200
+          "tokens": 205
         },
         {
           "tool": "dispatch",
-          "tokens": 360
+          "tokens": 350
         },
         {
           "tool": "wait_for",
           "tokens": 90
+        },
+        {
+          "tool": "collect_evidence",
+          "tokens": 445
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-myer-manager-1",
@@ -203,15 +219,15 @@
       "calls": [
         {
           "tool": "get_overview",
-          "tokens": 480
+          "tokens": 470
         },
         {
           "tool": "list_crew",
-          "tokens": 260
+          "tokens": 255
         },
         {
           "tool": "assign_issue",
-          "tokens": 140
+          "tokens": 150
         },
         {
           "tool": "wait_for",
@@ -219,7 +235,7 @@
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-myer-compliance-1",
@@ -228,7 +244,7 @@
       "calls": [
         {
           "tool": "list_obligations",
-          "tokens": 420
+          "tokens": 435
         },
         {
           "tool": "wait_for",
@@ -236,11 +252,11 @@
         },
         {
           "tool": "get_document",
-          "tokens": 450
+          "tokens": 465
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     },
     {
       "id": "trace-bristol-manager-1",
@@ -249,11 +265,15 @@
       "calls": [
         {
           "tool": "get_overview",
-          "tokens": 500
+          "tokens": 515
         },
         {
           "tool": "list_crew",
-          "tokens": 240
+          "tokens": 235
+        },
+        {
+          "tool": "assign_issue",
+          "tokens": 145
         },
         {
           "tool": "wait_for",
@@ -261,7 +281,7 @@
         }
       ],
       "synthetic": true,
-      "generator": "hand-seed"
+      "generator": "claude-opus-5-5"
     }
   ]
 }

@@ -61,7 +61,7 @@ def run(site: str, frames_root: Path, out_path: Path, ref_root: Path, embedder_n
         device: str = "auto", region: str = "centre", k: float = scoring.K_DEFAULT,
         k_uncertain: float = scoring.K_UNCERTAIN_DEFAULT, model_id: str = MODEL_ID,
         revision: str | None = MODEL_REVISION, quiet: bool = False, inspected_by: str | None = None,
-        allow_mixed: bool = False) -> dict:
+        allow_mixed: bool = False, mode: str = "auto") -> dict:
     log = (lambda *a: None) if quiet else (lambda *a: print("[jepa]", *a, file=sys.stderr))
     inspected_by = inspected_by or engineer_for(site)
     clips = site_clips(frames_root)
@@ -73,9 +73,26 @@ def run(site: str, frames_root: Path, out_path: Path, ref_root: Path, embedder_n
         raise VisionError(f"clips at {site} come from different frame sources/sizes ({', '.join(kinds)}); a peer "
                           "comparison across them is meaningless. Re-capture every valve with one --source "
                           "(or pass --allow-mixed).")
+    if (ref_root / site).is_dir():  # per-site references (vision/reference/<site>/<label>/<clip>/) win
+        ref_root = ref_root / site
     refs = reference_clips(ref_root)
-    log(f"{len(clips)} clip(s) at {rel(frames_root)}; reference labels: "
+    log(f"{len(clips)} clip(s) at {rel(frames_root)}; reference labels at {rel(ref_root)}: "
         + (", ".join(f"{lb}={len(v)}" for lb, v in refs.items()) or "none"))
+    # Baseline mode: an accepted-good clip of the same valve (dir named by its tag) under a normal label.
+    baseline_dirs = {d.name: d for lb, dirs in refs.items() if lb.lower() in scoring.NORMAL_LABELS for d in dirs}
+    missing = [d.name for d in clips if d.name not in baseline_dirs]
+    if mode == "baseline" and missing:
+        raise VisionError(f"--mode baseline needs a baseline clip for every valve; missing: {', '.join(missing)} "
+                          f"(capture them with: capture.py {site} --out-root {rel(ref_root)}/fixed)")
+    use_baseline = mode != "peer" and not missing and bool(baseline_dirs)
+    if use_baseline:
+        mismatched = [t for t in sources if frame_source(read_meta(baseline_dirs[t]), baseline_dirs[t]) != sources[t]]
+        if mismatched:
+            raise VisionError(f"baseline clips differ in frame source/size from the inspection clips: "
+                              f"{', '.join(mismatched)}; re-capture the baselines with the same --source")
+    elif mode == "auto" and baseline_dirs and missing:
+        log(f"baselines exist for {len(baseline_dirs)} valve(s) but not for {', '.join(missing)}; using peer mode")
+    log(f"mode: {'baseline (each valve vs its own accepted-good capture)' if use_baseline else 'peer (each valve vs the other valves)'}")
 
     emb_model = make_embedder(embedder_name, device=device, model_id=model_id, revision=revision)
     log(f"model {emb_model.model_id} on {emb_model.device} (load {emb_model.load_seconds:.1f}s)")
@@ -93,9 +110,18 @@ def run(site: str, frames_root: Path, out_path: Path, ref_root: Path, embedder_n
         maps.append(g)
         per_clip.append({"assetTag": d.name, "seconds": round(dt, 3)})
         log(f"  {d.name}: {dt:.2f}s")
-    ref_maps = {lb: np.stack([embed_dir(d)[1] for d in dirs]) for lb, dirs in refs.items()}
+    ref_cache: dict[Path, np.ndarray] = {}
 
-    results, thr = scoring.score_site(np.stack(maps), ref_maps, k=k, k_uncertain=k_uncertain, region=region)
+    def ref_map(d: Path) -> np.ndarray:
+        if d not in ref_cache:
+            ref_cache[d] = embed_dir(d)[1]
+        return ref_cache[d]
+
+    ref_maps = {lb: np.stack([ref_map(d) for d in dirs]) for lb, dirs in refs.items()}
+    baselines = np.stack([ref_map(baseline_dirs[d.name]) for d in clips]) if use_baseline else None
+
+    results, thr = scoring.score_site(np.stack(maps), ref_maps, k=k, k_uncertain=k_uncertain, region=region,
+                                      baselines=baselines)
     pooled = np.stack(pooled)
     pooled_loo = [float(1 - np.dot(pooled[i], scoring.l2n(np.median(np.delete(pooled, i, 0), 0))))
                   if len(pooled) > 1 else 0.0 for i in range(len(pooled))]
@@ -114,6 +140,7 @@ def run(site: str, frames_root: Path, out_path: Path, ref_root: Path, embedder_n
             "uncertainAbove": round(thr["uncertainAbove"], 6),
             "model": emb_model.model_id,
             "frames": [rel(p) for p in frame_paths(d)],
+            "baseline": rel(baseline_dirs[d.name]) if use_baseline else None,
             "components": {"looPatchDistance": round(r.loo, 6), "referenceDistance": round(r.ref_term, 6),
                            "pooledLooDistance": round(pooled_loo[i], 6)},
             "anomalyPeak": scoring.peak_cell(r.grid),
@@ -147,11 +174,17 @@ def run(site: str, frames_root: Path, out_path: Path, ref_root: Path, embedder_n
             "framesPerClip": 16,
         },
         "threshold": {k_: (round(v, 6) if isinstance(v, float) else v) for k_, v in thr.items()},
-        "scoreDefinition": ("position-aligned cosine distance between the clip's V-JEPA 2 token map and the "
-                            "leave-one-out median token map of the site's other valves (centre-weighted mean "
-                            "over 8x16x16 tokens), plus mean distance to the k nearest 'normal' reference clips "
-                            "when vision/reference/ has a normal label. anomalyGrid is that distance per 16x16 "
-                            "patch (row 0 = top of the 256 px centre crop), averaged over time."),
+        "mode": thr["mode"],
+        "scoreDefinition": (
+            ("baseline mode: position-aligned cosine distance between the clip's V-JEPA 2 token map and the token "
+             "map of the same valve's accepted-good baseline clip (centre-weighted mean over 8x16x16 tokens), i.e. "
+             "how much the valve changed since it was last known good. ")
+            if use_baseline else
+            ("peer mode: position-aligned cosine distance between the clip's V-JEPA 2 token map and the "
+             "leave-one-out median token map of the site's other valves (centre-weighted mean over 8x16x16 "
+             "tokens), plus mean distance to the k nearest 'normal' reference clips when the reference set has a "
+             "normal label. ")) + "anomalyGrid is that distance per 16x16 patch (row 0 = top of the 256 px centre "
+                                 "crop), averaged over time.",
         "reference": {"used": bool(refs), "root": rel(ref_root), "labels": {lb: len(v) for lb, v in refs.items()}},
         "honesty": HONESTY_NOTE,
         "synthetic": any_synthetic,
@@ -183,7 +216,11 @@ def main(argv=None):
     ap.add_argument("site")
     ap.add_argument("--frames-root", type=Path, help="default vision/frames/<site>")
     ap.add_argument("--out", type=Path, help="default vision/results/<site>.json")
-    ap.add_argument("--reference", type=Path, default=REFERENCE_DIR, help="labelled reference root")
+    ap.add_argument("--reference", type=Path, default=REFERENCE_DIR,
+                    help="labelled reference root; <root>/<site>/ is used when it exists")
+    ap.add_argument("--mode", choices=["auto", "peer", "baseline"], default="auto",
+                    help="auto: baseline mode when every valve has a baseline under <reference>/<site>/fixed/<tag>/, "
+                         "else peer mode")
     ap.add_argument("--k", type=float, default=scoring.K_DEFAULT, help="MADs above the median for not_fixed")
     ap.add_argument("--k-uncertain", type=float, default=scoring.K_UNCERTAIN_DEFAULT,
                     help="MADs above the median for uncertain")
@@ -201,7 +238,7 @@ def main(argv=None):
     out = a.out or RESULTS_DIR / f"{a.site}.json"
     try:
         res = run(a.site, frames_root, out, a.reference, a.embedder, a.device, a.region, a.k, a.k_uncertain,
-                  a.model_id, a.revision, inspected_by=a.inspected_by, allow_mixed=a.allow_mixed)
+                  a.model_id, a.revision, inspected_by=a.inspected_by, allow_mixed=a.allow_mixed, mode=a.mode)
     except VisionError as exc:
         fail(exc)
     for v in res["valves"]:

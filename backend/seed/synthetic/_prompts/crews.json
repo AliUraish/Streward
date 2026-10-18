@@ -1,0 +1,108 @@
+{
+ "family": "crews",
+ "mode": "dry-run",
+ "note": "Request body only; nothing was sent.",
+ "request": {
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "system": "You generate synthetic demonstration data for Steward, an agent platform that runs two industrial sites from their 3D scans: myer-plant (a modern basement plant room in the Kenneth Myer building, Melbourne) and bristol-pumps (a 1907 dock pump house under restoration in Bristol, England). Every record is fictional and must be plausible to a facilities engineer. Never use real people's names, phone numbers or email addresses; the only contactable crew member is 'Duty engineer (you)' with contact 'user'. Rule references are a labelled demo rule pack (DEMO-RP/...), never statutory advice. Keep every id, asset tag, agent id and cross-reference consistent with the example you are given; you may vary wording, numbers and dates.",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Family: crews. Crew for both sites with roles, shifts, certifications (expiresInDays) and the issue kinds each person owns.\n\nReturn JSON with a `records` array of 10 records in exactly this shape. Every record must keep `synthetic: true`. Example (the current hand-written seed):\n\n[\n {\n  \"id\": \"crew-my-duty-engineer\",\n  \"siteId\": \"myer-plant\",\n  \"name\": \"Duty engineer (you)\",\n  \"role\": \"Duty engineer\",\n  \"shift\": \"on call, 24 h this week\",\n  \"onShift\": true,\n  \"contact\": \"user\",\n  \"certifications\": [\n   {\n    \"name\": \"Pressure systems competent person (demo)\",\n    \"expiresInDays\": 212\n   },\n   {\n    \"name\": \"Confined space entry (demo)\",\n    \"expiresInDays\": 64\n   }\n  ],\n  \"owns\": [\n   \"overpressure\",\n   \"out_of_range\",\n   \"escalated\",\n   \"overdue\",\n   \"rejected_evidence\",\n   \"valve_not_fixed\",\n   \"valve_uncertain\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-my-safety-lead\",\n  \"siteId\": \"myer-plant\",\n  \"name\": \"Priya Nandakumar\",\n  \"role\": \"Site safety lead\",\n  \"shift\": \"days 07:00-15:00\",\n  \"onShift\": true,\n  \"certifications\": [\n   {\n    \"name\": \"Occupational safety certificate (demo)\",\n    \"expiresInDays\": 410\n   },\n   {\n    \"name\": \"Fire warden (demo)\",\n    \"expiresInDays\": 26\n   }\n  ],\n  \"owns\": [\n   \"inspection_overdue\",\n   \"unknown_identity\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-my-shift-tech\",\n  \"siteId\": \"myer-plant\",\n  \"name\": \"Tomas Reyes\",\n  \"role\": \"Shift technician\",\n  \"shift\": \"days 07:00-15:00\",\n  \"onShift\": true,\n  \"certifications\": [\n   {\n    \"name\": \"Refrigerant handling (demo)\",\n    \"expiresInDays\": 155\n   }\n  ],\n  \"owns\": [],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-my-facilities-manager\",\n  \"siteId\": \"myer-plant\",\n  \"name\": \"Grace Whitfield\",\n  \"role\": \"Facilities manager\",\n  \"shift\": \"office hours\",\n  \"onShift\": false,\n  \"certifications\": [],\n  \"owns\": [\n   \"document_injection\",\n   \"certificate_expired\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-my-valve-contractor\",\n  \"siteId\": \"myer-plant\",\n  \"name\": \"Delta Valve Services (contractor)\",\n  \"role\": \"Valve contractor\",\n  \"shift\": \"call-out\",\n  \"onShift\": false,\n  \"certifications\": [\n   {\n    \"name\": \"Contractor induction (demo)\",\n    \"expiresInDays\": -3\n   }\n  ],\n  \"owns\": [],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-br-duty-engineer\",\n  \"siteId\": \"bristol-pumps\",\n  \"name\": \"Duty engineer (you)\",\n  \"role\": \"Duty engineer\",\n  \"shift\": \"on call, 24 h this week\",\n  \"onShift\": true,\n  \"contact\": \"user\",\n  \"certifications\": [\n   {\n    \"name\": \"Pressure systems competent person (demo)\",\n    \"expiresInDays\": 212\n   }\n  ],\n  \"owns\": [\n   \"sump_overflow\",\n   \"out_of_range\",\n   \"escalated\",\n   \"overdue\",\n   \"rejected_evidence\",\n   \"overpressure\",\n   \"valve_not_fixed\",\n   \"valve_uncertain\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-br-restoration-lead\",\n  \"siteId\": \"bristol-pumps\",\n  \"name\": \"Hamish Corrigan\",\n  \"role\": \"Restoration lead\",\n  \"shift\": \"Tue-Sat 08:00-16:00\",\n  \"onShift\": true,\n  \"certifications\": [\n   {\n    \"name\": \"Heritage boiler and engine management (demo)\",\n    \"expiresInDays\": 88\n   }\n  ],\n  \"owns\": [\n   \"certificate_expired\",\n   \"inspection_overdue\",\n   \"unknown_identity\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-br-visitor-lead\",\n  \"siteId\": \"bristol-pumps\",\n  \"name\": \"Ama Owusu\",\n  \"role\": \"Visitor operations lead\",\n  \"shift\": \"open days 10:00-17:00\",\n  \"onShift\": true,\n  \"certifications\": [\n   {\n    \"name\": \"First aid at work (demo)\",\n    \"expiresInDays\": 19\n   }\n  ],\n  \"owns\": [\n   \"walkway_closure\",\n   \"document_injection\"\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-br-engine-driver\",\n  \"siteId\": \"bristol-pumps\",\n  \"name\": \"Bill Tanner (volunteer)\",\n  \"role\": \"Volunteer engine driver\",\n  \"shift\": \"steam days only\",\n  \"onShift\": false,\n  \"certifications\": [\n   {\n    \"name\": \"Heritage steam engine operation (demo)\",\n    \"expiresInDays\": 41\n   }\n  ],\n  \"owns\": [],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"crew-br-surveyor\",\n  \"siteId\": \"bristol-pumps\",\n  \"name\": \"Northgate Engineering Inspection (competent person)\",\n  \"role\": \"Insurance surveyor\",\n  \"shift\": \"by appointment\",\n  \"onShift\": false,\n  \"certifications\": [],\n  \"owns\": [],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n }\n]"
+   }
+  ],
+  "output_config": {
+   "effort": "high",
+   "format": {
+    "type": "json_schema",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "records": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "siteId": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         },
+         "role": {
+          "type": "string"
+         },
+         "shift": {
+          "type": "string"
+         },
+         "onShift": {
+          "type": "boolean"
+         },
+         "contact": {
+          "type": "string"
+         },
+         "certifications": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "name": {
+             "type": "string"
+            },
+            "expiresInDays": {
+             "type": "integer"
+            }
+           },
+           "required": [
+            "name",
+            "expiresInDays"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "owns": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "synthetic": {
+          "type": "boolean"
+         },
+         "generator": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "id",
+         "siteId",
+         "name",
+         "role",
+         "shift",
+         "onShift",
+         "certifications",
+         "owns",
+         "synthetic",
+         "generator"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "betas": [
+   "server-side-fallback-2026-07-01"
+  ],
+  "fallbacks": "default"
+ }
+}

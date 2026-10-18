@@ -8,7 +8,7 @@ heartbeat, long-polls for camera commands, executes them and posts the frame bac
 - `GET /api/eye/{siteId}/commands?rendererId=&since=` long-polls (≤ 25 s) for commands after `since` (a per-site
   sequence). Commands are broadcast: every open renderer moves its camera, the first renderer to post a frame for a
   command produces it.
-- `POST /api/eye/{siteId}/frames {commandId, jpegBase64, camera, visiblePins, index?, annotation?}` stores the JPEG
+- `POST /api/eye/{siteId}/frames {commandId, jpegBase64, camera, visiblePins, index?, annotation? | mark?}` stores the JPEG
   under `<data>/eye/frames/` (served at `GET /api/eye/frames/{frameId}.jpg`) and completes the command once its
   expected frames arrived (1, or N for `orbit`).
 - `POST /api/eye/{siteId}/act {action, params}` (engineer, manager, director or operator; site-scoped for team roles)
@@ -16,9 +16,19 @@ heartbeat, long-polls for camera commands, executes them and posts the frame bac
   (`orbit` returns `frames`). No fresh renderer → the worker starts headless Chrome on
   `http://127.0.0.1:3000/eye?site=<id>&renderer=headless` (GPU flags first, SwiftShader as the fallback), tracks its
   PID and stops it after 5 idle minutes. Every act is a Change of type `eye` and a telemetry row.
+  A cold act (the worker had to start) waits up to 90 s for the first frame and gives up early when the worker exits.
+  A worker left behind by an earlier backend run still holds its profile lock and would make every new launch abort;
+  it is stopped first, identified by the PID in that profile's SingletonLock and by its own command line naming the profile.
+  `STEWARD_EYE_PREWARM=all` (or a comma list of site ids) starts those renderers with the backend and keeps them warm.
 - `GET /api/eye/{siteId}/feed?since=` returns recent frames with actor and action for the dashboard's agent mode.
 
 Frames are rendered from the hosted third-party capture; synthetic defects (vision pipeline) stay labelled there.
+
+Reproducible views: `go_to` and `orbit` carry the asset's stored `viewPose {position, target, fov}` (set through the pin
+route, or passed explicitly in `params.viewPose`) so the renderer starts from the same pose every time instead of the
+camera's current side. A `mark` frame's picked world point arrives as `mark` (or `annotation`) and is returned by the
+act as `world` / `hit`. Acts with `params.purpose == "survey"` (the PINS stream's placement surveys) tag their frames
+`survey: true` so the dashboard can hide them (`GET /feed?excludeSurvey=true`).
 """
 from __future__ import annotations
 
@@ -29,6 +39,7 @@ import math
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -44,8 +55,14 @@ DIRECTIONS = ("forward", "back", "left", "right", "up", "down")
 HEARTBEAT_STALE_SECONDS = 15
 COMMAND_LONG_POLL_MAX = 25
 ACT_TIMEOUT_SECONDS = 20
+# The first act after a backend restart starts headless Chrome, which compiles /eye and loads the scan before it can
+# register and draw, so a cold act waits longer (STEWARD_EYE_COLD_START_TIMEOUT) instead of failing at 20 s.
+COLD_START_TIMEOUT_SECONDS = 90
+MAX_COLD_ACT_SECONDS = 120
 IDLE_STOP_SECONDS = 300
 GPU_REGISTER_GRACE_SECONDS = 25
+RENDERER_LOST_SECONDS = 30  # a worker whose page registered and then went silent this long is restarted
+SINGLETON_FILES = ("SingletonLock", "SingletonSocket", "SingletonCookie")
 MAX_FRAME_BYTES = 3 * 1024 * 1024
 IMAGE_TOKENS = 350  # rough vision-token cost of one 640x400 frame, for telemetry estimates
 CHROME_CANDIDATES = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -95,8 +112,11 @@ class EyeWorker:
         base = env("STEWARD_EYE_URL", "http://127.0.0.1:3000/eye").rstrip("?")
         return f"{base}?site={site_id}&renderer=headless"
 
+    def profile_dir(self, site_id: str) -> Path:
+        return self.service.store.directory / "eye" / f"chrome-{site_id}"
+
     def args(self, chrome: str, site_id: str, mode: str) -> list[str]:
-        profile = self.service.store.directory / "eye" / f"chrome-{site_id}"
+        profile = self.profile_dir(site_id)
         profile.mkdir(parents=True, exist_ok=True)
         common = [chrome, "--headless=new", f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
                   "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows",
@@ -142,6 +162,8 @@ class EyeWorker:
         chrome = self.chrome_path()
         if not chrome and not self.launcher:
             return dict(started=False, reason="Chrome not found; set STEWARD_CHROME_PATH.")
+        if not self.launcher:
+            self.reap_orphan(site_id)
         args = self.args(chrome or "chrome", site_id, mode)
         log_path = self.service.store.directory / "eye" / f"chrome-{site_id}.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -159,45 +181,168 @@ class EyeWorker:
                 proc["lastUsed"] = time.monotonic()
                 proc["lastUsedIso"] = now()
 
+    def _signal(self, proc: dict, sig: int) -> None:
+        popen = proc["popen"]
+        if popen.poll() is not None:
+            return
+        try:
+            if self.launcher:
+                popen.terminate()
+            else:
+                os.killpg(popen.pid, sig)  # the process group this backend created for that PID only
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    def _settle(self, proc: dict, timeout: float) -> None:
+        """Wait for a signalled worker to exit; SIGKILL its group when it does not."""
+        popen = proc["popen"]
+        if self.launcher or popen.poll() is not None:
+            return
+        try:
+            popen.wait(timeout=max(0.0, timeout))
+        except subprocess.TimeoutExpired:
+            self._signal(proc, signal.SIGKILL)
+
+    def running(self, site_id: str) -> bool:
+        with self.lock:
+            proc = self.procs.get(site_id)
+        return bool(proc) and proc["popen"].poll() is None
+
     def stop(self, site_id: str, reason: str = "idle") -> bool:
         with self.lock:
             proc = self.procs.pop(site_id, None)
         if not proc:
             return False
-        popen = proc["popen"]
-        if popen.poll() is None:
-            try:
-                if self.launcher:
-                    popen.terminate()
-                else:
-                    os.killpg(popen.pid, signal.SIGTERM)  # the process group this backend created for that PID only
-                    try:
-                        popen.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(popen.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
+        self._signal(proc, signal.SIGTERM)
+        self._settle(proc, 5)
         self.service.store.event(site_id, "director", "eye.worker_stopped", "Headless renderer stopped", f"pid {proc['pid']} ({reason})")
         return True
 
+    @staticmethod
+    def _pid_state(pid: int) -> tuple[bool, int | None, str]:
+        """(alive, process group, command line) for one PID; a zombie counts as gone."""
+        try:
+            out = subprocess.run(["ps", "-o", "stat=", "-o", "pgid=", "-o", "command=", "-p", str(pid)], capture_output=True, text=True,
+                                 timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return False, None, ""
+        parts = out.split(None, 2)
+        if len(parts) < 2 or parts[0].startswith("Z"):
+            return False, None, ""
+        pgid = int(parts[1]) if parts[1].isdigit() else None
+        return True, pgid, parts[2] if len(parts) > 2 else ""
+
+    def reap_orphan(self, site_id: str) -> dict | None:
+        """Stop a headless renderer an earlier backend run started for this site and never stopped.
+
+        Such a Chrome still holds the profile's SingletonLock, so every new launch for the site aborts ("Failed to create a
+        ProcessSingleton"). Only that exact process is touched: its PID comes from the lock in this site's own profile
+        directory, and its command line must name that profile and run headless. A lock whose PID is gone is cleared."""
+        profile = self.profile_dir(site_id)
+        try:
+            target = os.readlink(profile / "SingletonLock")
+        except OSError:
+            return None
+        host, _, pid_text = target.rpartition("-")
+        if not pid_text.isdigit() or host != socket.gethostname():
+            return None
+        pid = int(pid_text)
+        with self.lock:
+            if any(proc["pid"] == pid for proc in self.procs.values()):
+                return None  # tracked by this run
+        alive, pgid, command = self._pid_state(pid)
+        if alive and not (f"--user-data-dir={profile}" in command and "--headless" in command):
+            return None  # some other program: never touch it
+        if alive:
+            try:
+                if pgid == pid:
+                    os.killpg(pid, signal.SIGTERM)
+                else:
+                    os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline and self._pid_state(pid)[0]:
+                time.sleep(0.2)
+            if self._pid_state(pid)[0]:
+                try:
+                    if pgid == pid:
+                        os.killpg(pid, signal.SIGKILL)
+                    else:
+                        os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+                time.sleep(0.3)
+        if not self._pid_state(pid)[0]:
+            for name in SINGLETON_FILES:
+                try:
+                    (profile / name).unlink()
+                except OSError:
+                    pass
+        if alive:
+            self.service.store.event(site_id, "director", "eye.worker_reaped", "Leftover headless renderer stopped",
+                                     f"pid {pid} from an earlier backend run held the {site_id} profile")
+        return dict(siteId=site_id, pid=pid, reaped=alive)
+
+    def reap_all(self) -> list[dict]:
+        root = self.service.store.directory / "eye"
+        out = []
+        for profile in sorted(root.glob("chrome-*")) if root.is_dir() else []:
+            if profile.is_dir():
+                reaped = self.reap_orphan(profile.name[len("chrome-"):])
+                if reaped:
+                    out.append(reaped)
+        return out
+
+    def keep_warm(self) -> set[str]:
+        raw = env("STEWARD_EYE_PREWARM", "").strip().lower()
+        if not raw:
+            return set()
+        from .sites import SITE_IDS
+        sites = set(SITE_IDS) if raw == "all" else {s.strip() for s in raw.split(",") if s.strip()}
+        return sites & set(SITE_IDS)
+
     def check(self, renderers_fresh) -> None:
-        """One supervision pass: GPU attempt that never registered → retry with SwiftShader; idle → stop; exited → forget."""
+        """One supervision pass: GPU attempt that never registered → retry with SwiftShader; a page that registered and
+        went silent → restart; idle → stop (except pre-warmed sites); exited → forget (pre-warmed sites start again)."""
+        warm = self.keep_warm() if self.enabled else set()
         for site_id, proc in list(self.procs.items()):
             if proc["popen"].poll() is not None:
                 with self.lock:
                     self.procs.pop(site_id, None)
                 continue
             age = time.monotonic() - proc["started"]
-            if proc["mode"] == "gpu" and age > GPU_REGISTER_GRACE_SECONDS and not renderers_fresh(site_id, headless=True):
+            seen = bool(renderers_fresh(site_id, headless=True))
+            if seen:
+                proc["seen"] = time.monotonic()
+            if proc["mode"] == "gpu" and age > GPU_REGISTER_GRACE_SECONDS and not seen and not proc.get("seen"):
                 self.stop(site_id, "GPU renderer never registered; retrying with SwiftShader")
                 self.start(site_id, "swiftshader")
                 continue
-            if time.monotonic() - proc["lastUsed"] > IDLE_STOP_SECONDS:
+            if proc.get("seen") and not seen and time.monotonic() - proc["seen"] > RENDERER_LOST_SECONDS:
+                mode = proc["mode"]
+                self.stop(site_id, "renderer page stopped answering; restarting")
+                self.start(site_id, mode)
+                continue
+            if site_id not in warm and time.monotonic() - proc["lastUsed"] > IDLE_STOP_SECONDS:
                 self.stop(site_id, "idle for 5 minutes")
+        for site_id in sorted(warm - set(self.procs)):
+            if not renderers_fresh(site_id):
+                self.start(site_id, "gpu")
 
     def close(self) -> None:
-        for site_id in list(self.procs):
-            self.stop(site_id, "backend shutdown")
+        with self.lock:
+            procs = list(self.procs.items())
+            self.procs.clear()
+        for _site_id, proc in procs:
+            self._signal(proc, signal.SIGTERM)
+        deadline = time.monotonic() + 2.5
+        for site_id, proc in procs:
+            self._settle(proc, deadline - time.monotonic())
+            try:
+                self.service.store.event(site_id, "director", "eye.worker_stopped", "Headless renderer stopped", f"pid {proc['pid']} (backend shutdown)")
+            except Exception:
+                pass
 
 
 class EyeService:
@@ -225,6 +370,11 @@ class EyeService:
         self.worker.close()
 
     def _supervise(self):
+        if self.worker.enabled:
+            try:
+                self.worker.reap_all()
+            except Exception as error:
+                self.store.event("myer-plant", "director", "eye.worker_failed", "Eye worker reaping failed", type(error).__name__)
         while not self._stop.wait(5):
             try:
                 self.worker.check(self.fresh)
@@ -337,11 +487,13 @@ class EyeService:
         for pin in (visible_pins or [])[:64]:
             if isinstance(pin, dict) and pin.get("assetTag"):
                 pins.append({k: pin.get(k) for k in ("assetTag", "x", "y", "distance", "occluded")})
+        annotation = self._clean_annotation(annotation)
+        survey = (command.get("params") or {}).get("purpose") == "survey"
         frame = dict(id=frame_id, seq=self._seq(site_id, "frame"), siteId=site_id, commandId=command_id, action=command["action"], params=command["params"],
                      actor=command["actor"], actorName=command["actorName"], camera=camera if isinstance(camera, dict) else None, visiblePins=pins,
                      index=int(index) if isinstance(index, int) else len(command["frameIds"]), rendererId=renderer_id, size=len(data),
                      sha256=hashlib.sha256(data).hexdigest(), url=f"/api/eye/frames/{frame_id}.jpg", at=now(),
-                     annotation=annotation if isinstance(annotation, dict) else None)
+                     annotation=annotation, survey=survey, purpose=(command.get("params") or {}).get("purpose"))
         self.store.put("eye_frame", frame, site_id)
         self.service.reality.mirror.put("eye_frame", frame, site_id)
         command["frameIds"].append(frame_id)
@@ -352,6 +504,26 @@ class EyeService:
         if command["status"] == "done":
             self._signal_done(command_id)
         return dict(accepted=True, frameId=frame_id, frameUrl=frame["url"], commandId=command_id, commandStatus=command["status"])
+
+    @staticmethod
+    def _clean_annotation(annotation) -> dict | None:
+        """The mark record a renderer posts: screen x/y (0-1), the picked `world` point ([x, y, z] or {x, y, z}), `hit`
+        (true when the depth pick hit the scan, false for a point along the ray) and the note."""
+        if not isinstance(annotation, dict):
+            return None
+        from .viewer import _vec3
+        out = {}
+        for key in ("x", "y"):
+            value = annotation.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)):
+                out[key] = round(float(value), 4)
+        point = _vec3(annotation.get("world"))
+        world = dict(x=point[0], y=point[1], z=point[2]) if point else None  # same {x, y, z} shape as pins
+        out["world"] = world
+        out["hit"] = bool(annotation.get("hit")) if world else False
+        if annotation.get("note") is not None:
+            out["note"] = str(annotation.get("note"))[:300]
+        return out
 
     def _signal_done(self, command_id: str) -> None:
         with self.lock:
@@ -373,9 +545,10 @@ class EyeService:
             raise RealityError("Frame not found.", "NOT_FOUND", "Use a frame id from the feed.", 404)
         return path
 
-    def feed(self, site_id: str, since: int = 0, limit: int = 50) -> dict:
+    def feed(self, site_id: str, since: int = 0, limit: int = 50, exclude_survey: bool = False) -> dict:
         self.service.require_property(site_id)
-        frames = sorted((f for f in self.store.all("eye_frame", site_id) if f["seq"] > since), key=lambda f: f["seq"])[-limit:]
+        frames = sorted((f for f in self.store.all("eye_frame", site_id) if f["seq"] > since and not (exclude_survey and f.get("survey"))),
+                        key=lambda f: f["seq"])[-limit:]
         last = frames[-1] if frames else None
         return dict(siteId=site_id, latest=int(self.store.meta(f"eye:frame:{site_id}") or 0), frames=frames,
                     operating=dict(actor=last["actor"], actorName=last["actorName"], action=last["action"], at=last["at"]) if last else None,
@@ -395,8 +568,20 @@ class EyeService:
         elif action == "turn":
             clean = dict(yawDeg=_finite(params.get("yawDeg", 0), -180, 180, "yawDeg"), pitchDeg=_finite(params.get("pitchDeg", 0), -89, 89, "pitchDeg"))
         elif action in ("go_to", "orbit"):
+            from .viewer import parse_view_pose
             component = self.service.reality.component_by_tag(site_id, str(params.get("assetTag") or ""))
             clean = dict(assetTag=component["tag"], target=component.get("pin"), pinSource=component.get("pinSource", "estimated"))
+            if params.get("viewPose") is not None:
+                pose = parse_view_pose(params["viewPose"])
+                if pose is None:
+                    raise RealityError("viewPose needs position and target as [x, y, z] within ±1000 m, apart, and fov 10-120 if given.",
+                                       "INVALID_REQUEST", "Omit viewPose to use the asset's stored pose.")
+                clean.update(viewPose=pose, viewPoseSource="request")
+            elif component.get("viewPose"):
+                stored = component["viewPose"]
+                clean.update(viewPose=dict(position=stored["position"], target=stored["target"], fov=stored.get("fov")), viewPoseSource="asset")
+            if params.get("distance") is not None:
+                clean["distance"] = _finite(params["distance"], 0.4, 8, "distance")
             if action == "orbit":
                 frames = params.get("frames", 8)
                 if not isinstance(frames, int) or isinstance(frames, bool) or not 4 <= frames <= 16:
@@ -405,6 +590,11 @@ class EyeService:
         elif action == "mark":
             clean = dict(x=_finite(params.get("x"), 0, 1, "x"), y=_finite(params.get("y"), 0, 1, "y"), note=str(params.get("note") or "")[:300],
                          issue=bool(params.get("issue")), severity=params.get("severity") if params.get("severity") in ("low", "medium", "high") else "low")
+        purpose = params.get("purpose")
+        if purpose is not None:
+            if not isinstance(purpose, str) or not purpose.strip() or len(purpose) > 40:
+                raise RealityError("purpose must be a short label such as survey.", "INVALID_REQUEST", "Send purpose: survey for placement surveys.")
+            clean["purpose"] = purpose.strip().lower()
         return clean
 
     def prepare(self, site_id: str, action: str, params: dict, actor: str) -> dict:
@@ -416,24 +606,42 @@ class EyeService:
             renderer = self.worker.ensure(site_id)
         else:
             self.worker.touch(site_id)
-        return dict(command=self.enqueue(site_id, action, clean, actor), worker=renderer)
+        cold = bool(renderer and (renderer.get("started") or renderer.get("running")))
+        return dict(command=self.enqueue(site_id, action, clean, actor), worker=renderer, cold=cold)
 
-    def timeout_for(self, command: dict) -> float:
+    def timeout_for(self, command: dict, cold: bool = False) -> float:
         base = float(env("STEWARD_EYE_ACT_TIMEOUT", str(ACT_TIMEOUT_SECONDS)) or ACT_TIMEOUT_SECONDS)
-        return min(base + (command["expectedFrames"] - 1) * 2.0, 60.0)
+        extra = (command["expectedFrames"] - 1) * 2.0
+        if cold:
+            start = float(env("STEWARD_EYE_COLD_START_TIMEOUT", str(COLD_START_TIMEOUT_SECONDS)) or COLD_START_TIMEOUT_SECONDS)
+            return min(max(base, start) + extra, MAX_COLD_ACT_SECONDS)
+        return min(base + extra, 60.0)
 
-    def finish(self, command_id: str, site_id: str, worker: dict | None) -> dict:
+    def _hopeless(self, site_id: str, prepared: dict) -> bool:
+        """Nothing can answer this act: no renderer is registered and the headless worker it relied on has exited."""
+        if not prepared.get("cold") or self.fresh(site_id):
+            return False
+        return not self.worker.running(site_id)
+
+    def finish(self, command_id: str, site_id: str, worker: dict | None, waited: float | None = None) -> dict:
         command = self.store.get("eye_command", command_id, site_id)
         if command["status"] != "done":
             command.update(status="expired", completedAt=now())
             self.store.put("eye_command", command, site_id)
             renderers = self.fresh(site_id)
-            hint = ("A renderer is registered but did not answer in time." if renderers else
-                    (f"No renderer is open; headless worker: {worker.get('reason') or ('started pid ' + str(worker.get('pid')))}." if worker else
-                     "No renderer is open."))
+            if renderers:
+                hint = "A renderer is registered but did not answer in time."
+            elif worker and (worker.get("started") or worker.get("running")):
+                state = "is still starting; call again in a moment" if self.worker.running(site_id) else "exited before it registered"
+                hint = f"No renderer is open; the headless renderer (pid {worker.get('pid')}) {state}. Its log is data/eye/chrome-{site_id}.log."
+            elif worker:
+                hint = f"No renderer is open; headless worker: {worker.get('reason')}."
+            else:
+                hint = "No renderer is open."
             self.service.telemetry.record(command["actor"], "eye", f"eye_{command['action']}", tokens=60, ok=False, site_id=site_id,
                                           detail=f"timeout: {hint}"[:200])
-            raise RealityError(f"No frame within {self.timeout_for(command):g} s for eye {command['action']}. {hint}", "EYE_TIMEOUT",
+            seconds = waited if waited is not None else self.timeout_for(command)
+            raise RealityError(f"No frame within {seconds:g} s for eye {command['action']}. {hint}", "EYE_TIMEOUT",
                                "Open /eye?site=<id> in a browser, or let the backend start the headless renderer (STEWARD_EYE_AUTOSTART=true).", 504)
         frames = [self.store.get("eye_frame", fid, site_id) for fid in command["frameIds"]]
         frames = [f for f in frames if f]
@@ -442,11 +650,16 @@ class EyeService:
         self.worker.touch(site_id)
         result = self.shape(command, frames)
         if command["action"] == "mark":
-            result["annotation"] = self.annotate(site_id, command, frames[0] if frames else None)
+            annotation = self.annotate(site_id, command, frames[0] if frames else None)
+            result.update(annotation=annotation, world=annotation["world"], hit=annotation.get("hit", False))
+        survey = command["params"].get("purpose") == "survey"
+        if survey:
+            result["survey"] = True
         self.service.reality.emit_change(site_id, "eye", command["id"], f"{command['actorName']} eye {command['action']}"
                                          + (f" {command['params'].get('assetTag')}" if command["params"].get("assetTag") else "") + f": {len(frames)} frame(s).",
                                          command["params"].get("assetTag"),
-                                         extra=dict(frameId=frames[0]["id"] if frames else None, commandId=command["id"], action=command["action"], actor=command["actor"]))
+                                         extra=dict(frameId=frames[0]["id"] if frames else None, commandId=command["id"], action=command["action"], actor=command["actor"],
+                                                    survey=survey))
         return result
 
     @staticmethod
@@ -466,9 +679,10 @@ class EyeService:
             visible = [p for p in frame["visiblePins"] if not p.get("occluded") and isinstance(p.get("x"), (int, float)) and isinstance(p.get("y"), (int, float))]
             if visible:
                 nearest = min(visible, key=lambda p: (p["x"] - params["x"]) ** 2 + (p["y"] - params["y"]) ** 2)["assetTag"]
-        world = (frame or {}).get("annotation", {}) or {}
-        annotation = dict(id=uid("eya"), siteId=site_id, screen=dict(x=params["x"], y=params["y"]), world=world.get("world"), note=params["note"],
-                          actor=command["actor"], frameId=(frame or {}).get("id"), nearestAssetTag=nearest, issueId=None, at=now())
+        picked = (frame or {}).get("annotation") or {}
+        annotation = dict(id=uid("eya"), siteId=site_id, screen=dict(x=params["x"], y=params["y"]), world=picked.get("world"), hit=bool(picked.get("hit")),
+                          note=params["note"], actor=command["actor"], frameId=(frame or {}).get("id"), nearestAssetTag=nearest, issueId=None, at=now(),
+                          survey=params.get("purpose") == "survey")
         if params.get("issue"):
             issue = self.service.issues.raise_issue(site_id, "eye_observation", params.get("severity", "low"),
                                                     f"Eye mark by {display_name(command['actor'])}: {params['note'] or 'observation'}"
@@ -480,27 +694,49 @@ class EyeService:
         return annotation
 
     async def act(self, site_id: str, action: str, params: dict, actor: str) -> dict:
-        prepared = self.prepare(site_id, action, params, actor)
+        # prepare may launch Chrome (and stop a leftover one first): keep that off the event loop
+        prepared = await asyncio.to_thread(self.prepare, site_id, action, params, actor)
         command = prepared["command"]
+        waited = self.timeout_for(command, prepared["cold"])
         loop = asyncio.get_running_loop()
         event = asyncio.Event()
         with self.lock:
             done = self.done_events.get(command["id"])
             self.done_waiters.setdefault(command["id"], []).append((loop, event))
-        if not (done and done.is_set()):
+        deadline = loop.time() + waited
+        gone = 0
+        while not (done and done.is_set()):
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
             try:
-                await asyncio.wait_for(event.wait(), timeout=self.timeout_for(command))
+                await asyncio.wait_for(event.wait(), timeout=min(remaining, 1.0))
+                break
             except asyncio.TimeoutError:
                 pass
+            gone = gone + 1 if self._hopeless(site_id, prepared) else 0
+            if gone >= 3:  # three checks a second apart: a SwiftShader retry swaps the worker in well under that
+                break
         with self.lock:
             self.done_waiters.pop(command["id"], None)
-        return self.finish(command["id"], site_id, prepared["worker"])
+        return self.finish(command["id"], site_id, prepared["worker"], waited)
 
     def act_sync(self, site_id: str, action: str, params: dict, actor: str, timeout: float | None = None) -> dict:
-        """Blocking variant for worker threads (fix workflow)."""
+        """Blocking variant for worker threads (fix workflow, forged tools). `timeout` is the warm wait; a cold act
+        (the headless renderer had to start) waits at least the cold-start window."""
         prepared = self.prepare(site_id, action, params, actor)
         command = prepared["command"]
+        waited = self.timeout_for(command, prepared["cold"]) if timeout is None else (
+            max(timeout, self.timeout_for(command, True)) if prepared["cold"] else timeout)
         event = self.done_events.get(command["id"])
         if event:
-            event.wait(timeout if timeout is not None else self.timeout_for(command))
-        return self.finish(command["id"], site_id, prepared["worker"])
+            deadline = time.monotonic() + waited
+            gone = 0
+            while not event.is_set():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or event.wait(min(remaining, 1.0)):
+                    break
+                gone = gone + 1 if self._hopeless(site_id, prepared) else 0
+                if gone >= 3:
+                    break
+        return self.finish(command["id"], site_id, prepared["worker"], waited)

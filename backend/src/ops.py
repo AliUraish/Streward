@@ -4,7 +4,7 @@
   pollIntervalSeconds, maxTokensPerMission, phrasing}, version, updatedAt, updatedBy, history: [{version, at, by,
   change, reason}]}`. The Operations Director may reconfigure any agent (`POST /api/agents/{id}/reconfigure`,
   director only); the Owner's agent may also change settings through `POST /api/agents/{id}/config`.
-- `GET /api/overview` is compact (kept under 600 estimated tokens): both sites, open issues by severity,
+- `GET /api/overview` is compact (kept under 600 estimated tokens): every site, open issues by severity,
   compliance counts, crew on shift, each agent's current task, the active scenario and the last 10 Changes.
 - `GET /api/agents/{id}/activity`: current task, why, waiting on what, last actions and tokens this hour from local
   telemetry, settings and memory highlights.
@@ -13,12 +13,15 @@
 """
 from __future__ import annotations
 
+import json
+
 from .agents import DIRECTOR, OPERATOR, OWNER, agent_infos, all_agent_ids, authorize, display_name, is_known, site_of
 from .armature import ArmatureMCP
 from .errors import RealityError
 from .sites import DEMO_SITE
 from .store import now
 
+OVERVIEW_BUDGET_CHARS = 2350
 DEFAULT_SETTINGS = dict(documentCache=True, pollStrategy="subscribe", pollIntervalSeconds=60, maxTokensPerMission=None, phrasing=False)
 # Bristol's Compliance Officer ships with the inefficient defaults the ops-counsel-tokens scenario is about.
 SWEEP_AGENT = "bristol-compliance"
@@ -100,6 +103,29 @@ class OpsService:
                 self.service.memory.write(who, summary, "reconfigure", dict(agentId=agent_id, version=str(record["version"])), site_id=site)
         return record
 
+    def restore_defaults(self, agent_id: str, reason: str, scenario_id: str | None = None, run_id: str | None = None) -> dict | None:
+        """Put an agent back on its shipped settings for a scenario replay (recorded in its config history as
+        `via: scenario_baseline`, by `scenario`, so it is never shown as a Director decision). None when already there."""
+        self._require_agent(agent_id)
+        defaults = dict(AGENT_DEFAULTS.get(agent_id, DEFAULT_SETTINGS))
+        record = self.config(agent_id)
+        before = dict(record["settings"])
+        changed = {k: v for k, v in defaults.items() if before.get(k) != v}
+        if not changed:
+            return None
+        record["settings"] = defaults
+        record["version"] = int(record.get("version", 0)) + 1
+        record.update(updatedAt=now(), updatedBy="scenario")
+        record["history"] = (record.get("history") or [])[-19:] + [dict(version=record["version"], at=record["updatedAt"], by="scenario", change=changed,
+                                                                        before={k: before.get(k) for k in changed}, reason=(reason or "")[:500],
+                                                                        via="scenario_baseline")]
+        self.store.put("agent_config", record, "")
+        site = site_of(agent_id) or DEMO_SITE
+        summary = f"Scenario replay restored {display_name(agent_id)} to its shipped settings: " + ", ".join(f"{k}={v}" for k, v in changed.items())
+        self.service.reality.emit_change(site, "agent_config", agent_id, summary[:480],
+                                         extra=dict(agentId=agent_id, version=record["version"], by="scenario", scenarioId=scenario_id, runId=run_id))
+        return record
+
     # ---- activity and overview ------------------------------------------------------------------------------
 
     def note(self, agent_id: str, task: str | None, why: str | None = None, waiting_on: str | None = None) -> None:
@@ -131,24 +157,35 @@ class OpsService:
             issues = self.service.issues.list(site_id, "open")
             obligations = self.service.people.obligations(site_id)
             crew = self.store.all("crew_member", site_id)
-            sites.append(dict(id=site_id, name=prop["name"], thumb=(prop.get("environment") or {}).get("thumbnailUrl"),
-                              issues={s: sum(1 for i in issues if i["severity"] == s) for s in severity},
+            sites.append(dict(id=site_id, name=prop["name"], issues={s: sum(1 for i in issues if i["severity"] == s) for s in severity},
                               compliance={s: sum(1 for o in obligations if o["status"] == s) for s in ("ok", "due_soon", "overdue", "blocked")},
                               crewOnShift=sum(1 for c in crew if c.get("onShift"))))
             changes += self.service.reality.changes(site_id, max(0, self.service.reality.version(site_id) - 10), 10)["changes"]
         changes.sort(key=lambda c: c["at"], reverse=True)
-        agents = []
-        for info in agent_infos(self.service):
-            if not info.get("actor", True):
-                continue
-            entry = dict(id=info["id"], status=info["status"], task=(info.get("currentTask") or "")[:60] or None)
-            if info.get("waitingOn"):
-                entry["waitingOn"] = info["waitingOn"][:50]
-            agents.append(entry)
+        infos = [info for info in agent_infos(self.service) if info.get("actor", True)]
         active = self.service.scenarios.active()
         scenario = dict(id=active["scenarioId"], runId=active["id"], step=active["stepIndex"], of=active["stepCount"]) if active else None
-        return dict(at=now(), sites=sites, agents=agents, activeScenario=scenario,
-                    lastChanges=[dict(site=c["propertyId"][:2], type=c["type"], summary=c["summary"][:72], at=c["at"][11:19]) for c in changes[:10]])
+
+        def build(task_chars: int, summary_chars: int) -> dict:
+            agents = []
+            for info in infos:
+                entry = dict(id=info["id"], status=info["status"])
+                if info.get("currentTask"):
+                    entry["task"] = info["currentTask"][:task_chars]
+                if info.get("waitingOn"):
+                    entry["waitingOn"] = info["waitingOn"][:40]
+                agents.append(entry)
+            return dict(at=now(), sites=sites, agents=agents, activeScenario=scenario,
+                        lastChanges=[dict(site=c["propertyId"][:2], type=c["type"], summary=c["summary"][:summary_chars], at=c["at"][11:16])
+                                     for c in changes[:10]])
+
+        # Kept under ~600 estimated tokens (2400 characters at 4 a token): with three sites and 14 agents the text
+        # fields shrink step by step until it fits.
+        for task_chars, summary_chars in ((56, 64), (48, 56), (40, 48), (32, 40), (24, 32)):
+            overview = build(task_chars, summary_chars)
+            if len(json.dumps(overview, separators=(",", ":"))) <= OVERVIEW_BUDGET_CHARS:
+                break
+        return overview
 
     # ---- findings -----------------------------------------------------------------------------------------
 

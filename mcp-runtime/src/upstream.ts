@@ -65,7 +65,7 @@ export class Backend {
   /** The agent this request acts as (X-Steward-Actor). */
   get actor(): string { return actorStore.getStore() ?? this.config.actor; }
 
-  async json<T extends z.ZodType>(path: string, schema: T, options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<z.output<T>> {
+  async json<T extends z.ZodType>(path: string, schema: T, options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; timeoutMs?: number; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<z.output<T>> {
     let response: Response;
     const actor = this.actor;
     const timeout = AbortSignal.timeout(options.timeoutMs ?? this.config.requestTimeoutMs);
@@ -77,6 +77,7 @@ export class Backend {
           // The acting agent on every call (reads included, so the backend can log operator MCP activity in the transcript).
           'X-Steward-Actor': actor,
           ...(this.config.backendToken ? { Authorization: `Bearer ${this.config.backendToken}` } : {}),
+          ...(options.headers ?? {}),
         },
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       });

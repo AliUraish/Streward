@@ -1,6 +1,6 @@
 {
   "siteId": "fixture",
-  "generatedAt": "2026-10-18T04:27:41Z",
+  "generatedAt": "2026-10-18T04:52:59Z",
   "kind": "valve-inspection",
   "inspectedBy": "fixture-engineer",
   "frameSource": "fixture 256x256",
@@ -13,26 +13,31 @@
     "framesPerClip": 16
   },
   "threshold": {
-    "method": "median + k * MAD",
+    "method": "max(median + k * MAD, (1 + minEffect) * median)",
     "k": 3.0,
     "kUncertain": 2.0,
     "median": 0.000473,
     "mad": 0.000187,
     "madScaled": 0.000278,
-    "madFloor": 0.0001,
-    "madEffective": 0.000278,
-    "value": 0.001307,
-    "uncertainAbove": 0.001029,
+    "madFloor": 0.005,
+    "madEffective": 0.005,
+    "minEffect": 0.05,
+    "statisticalBar": 0.015473,
+    "practicalBar": 0.000497,
+    "value": 0.015473,
+    "uncertainAbove": 0.010473,
     "n": 6,
-    "region": "centre-weighted (gaussian sigma 6 patches)"
+    "region": "centre-weighted (gaussian sigma 6 patches)",
+    "mode": "peer"
   },
-  "scoreDefinition": "position-aligned cosine distance between the clip's V-JEPA 2 token map and the leave-one-out median token map of the site's other valves (centre-weighted mean over 8x16x16 tokens), plus mean distance to the k nearest 'normal' reference clips when vision/reference/ has a normal label. anomalyGrid is that distance per 16x16 patch (row 0 = top of the 256 px centre crop), averaged over time.",
+  "mode": "peer",
+  "scoreDefinition": "peer mode: position-aligned cosine distance between the clip's V-JEPA 2 token map and the leave-one-out median token map of the site's other valves (centre-weighted mean over 8x16x16 tokens), plus mean distance to the k nearest 'normal' reference clips when the reference set has a normal label. anomalyGrid is that distance per 16x16 patch (row 0 = top of the 256 px centre crop), averaged over time.",
   "reference": {
     "used": false,
     "root": "vision/reference",
     "labels": {}
   },
-  "honesty": "TEST RUN with a pixel-statistics baseline, not V-JEPA 2. Status comes from an embedding anomaly score: each valve's V-JEPA 2 clip embedding is compared with the leave-one-out median of the other valves at the same site (plus an optional labelled reference set). It is not a trained defect classifier, it does not certify equipment and it replaces no engineer's sign-off. Frames are rendered from a third-party Gaussian-splat capture; any defect marked synthetic was injected on purpose for the demo.",
+  "honesty": "TEST RUN with a pixel-statistics baseline, not V-JEPA 2. Status comes from an embedding anomaly score: each valve's V-JEPA 2 clip embedding is compared with its own accepted-good baseline capture when one exists (baseline mode), otherwise with the leave-one-out median of the other valves at the same site plus an optional labelled reference set (peer mode). It is not a trained defect classifier, it does not certify equipment and it replaces no engineer's sign-off. Frames are rendered from a third-party Gaussian-splat capture; any defect marked synthetic was injected on purpose for the demo.",
   "synthetic": true,
   "timings": {
     "device": "cpu",
@@ -40,44 +45,45 @@
     "perClip": [
       {
         "assetTag": "FX-01",
-        "seconds": 0.017
+        "seconds": 0.031
       },
       {
         "assetTag": "FX-02",
-        "seconds": 0.015
+        "seconds": 0.03
       },
       {
         "assetTag": "FX-03",
-        "seconds": 0.016
+        "seconds": 0.025
       },
       {
         "assetTag": "FX-04",
-        "seconds": 0.015
+        "seconds": 0.026
       },
       {
         "assetTag": "FX-05",
-        "seconds": 0.016
+        "seconds": 0.024
       },
       {
         "assetTag": "FX-06",
-        "seconds": 0.017
+        "seconds": 0.024
       }
     ],
-    "firstClipSeconds": 0.017,
-    "meanWarmClipSeconds": 0.016
+    "firstClipSeconds": 0.031,
+    "meanWarmClipSeconds": 0.026
   },
   "counts": {
     "fixed": 5,
     "not_fixed": 1,
     "uncertain": 0
   },
+  "pinWarning": null,
   "valves": [
     {
       "assetTag": "FX-01",
       "status": "fixed",
       "score": 0.000187,
-      "threshold": 0.001307,
-      "uncertainAbove": 0.001029,
+      "threshold": 0.015473,
+      "uncertainAbove": 0.010473,
       "model": "pixel-stats-baseline (test only, not a model)",
       "frames": [
         "vision/fixtures/clips/FX-01/f00.jpg",
@@ -97,6 +103,7 @@
         "vision/fixtures/clips/FX-01/f14.jpg",
         "vision/fixtures/clips/FX-01/f15.jpg"
       ],
+      "baseline": null,
       "components": {
         "looPatchDistance": 0.000187,
         "referenceDistance": 0.0,
@@ -399,10 +406,11 @@
         ]
       ],
       "reference": null,
-      "reason": "score 0.0002 <= 0.0010; consistent with peer valves",
+      "reason": "score 0.0002 <= 0.0105; consistent with peer valves",
       "defect": null,
       "synthetic": true,
       "pin": null,
+      "pinSource": null,
       "capturedAt": null,
       "frameSource": "fixture",
       "inspectedBy": "fixture-engineer",
@@ -412,8 +420,8 @@
       "assetTag": "FX-02",
       "status": "fixed",
       "score": 0.000544,
-      "threshold": 0.001307,
-      "uncertainAbove": 0.001029,
+      "threshold": 0.015473,
+      "uncertainAbove": 0.010473,
       "model": "pixel-stats-baseline (test only, not a model)",
       "frames": [
         "vision/fixtures/clips/FX-02/f00.jpg",
@@ -433,6 +441,7 @@
         "vision/fixtures/clips/FX-02/f14.jpg",
         "vision/fixtures/clips/FX-02/f15.jpg"
       ],
+      "baseline": null,
       "components": {
         "looPatchDistance": 0.000544,
         "referenceDistance": 0.0,
@@ -735,10 +744,11 @@
         ]
       ],
       "reference": null,
-      "reason": "score 0.0005 <= 0.0010; consistent with peer valves",
+      "reason": "score 0.0005 <= 0.0105; consistent with peer valves",
       "defect": null,
       "synthetic": true,
       "pin": null,
+      "pinSource": null,
       "capturedAt": null,
       "frameSource": "fixture",
       "inspectedBy": "fixture-engineer",
@@ -748,8 +758,8 @@
       "assetTag": "FX-03",
       "status": "fixed",
       "score": 0.000385,
-      "threshold": 0.001307,
-      "uncertainAbove": 0.001029,
+      "threshold": 0.015473,
+      "uncertainAbove": 0.010473,
       "model": "pixel-stats-baseline (test only, not a model)",
       "frames": [
         "vision/fixtures/clips/FX-03/f00.jpg",
@@ -769,6 +779,7 @@
         "vision/fixtures/clips/FX-03/f14.jpg",
         "vision/fixtures/clips/FX-03/f15.jpg"
       ],
+      "baseline": null,
       "components": {
         "looPatchDistance": 0.000385,
         "referenceDistance": 0.0,
@@ -1071,10 +1082,11 @@
         ]
       ],
       "reference": null,
-      "reason": "score 0.0004 <= 0.0010; consistent with peer valves",
+      "reason": "score 0.0004 <= 0.0105; consistent with peer valves",
       "defect": null,
       "synthetic": true,
       "pin": null,
+      "pinSource": null,
       "capturedAt": null,
       "frameSource": "fixture",
       "inspectedBy": "fixture-engineer",
@@ -1084,8 +1096,8 @@
       "assetTag": "FX-04",
       "status": "fixed",
       "score": 0.000885,
-      "threshold": 0.001307,
-      "uncertainAbove": 0.001029,
+      "threshold": 0.015473,
+      "uncertainAbove": 0.010473,
       "model": "pixel-stats-baseline (test only, not a model)",
       "frames": [
         "vision/fixtures/clips/FX-04/f00.jpg",
@@ -1105,6 +1117,7 @@
         "vision/fixtures/clips/FX-04/f14.jpg",
         "vision/fixtures/clips/FX-04/f15.jpg"
       ],
+      "baseline": null,
       "components": {
         "looPatchDistance": 0.000885,
         "referenceDistance": 0.0,
@@ -1407,10 +1420,11 @@
         ]
       ],
       "reference": null,
-      "reason": "score 0.0009 <= 0.0010; consistent with peer valves",
+      "reason": "score 0.0009 <= 0.0105; consistent with peer valves",
       "defect": null,
       "synthetic": true,
       "pin": null,
+      "pinSource": null,
       "capturedAt": null,
       "frameSource": "fixture",
       "inspectedBy": "fixture-engineer",
@@ -1420,8 +1434,8 @@
       "assetTag": "FX-05",
       "status": "fixed",
       "score": 0.000403,
-      "threshold": 0.001307,
-      "uncertainAbove": 0.001029,
+      "threshold": 0.015473,
+      "uncertainAbove": 0.010473,
       "model": "pixel-stats-baseline (test only, not a model)",
       "frames": [
         "vision/fixtures/clips/FX-05/f00.jpg",
@@ -1441,6 +1455,7 @@
         "vision/fixtures/clips/FX-05/f14.jpg",
         "vision/fixtures/clips/FX-05/f15.jpg"
       ],
+      "baseline": null,
       "components": {
         "looPatchDistance": 0.000403,
         "referenceDistance": 0.0,
@@ -1743,10 +1758,11 @@
         ]
       ],
       "reference": null,
-      "reason": "score 0.0004 <= 0.0010; consistent with peer valves",
+      "reason": "score 0.0004 <= 0.0105; consistent with peer valves",
       "defect": null,
       "synthetic": true,
       "pin": null,
+      "pinSource": null,
       "capturedAt": null,
       "frameSource": "fixture",
       "inspectedBy": "fixture-engineer",
@@ -1756,8 +1772,8 @@
       "assetTag": "FX-06",
       "status": "not_fixed",
       "score": 0.033204,
-      "threshold": 0.001307,
-      "uncertainAbove": 0.001029,
+      "threshold": 0.015473,
+      "uncertainAbove": 0.010473,
       "model": "pixel-stats-baseline (test only, not a model)",
       "frames": [
         "vision/fixtures/clips/FX-06/f00.jpg",
@@ -1777,6 +1793,7 @@
         "vision/fixtures/clips/FX-06/f14.jpg",
         "vision/fixtures/clips/FX-06/f15.jpg"
       ],
+      "baseline": null,
       "components": {
         "looPatchDistance": 0.033204,
         "referenceDistance": 0.0,
@@ -2079,10 +2096,11 @@
         ]
       ],
       "reference": null,
-      "reason": "score 0.0332 > threshold 0.0013 (median 0.0005 + 3 MAD)",
+      "reason": "score 0.0332 > threshold 0.0155 (median 0.0005)",
       "defect": null,
       "synthetic": true,
       "pin": null,
+      "pinSource": null,
       "capturedAt": null,
       "frameSource": "fixture",
       "inspectedBy": "fixture-engineer",

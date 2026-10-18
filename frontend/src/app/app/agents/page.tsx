@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import AgentMapPage from "@/components/dash3/agent-map";
 
-/* The phase-2 section route; the dashboard is one page now. */
-export default function Page() { redirect("/app#agents"); }
+export const metadata: Metadata = { title: "Agents map" };
+export default function Page() { return <AgentMapPage />; }

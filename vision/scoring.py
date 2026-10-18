@@ -1,5 +1,11 @@
 """Anomaly scoring and thresholding for valve clip embeddings (pure numpy, no model).
 
+Two modes. PEER mode (no baselines) compares each valve with the other valves at its site;
+BASELINE mode (vision/reference/<site>/fixed/<tag>/ holds an accepted-good capture of every valve)
+compares each valve with its own baseline, which is what "fixed / not fixed" means after a repair.
+On the real Myer scan the location-to-location peer spread (~0.44) swamps a synthetic leak (~0.07
+from its own clean render), so peer mode only works when the valves' views look alike.
+
 Embedding of a clip = V-JEPA 2 encoder token map G of shape (T', H', W', D) = (8, 16, 16, 1024)
 for 16 frames at 256x256, each token L2-normalised. Every capture is an orbit centred on the pin,
 so token (t, y, x) of one valve and token (t, y, x) of another look at the same place relative
@@ -13,13 +19,19 @@ ref_i      = mean of the k nearest (same distance) 'normal' reference clips, if 
              has a normal label (fixed/ok/normal/good/healthy); 0 otherwise.
 score_i    = loo_i + ref_i
 
-threshold      = median(scores) + K * MAD_eff          (K = 3.0)
-uncertainAbove = median(scores) + K_UNCERTAIN * MAD_eff (K_UNCERTAIN = 2.0)
-MAD_eff        = max(1.4826 * MAD(scores), REL_FLOOR * median(scores), ABS_FLOOR)
+threshold      = max(median + K * MAD_eff,              statistical bar (Hampel identifier, K = 3.0)
+                     (1 + REL_EFFECT) * median)          practical bar: at least 5 % above the median
+uncertainAbove = min(median + K_UNCERTAIN * MAD_eff, threshold)   (K_UNCERTAIN = 2.0)
+MAD_eff        = max(1.4826 * MAD(scores), ABS_FLOOR)   (ABS_FLOOR = 0.005)
 
 1.4826 * MAD estimates a standard deviation under normality, so K = 3 is the robust analogue of
-"three sigma above the site's typical valve". The floors stop a site whose valves are all nearly
-identical (MAD ~ 0) from flagging rendering jitter.
+"three sigma above the site's typical valve". With five valves the MAD can collapse towards 0 when
+three scores coincide; ABS_FLOOR (about 1 % of the peer distance seen on the real Myer scan) keeps
+that from flagging noise, and the practical bar stops a statistically clear but tiny difference
+from reading as not_fixed (it lands in uncertain instead). An earlier rule floored MAD at 10 % of
+the median; on the real scan that floor (0.044) was ten times the actual spread (MAD 0.003) and hid
+the injected leak, and a floor scaled by the score level, not by its spread, is the wrong noise
+model, so it was replaced.
 
 status: score > threshold -> not_fixed; score > uncertainAbove -> uncertain; else fixed.
 "fixed" only means "looks like its peers": no evidence of a defect, not proof of soundness.
@@ -34,8 +46,8 @@ import numpy as np
 K_DEFAULT = 3.0
 K_UNCERTAIN_DEFAULT = 2.0
 MAD_SCALE = 1.4826
-REL_FLOOR = 0.10
-ABS_FLOOR = 1e-4
+ABS_FLOOR = 0.005
+REL_EFFECT = 0.05
 KNN_K = 3
 SIGMA_PATCHES = 6.0
 NORMAL_LABELS = {"fixed", "ok", "normal", "good", "healthy"}
@@ -91,16 +103,19 @@ def knn_reference(maps: np.ndarray, refs: dict[str, np.ndarray], w: np.ndarray, 
 
 
 def robust_threshold(scores, k: float = K_DEFAULT, k_uncertain: float = K_UNCERTAIN_DEFAULT,
-                     rel_floor: float = REL_FLOOR, abs_floor: float = ABS_FLOOR) -> dict:
+                     abs_floor: float = ABS_FLOOR, rel_effect: float = REL_EFFECT) -> dict:
     s = np.asarray(scores, dtype=np.float64)
     med = float(np.median(s))
     mad = float(np.median(np.abs(s - med)))
-    floor = max(rel_floor * med, abs_floor)
-    mad_eff = max(MAD_SCALE * mad, floor)
+    mad_eff = max(MAD_SCALE * mad, abs_floor)
+    statistical = med + k * mad_eff
+    practical = (1.0 + rel_effect) * med
+    value = max(statistical, practical)
     return {
-        "method": "median + k * MAD", "k": k, "kUncertain": k_uncertain,
-        "median": med, "mad": mad, "madScaled": MAD_SCALE * mad, "madFloor": floor, "madEffective": mad_eff,
-        "value": med + k * mad_eff, "uncertainAbove": med + k_uncertain * mad_eff, "n": int(s.size),
+        "method": "max(median + k * MAD, (1 + minEffect) * median)", "k": k, "kUncertain": k_uncertain,
+        "median": med, "mad": mad, "madScaled": MAD_SCALE * mad, "madFloor": abs_floor, "madEffective": mad_eff,
+        "minEffect": rel_effect, "statisticalBar": statistical, "practicalBar": practical,
+        "value": value, "uncertainAbove": min(med + k_uncertain * mad_eff, value), "n": int(s.size),
     }
 
 
@@ -124,8 +139,14 @@ class Scored:
 
 
 def score_site(maps: np.ndarray, refs: dict[str, np.ndarray] | None = None, k: float = K_DEFAULT,
-               k_uncertain: float = K_UNCERTAIN_DEFAULT, region: str = "centre") -> tuple[list[Scored], dict]:
-    """maps: (N, T, H, W, D) unit token maps for one site. Returns (per-clip results, threshold)."""
+               k_uncertain: float = K_UNCERTAIN_DEFAULT, region: str = "centre",
+               baselines: np.ndarray | None = None) -> tuple[list[Scored], dict]:
+    """maps: (N, T, H, W, D) unit token maps for one site. Returns (per-clip results, threshold).
+
+    Peer mode (default): score = leave-one-out peer distance (+ k-NN distance to 'normal' references).
+    Baseline mode (baselines given, aligned with maps): score = distance from each valve's clip to its
+    OWN accepted-good baseline clip, i.e. "has this valve changed since it was last known good".
+    """
     maps = np.asarray(maps, dtype=np.float32)
     n, _, h, wd, _ = maps.shape
     w = weight_map(h, wd, region)
@@ -138,24 +159,37 @@ def score_site(maps: np.ndarray, refs: dict[str, np.ndarray] | None = None, k: f
         loo, grids = np.zeros(n), [np.zeros((h, wd)) for _ in range(n)]
     knn = knn_reference(maps, refs, w) if refs else [None] * n
     ref_term = np.zeros(n)
-    if normal:
-        ref_term = np.array([min(r["distanceByLabel"].values()) for r in knn_reference(maps, normal, w)])
-    scores = loo + ref_term
+    mode = "peer"
+    if baselines is not None:
+        mode = "baseline"
+        pairs = [patch_distance(maps[i], np.asarray(baselines[i], dtype=np.float32), w) for i in range(n)]
+        ref_term = np.array([d for d, _ in pairs])
+        grids = [g for _, g in pairs]
+        scores = ref_term.copy()
+    else:
+        if normal:
+            ref_term = np.array([min(r["distanceByLabel"].values()) for r in knn_reference(maps, normal, w)])
+        scores = loo + ref_term
     thr = robust_threshold(scores, k=k, k_uncertain=k_uncertain)
     thr["region"] = region if region == "full" else f"centre-weighted (gaussian sigma {SIGMA_PATCHES:g} patches)"
+    thr["mode"] = mode
+    peer_word = "its own baseline" if mode == "baseline" else "peer valves"
 
     results = []
     for i in range(n):
         s = float(scores[i])
-        if n < MIN_PEERS and not refs:
+        if n < MIN_PEERS and not refs and mode == "peer":
             status, reason = "uncertain", f"only {n} valve clip(s); a peer comparison needs at least {MIN_PEERS}"
         else:
             status = classify(s, thr)
             reason = {
-                "not_fixed": f"score {s:.4f} > threshold {thr['value']:.4f} (median {thr['median']:.4f} + {k:g} MAD)",
+                "not_fixed": f"score {s:.4f} > threshold {thr['value']:.4f} (median {thr['median']:.4f}"
+                             + (f"; {(s / thr['median'] - 1) * 100:.0f} % above it)" if thr["median"] >= ABS_FLOOR else ")"),
                 "uncertain": f"score {s:.4f} between {thr['uncertainAbove']:.4f} and threshold {thr['value']:.4f}",
-                "fixed": f"score {s:.4f} <= {thr['uncertainAbove']:.4f}; consistent with peer valves",
+                "fixed": f"score {s:.4f} <= {thr['uncertainAbove']:.4f}; consistent with {peer_word}",
             }[status]
+            if mode == "baseline":
+                reason = "change since the baseline capture: " + reason
             near = knn[i]["nearestLabel"] if knn[i] else None
             if near and near.lower() not in NORMAL_LABELS and status == "fixed":
                 status, reason = "uncertain", reason + f"; but the nearest labelled reference is '{near}'"

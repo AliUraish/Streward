@@ -1,8 +1,9 @@
 # vision/ — valve inspection pipeline
 
 Standalone Python package (own venv, never imported by the backend) that gets a 16-frame orbit
-around every pinned valve of a site, embeds each clip with **V-JEPA 2**, flags valves that look
-unlike their peers, optionally asks Claude why, and posts the results to the backend. The site
+around every pinned valve of a site, embeds each clip with **V-JEPA 2**, flags valves that changed
+since their accepted-good baseline (or, without baselines, look unlike their peers), optionally asks
+Claude why, and posts the results to the backend. The site
 engineer agent runs inspections (REALITY-CONTRACT-4 §1): `myer-engineer` at `myer-plant`,
 `bristol-engineer` at `bristol-pumps`. Results carry `inspectedBy`, and the engineer is the
 `X-Steward-Actor` for the agent eye and for the results POST.
@@ -20,10 +21,12 @@ run.sh     ──  all four in order
 ## Honesty note
 
 The status is an **embedding anomaly score, not a trained defect classifier**. Each valve's clip is
-compared with the leave-one-out median of the *other valves at the same site* (plus an optional
-labelled reference set). `not_fixed` means "differs from its peers by more than the site's robust
-spread"; `fixed` means only "looks like its peers", not that the valve is sound. It certifies
-nothing and replaces no engineer's sign-off. Frames are rendered from a third-party Gaussian-splat
+compared with its own accepted-good baseline capture when every valve has one (baseline mode), or
+else with the leave-one-out median of the *other valves at the same site* plus an optional labelled
+reference set (peer mode). `not_fixed` means "changed since its baseline / differs from its peers
+by more than the site's robust spread"; `fixed` means only "unchanged / looks like its peers", not
+that the valve is sound. While pins are `estimated` the orbit may not even show the valve
+(`pinWarning` in the results says so). It certifies nothing and replaces no engineer's sign-off. Frames are rendered from a third-party Gaussian-splat
 capture; any defect injected with `--defect` is synthetic and recorded as `synthetic: true` in
 `meta.json`, the manifest and the results file. The same wording ships in every results file
 (`honesty`).
@@ -54,28 +57,51 @@ The model weights (1.3 GB, MIT licence) download from Hugging Face on first use 
 
 ## Score and threshold (`scoring.py`)
 
-The capture route orbits the camera around the pin, so patch (t, y, x) of one valve and patch
-(t, y, x) of another look at the same place relative to their pins. The score uses that:
+The capture route orbits the camera around the pin, so patch (t, y, x) of one clip and patch
+(t, y, x) of another look at the same place relative to their pins. Every score uses that:
 
-- **Embedding:** the (8, 16, 16, 1024) token map, each token L2-normalised.
-- **loo:** for each valve, the cosine distance per token to the element-wise median token map of
-  the *other* valves (leave-one-out), averaged with a centred Gaussian weight (σ = 6 patches) so the
-  area around the pin counts most (`--region full` weighs every patch equally).
-- **reference (optional):** `vision/reference/<label>/<clip>/f00..f15.jpg`. If a normal label
-  exists (`fixed`, `ok`, `normal`, `good`, `healthy`), the mean distance to the k = 3 nearest normal
-  clips is added to the score. Any label also votes (kNN); a valve that scores `fixed` but whose
-  nearest reference clips carry a defect label becomes `uncertain`.
-- **score = loo + reference term.**
-- **threshold = median(scores) + k·MAD**, with MAD scaled by 1.4826 (consistent σ estimate) and
-  floored at max(0.10 × median, 1e-4) so near-identical sites do not flag rendering jitter.
-  **k = 3.0** (robust "three sigma") for `not_fixed`; **k = 2.0** for `uncertain`. Override with
-  `--k` / `--k-uncertain`.
-- With fewer than 3 valve clips and no reference set every valve is `uncertain`.
-- Each valve also gets `anomalyGrid` (16 × 16 time-averaged patch distance; row 0 = top of the
-  256 px centre crop the processor takes) and `anomalyPeak` (where it differs most), plus the
-  mean-pooled embedding distance as a diagnostic (`components.pooledLooDistance`, not used for
-  status: on flat synthetic scenes it moved with sub-visible colour shifts, while the
-  position-aligned token score tracked the actual defect).
+- **Embedding:** the (8, 16, 16, 1024) token map, each token L2-normalised; distances are per-token
+  cosine distances averaged with a centred Gaussian weight (σ = 6 patches) so the area around the
+  pin counts most (`--region full` weighs every patch equally).
+
+Two modes (`--mode auto` picks baseline when it can):
+
+- **Peer mode** (the brief's formula): score = distance to the element-wise median token map of
+  the *other* valves at the site (leave-one-out) + mean distance to the k = 3 nearest clips of a
+  normal label (`fixed`, `ok`, `normal`, `good`, `healthy`) in the optional reference set. Any
+  reference label also votes (kNN); a valve that scores `fixed` but whose nearest reference clips
+  carry a defect label becomes `uncertain`. It answers "does this valve look unlike its peers?",
+  which is only meaningful when the valves' views look alike.
+- **Baseline mode:** when `vision/reference/<site>/fixed/<tag>/` holds an accepted-good capture of
+  **every** valve (same frame source and size), score = distance from each valve's clip to its own
+  baseline: "has this valve changed since it was last known good?". Capture the baselines with
+  `capture.py <site> --out-root vision/reference/<site>/fixed` (no `--defect`). The peer distance is
+  still reported (`components.looPatchDistance`).
+
+References live in `vision/reference/<site>/<label>/<clip>/` (used when the folder exists) or in a
+shared `vision/reference/<label>/<clip>/`.
+
+**Threshold** over the site's scores (both modes):
+
+- `MAD_eff = max(1.4826 × MAD, 0.005)`; 1.4826 × MAD is the consistent σ estimate, the 0.005
+  absolute floor (≈ 1 % of the real-scan peer distance) stops a collapsed MAD (three of five
+  scores equal) from flagging noise.
+- `threshold = max(median + 3 × MAD_eff, 1.05 × median)`: the statistical bar (Hampel identifier,
+  **k = 3**, robust "three sigma") and a practical bar (at least 5 % above the median).
+- `uncertainAbove = min(median + 2 × MAD_eff, threshold)` (**k = 2**).
+- status: score > threshold → `not_fixed`; score > uncertainAbove → `uncertain`; else `fixed`.
+  `--k` / `--k-uncertain` override k. With fewer than 3 clips (peer mode, no references) every
+  valve is `uncertain`.
+- The rule was revised once, after the first real-scan run: the earlier MAD floor of 10 % of the
+  median (0.044 there) was ten times the real spread (MAD 0.003), and a floor scaled by the score's
+  level rather than its spread is the wrong noise model. Treat the thresholds as uncalibrated until
+  there is a labelled reference set.
+
+Each valve also gets `anomalyGrid` (16 × 16 time-averaged patch distance; row 0 = top of the
+256 px centre crop the processor takes) and `anomalyPeak` (where it differs most), plus the
+mean-pooled embedding distance as a diagnostic (`components.pooledLooDistance`, not used for
+status: on flat synthetic scenes it moved with sub-visible colour shifts, while the
+position-aligned token score tracked the actual defect).
 
 **Label strip.** The capture route stamps `synthetic defect: <kind>` in a 19 px box at the bottom
 of defected frames. Left in, the model would score the label and Claude would read the answer, so
@@ -88,22 +114,24 @@ which defect was injected.
 ```jsonc
 {
   "siteId": "myer-plant", "kind": "valve-inspection", "generatedAt": "...",
-  "inspectedBy": "myer-engineer", "frameSource": "capture-route 256x256",
+  "inspectedBy": "myer-engineer", "frameSource": "capture-route 256x256", "mode": "baseline",
   "model": {"id": "facebook/vjepa2-vitl-fpc64-256", "revision": "b3c1679b...", "device": "mps", ...},
-  "threshold": {"method": "median + k * MAD", "k": 3, "kUncertain": 2, "median": ..., "mad": ...,
-                "madEffective": ..., "value": ..., "uncertainAbove": ..., "region": "..."},
+  "threshold": {"method": "max(median + k * MAD, (1 + minEffect) * median)", "k": 3, "kUncertain": 2,
+                "median": ..., "mad": ..., "madEffective": ..., "minEffect": 0.05, "statisticalBar": ...,
+                "practicalBar": ..., "value": ..., "uncertainAbove": ..., "region": "...", "mode": "baseline"},
   "honesty": "Status comes from an embedding anomaly score ... not a trained defect classifier ...",
-  "synthetic": true, "counts": {"fixed": 4, "not_fixed": 1, "uncertain": 0},
+  "synthetic": true, "counts": {"fixed": 4, "not_fixed": 1, "uncertain": 0}, "pinWarning": "...",
   "timings": {"device": "mps", "modelLoadSeconds": 2.1, "perClip": [...], "meanWarmClipSeconds": 0.8},
   "valves": [{
-    "assetTag": "V-503", "status": "not_fixed", "score": 0.2264, "threshold": 0.1056,
-    "uncertainAbove": 0.0963, "model": "facebook/vjepa2-vitl-fpc64-256",
+    "assetTag": "V-503", "status": "not_fixed", "score": 0.0676, "threshold": 0.015,
+    "uncertainAbove": 0.01, "model": "facebook/vjepa2-vitl-fpc64-256",
+    "baseline": "vision/reference/myer-plant/fixed/V-503",
     "frames": ["vision/frames/myer-plant/V-503/f00.jpg", "..."],
     "components": {"looPatchDistance": ..., "referenceDistance": 0, "pooledLooDistance": ...},
-    "anomalyPeak": {"row": 13, "col": 11, "where": "bottom-right", "value": ...},
+    "anomalyPeak": {"row": 8, "col": 7, "where": "middle-centre", "value": ...},
     "anomalyGrid": [[...16 x 16...]], "reference": null, "reason": "score ... > threshold ...",
     "defect": "leak", "synthetic": true, "pin": {"x": ..., "y": ..., "z": ...},
-    "frameSource": "capture-route", "inspectedBy": "myer-engineer",
+    "frameSource": "capture-route", "inspectedBy": "myer-engineer", "pinSource": "estimated",
     "explanation": null, "explanationStatus": "dry_run",
     "explanationRequest": "vision/results/_requests/myer-plant__V-503.json"
   }]
@@ -130,6 +158,9 @@ if neither has it (the root `.env` had no `ANTHROPIC_API_KEY` on 2026-10-17).
 ## Commands
 
 ```bash
+# one-off: accepted-good baselines for every valve (enables baseline mode for later runs)
+vision/.venv/bin/python vision/capture.py myer-plant --out-root vision/reference/myer-plant/fixed
+
 # full pipeline (frontend on 3000 serving /capture, backend on 8001 with 3-D pins)
 vision/run.sh myer-plant --defect V-503=leak                  # explain stays a dry run
 vision/run.sh myer-plant --defect V-503=leak --source eye     # frames from myer-engineer's agent eye
@@ -137,7 +168,7 @@ vision/run.sh myer-plant --defect V-503=leak --live-explain   # paid: sends flag
 
 # steps
 vision/.venv/bin/python vision/capture.py myer-plant --defect V-503=leak [--source capture|eye] [--renderer auto|gpu|swiftshader] [--base http://127.0.0.1:3000] [--backend http://127.0.0.1:8001]
-vision/.venv/bin/python vision/jepa.py myer-plant [--k 3 --k-uncertain 2 --device auto --region centre] [--inspected-by myer-engineer]
+vision/.venv/bin/python vision/jepa.py myer-plant [--mode auto|peer|baseline] [--k 3 --k-uncertain 2 --device auto --region centre] [--inspected-by myer-engineer]
 vision/.venv/bin/python vision/explain.py myer-plant [--live]
 vision/.venv/bin/python vision/post.py myer-plant
 
@@ -201,13 +232,14 @@ First download of the weights: 80 s (1.30 GB). MPS and CPU embeddings are identi
 distance 0.0), and repeated runs are deterministic.
 
 **Fixture (`fixtures/make_fixture.py`, 6 numpy clips: five solid-colour peers, one full-noise
-outlier FX-06):** with V-JEPA 2 on MPS, FX-06 scores 0.455 against threshold 0.365 (median 0.281
-+ 3 × MAD_eff 0.028) → `not_fixed`; FX-01..05 score 0.273–0.291 → `fixed`. With the model-free
-pixel baseline the same split holds (0.033 vs threshold 0.0013). Results:
-`results/fixture.json`, `results/fixture.pixel.json`.
+outlier FX-06), peer mode:** with V-JEPA 2 on MPS, FX-06 scores 0.455 against threshold 0.303
+(median 0.281 + 3 × MAD_eff 0.0073) → `not_fixed`; FX-01..05 score 0.274–0.291 → `fixed`. With
+the model-free pixel baseline the same split holds (0.033 vs threshold 0.016). Results:
+`results/fixture.json`, `results/fixture.pixel.json`. Warm clip time is 0.8 s on an idle GPU and
+1.1–1.4 s while Chrome shares it.
 
-**Plumbing tests (`tests/`, 21 tests, ~15 s; ~30 s with `VISION_TEST_MODEL=1`):** scoring and
-threshold rules; fixture → jepa → explain (dry run writes the request, nothing sent) → explain
+**Plumbing tests (`tests/`, 24 tests, ~25 s; ~45 s with `VISION_TEST_MODEL=1`):** scoring and
+threshold rules (including the real-scan numbers below); baseline mode; fixture → jepa → explain (dry run writes the request, nothing sent) → explain
 `--live` against a local mock of the Messages API (`ANTHROPIC_BASE_URL`, fake key, no network) →
 POST with `X-Steward-Actor`; 2-D pins fail clearly; mixed frame sources are refused; real headless
 Chrome over CDP against a mock `/capture` page (5 valves × 16 frames, one synthetic leak);
@@ -226,4 +258,30 @@ SwiftShader works for small scenes (the mock page renders in ≈ 1 s per valve) 
 scan, so `--renderer auto` (default) uses the GPU and keeps SwiftShader as the fallback when the
 GPU gives no WebGL context, matching REALITY-CONTRACT-4 §2.
 
-E2E_PLACEHOLDER
+**End-to-end on the real Myer scan (2026-10-17, 21:40 PDT).** Command:
+
+```bash
+vision/run.sh myer-plant --source eye --defect V-503=leak --assets-file <estimated pins>
+```
+
+- *capture* (151 s for the whole pipeline): the eye endpoint on 8001 answered 404, so the run
+  fell back to `/capture`; Chrome 155 headless, WebGL `ANGLE Metal Renderer: Apple M4`; V-501
+  26.1 s, V-502 22.4 s, V-503 (synthetic leak, echoed by the route) 32.1 s, V-504 23.8 s, V-505
+  32.9 s. The running backend on 8001 still serves 2-D pins, so the pins came from
+  `--assets-file`: the backend's own estimated pins (`registers.register_for`), which the current
+  backend code's `/scene` returns verbatim (checked in-process against a scratch data dir).
+- *peer mode:* V-503 scores highest (0.479; others 0.427–0.441). With the first threshold rule it
+  stayed `fixed` (threshold 0.569); with the revised rule it is `not_fixed` (threshold 0.460). **A
+  control re-capture of V-503 without the leak scores 0.477 and is flagged too**: on estimated pins
+  the peer flag comes from V-503's location looking different, not from the leak (the leak moves V-503
+  only 0.068 from its own clean render, the location spread is ~0.44).
+- *baseline mode* (clean baselines of all five valves in `reference/myer-plant/fixed/`, 26–39 s
+  each): re-renders are bit-identical (score 0.0000 for the four untouched valves); V-503 with the
+  leak scores **0.0676 → `not_fixed`** (threshold 0.015, peak middle-centre where the edit is); the
+  clean control V-503 scores 0.0000 → `fixed`. This is the result in `results/myer-plant.json`
+  (`mode: baseline`, `inspectedBy: myer-engineer`, `synthetic: true`, `pinWarning` set).
+- *explain:* dry run; `results/_requests/myer-plant__V-503.json` (4 masked frames, 88 KB body).
+  Nothing was sent.
+- *post:* 8001 answered 404 (the running backend predates the ingest route; exit 3, results kept).
+  The current backend code, run in-process with a scratch data dir, accepted the same file:
+  201, 5 findings, 1 issue `iss-vision-my-v-503`, only V-503 marked synthetic.

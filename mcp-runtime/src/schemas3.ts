@@ -36,7 +36,9 @@ export const SceneAssetSchema = z.object({
   severity: SeveritySchema, issues: z.array(SceneIssueSchema),
 });
 export const SceneSchema = z.object({
-  siteId: z.string(), name: z.string(), splatId: z.string(), gaussians: z.string(), sogUrl: z.string(), credit: CreditSchema,
+  siteId: z.string(), name: z.string(), splatId: z.string(), gaussians: z.string(), sogUrl: z.string(),
+  /** sog: one SOG meta.json; lod: a streamed level-of-detail octree (lod-meta.json), chunks load as the camera moves. */
+  scanFormat: z.enum(['sog', 'lod']), credit: CreditSchema,
   environment: Rec.nullable(), cameraPresets: z.array(CameraPresetSchema), assets: z.array(SceneAssetSchema),
   counts: z.object({ assets: z.number(), pinned: z.number(), estimated: z.number(), openIssues: z.number() }), nextStep: z.string(),
 });
@@ -112,8 +114,11 @@ export const DocumentOutSchema = z.object({
 });
 export const NoticeOutSchema = z.looseObject({ id: z.string(), to: z.string().nullable().optional(), channel: z.string().nullable().optional(), sentAt: z.string().nullable().optional(), dryRun: z.boolean().nullable().optional() });
 
-/** Contract 3 §5 plus contract 4 §7 (x-maintenance: the two factories share an examiner visit). */
-export const SCENARIO_IDS = ['my-overpressure', 'my-extinguisher', 'br-sump', 'br-vessel-cert', 'ops-counsel-tokens', 'ops-injection', 'x-maintenance'] as const;
+/**
+ * Contract 3 §5, contract 4 §7 (x-maintenance: the two factories share an examiner visit) and contract 5 §5 (Tomioka:
+ * tm-humidity, tm-alteration-permit; x-heritage: Tomioka and Bristol share heritage-safe sensor installation).
+ */
+export const SCENARIO_IDS = ['my-overpressure', 'my-extinguisher', 'br-sump', 'br-vessel-cert', 'ops-counsel-tokens', 'ops-injection', 'x-maintenance', 'tm-humidity', 'tm-alteration-permit', 'x-heritage'] as const;
 export const ScenarioOutSchema = z.looseObject({ id: z.string(), siteId: z.string().nullable(), title: z.string(), summary: z.string(), owners: z.array(z.string()), synthetic: z.boolean().nullable() });
 export const ScenarioRunOutSchema = z.looseObject({ id: z.string(), scenarioId: z.string(), siteId: z.string().nullable(), state: z.string(), step: z.number().nullable(), steps: z.number().nullable(), startedAt: z.string().nullable() });
 

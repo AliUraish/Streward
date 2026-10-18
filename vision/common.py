@@ -35,8 +35,9 @@ def engineer_for(site: str) -> str:
 
 HONESTY_NOTE = (
     "Status comes from an embedding anomaly score: each valve's V-JEPA 2 clip embedding is compared "
-    "with the leave-one-out median of the other valves at the same site (plus an optional labelled "
-    "reference set). It is not a trained defect classifier, it does not certify equipment and it "
+    "with its own accepted-good baseline capture when one exists (baseline mode), otherwise with the "
+    "leave-one-out median of the other valves at the same site plus an optional labelled reference set "
+    "(peer mode). It is not a trained defect classifier, it does not certify equipment and it "
     "replaces no engineer's sign-off. Frames are rendered from a third-party Gaussian-splat capture; "
     "any defect marked synthetic was injected on purpose for the demo."
 )

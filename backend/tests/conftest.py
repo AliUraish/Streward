@@ -9,7 +9,7 @@ import os
 import pytest
 
 _PREFIXES = ("INKBOX_", "SUPABASE_", "STRIPE_", "INSFORGE_", "SUPERMEMORY_", "STEWARD_", "NEXT_PUBLIC_", "ARMATURE_",
-             "ANALYTICS_INGEST_", "AI_GATEWAY_", "PHY_")
+             "ANALYTICS_INGEST_", "AI_GATEWAY_", "PHY_", "ANTHROPIC_")
 _KEEP = {"STEWARD_DATA_DIR"}
 
 

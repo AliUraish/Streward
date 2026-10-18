@@ -21,10 +21,10 @@ import httpx
 from .env import env
 from .errors import RealityError
 from .mirror import Mirror
-from .providers import InkboxAdapter, ProviderNotConfigured
+from .providers import InkboxAdapter, ProviderNotConfigured, external_messages_allowed
 from .signing import VERIFIER_VERSION, Signer, verify as verify_signature
-from .sites import DEMO_SITE, SITE2, SITE_BY_PREFIX
-from .specs import DEFAULT_FOOTPRINT_RADIUS_M, FOOTPRINT_RADIUS_M, SPECS, spec_for, spec_table, ttl_for_class
+from .sites import DEMO_SITE, SITE2, SITE_BY_ID, SITE_BY_PREFIX
+from .specs import DEFAULT_FOOTPRINT_RADIUS_M, FOOTPRINT_RADIUS_M, SPECS, spec_for, spec_kind, spec_table, specs_of, ttl_for_class
 from .store import now, uid
 from .verify import Observation, REFERENCE_RE, TAG_RE, iso, parse_time, relative_position, verify_observation
 
@@ -68,6 +68,22 @@ def simulated_temperature(tag: str, moment: datetime | None = None) -> float:
     minutes = int(moment.timestamp() // 60)
     phase = int(hashlib.sha256(tag.encode()).hexdigest()[:4], 16) % 360
     return round(21.0 + 1.5 * math.sin(math.radians(phase) + minutes * 2 * math.pi / SENSOR_PERIOD_SECONDS * 60), 1)
+
+
+def simulated_reading(tag: str, attribute: str, moment: datetime | None = None) -> float:
+    """Deterministic drift for the simulated sensor feed: temperature around 21 °C (as before), relative humidity
+    around 56 % (inside Tomioka's 40-65 % preservation band) and ground acceleration around 0.6 gal."""
+    if attribute == "temperature_c":
+        return simulated_temperature(tag, moment)
+    moment = moment or utcnow()
+    minutes = int(moment.timestamp() // 60)
+    phase = int(hashlib.sha256(f"{tag}:{attribute}".encode()).hexdigest()[:4], 16) % 360
+    wave = math.sin(math.radians(phase) + minutes * 2 * math.pi / SENSOR_PERIOD_SECONDS * 60)
+    if attribute == "humidity_pct":
+        return round(56.0 + 3.0 * wave, 1)
+    if attribute == "seismic_gal":
+        return round(0.6 + 0.4 * wave, 2)
+    return round(1.0 + 0.5 * wave, 2)
 
 
 def identity_serial(property_id: str, tag: str) -> str:
@@ -147,10 +163,15 @@ class RealityService:
                 self.store.event(site, "atlas", "listener.failed", f"Listener failed on {event}", type(error).__name__)
 
     def emit_change(self, property_id: str, change_type: str, ref_id: str, summary: str, asset_tag: str | None = None,
-                    work_item: dict | None = None, simulated: bool = False, extra: dict | None = None) -> dict:
+                    work_item: dict | None = None, simulated: bool = False, extra: dict | None = None, fields: dict | None = None) -> dict:
+        """`extra` goes to the change listeners (waits, the live HUD); `fields` are also stored on the Change itself
+        (Tool Forge Changes carry toolId and status for the MCP and the dashboard)."""
         version = self.next_version(property_id)
         change = dict(id=f"{property_id}:{version}", version=version, type=change_type, propertyId=property_id,
                       refId=ref_id, summary=summary[:500], at=now())
+        for key, value in (fields or {}).items():
+            if key not in change and value is not None:
+                change[key] = value
         if asset_tag:
             change["assetTag"] = asset_tag  # optional in the contract; clients reject an explicit null
         if simulated:
@@ -293,11 +314,13 @@ class RealityService:
     def seed_facts(self):
         """Seed demo facts once per seed version, writing only what is missing: every serial-kind asset on every site gets an
         identity fact, and the demo site gets the contract's demo observations (cert, valve position, sensors, conditions)."""
-        if self.store.meta("reality_seed_version") == "3":
+        # Version 4 (contract 5): re-run once so a site added to an existing database gets its identity facts; the pass
+        # only writes what is missing, so existing sites are untouched.
+        if self.store.meta("reality_seed_version") == "4":
             self.refresh_demo_seeds()
             return
         with self.lock:
-            if self.store.meta("reality_seed_version") == "3":
+            if self.store.meta("reality_seed_version") == "4":
                 return
             moment = utcnow()
             for prop in self.store.all("property"):
@@ -305,7 +328,7 @@ class RealityService:
                 components = {c["tag"]: c for c in self.components(property_id)}
                 identified = {f["assetTag"] for f in self.store.all("fact", property_id) if f["attribute"] == "serial"}
                 for component in components.values():
-                    if "serial" in SPECS.get(component["kind"], {}) and component["tag"] not in identified:
+                    if "serial" in specs_of(component) and component["tag"] not in identified:
                         self._seeded_fact(property_id, component, "serial", "identity", identity_serial(property_id, component["tag"]), None,
                                           iso(moment - timedelta(days=30)), dict(kind="patrol", ref="seed:initial"))
                 if property_id != DEMO_SITE:
@@ -321,7 +344,7 @@ class RealityService:
                 for tag, attribute, attribute_class, value, unit, observed, source in seeds:
                     if tag in components and not self.facts_for(property_id, tag, attribute):
                         self._seeded_fact(property_id, components[tag], attribute, attribute_class, value, unit, iso(observed), source)
-            self.store.meta("reality_seed_version", "3")
+            self.store.meta("reality_seed_version", "4")
         self.refresh_demo_seeds()
 
     def refresh_demo_seeds(self):
@@ -338,7 +361,7 @@ class RealityService:
                 continue
             if self.fact_status(facts[0], moment) == "known":
                 continue
-            spec = spec_for(components[tag]["kind"], attribute)
+            spec = spec_for(spec_kind(components[tag]), attribute)
             self._seeded_fact(DEMO_SITE, components[tag], attribute, spec["attributeClass"], value, None,
                               iso(moment - timedelta(minutes=2)), dict(kind="patrol", ref="seed:patrol-refresh"))
 
@@ -356,6 +379,33 @@ class RealityService:
         if not item:
             raise RealityError("Work item not found.", "NOT_FOUND", "Call get_changes for the current waiting work items.", 404)
         return item
+
+    def current_facts(self, property_id: str, asset_tag: str, attribute: str, facts: list[dict]) -> list[dict]:
+        """The facts that still speak for (tag, attribute), newest first; superseded ones never make a conflict.
+
+        - One source is one series: a sensor feed's newest reading supersedes its earlier ones (a rising humidity trace
+          is a time series, not a disagreement).
+        - A reading that resolved a dispatched work item (a fresh reading, or the clarification a conflict asked for)
+          supersedes everything observed before it; otherwise an accepted clarification could never end the conflict
+          that requested it."""
+        attested = {f["attestationId"] for f in facts}
+        anchors = [parse_time(f["observedAt"]) for item in self.store.all("work_item", property_id)
+                   if item["assetTag"] == asset_tag and item["attribute"] == attribute and item.get("state") == "resolved"
+                   and item.get("attestationId") in attested
+                   for f in facts if f["attestationId"] == item.get("attestationId")]
+        anchor = max((a for a in anchors if a), default=None)
+        current, sources = [], set()
+        for fact in facts:
+            observed = parse_time(fact["observedAt"])
+            if anchor and observed and observed < anchor:
+                continue
+            source = fact.get("source") or {}
+            key = (source.get("kind"), source.get("ref"))
+            if key in sources:
+                continue
+            sources.add(key)
+            current.append(fact)
+        return current
 
     def open_work_item_for(self, property_id: str, asset_tag: str, attribute: str) -> dict | None:
         for item in self.store.all("work_item", property_id):
@@ -389,7 +439,7 @@ class RealityService:
         prop = self.service.require_property(property_id)
         components = self.components(property_id)
         component = next(c for c in components if c["id"] == item["componentId"])
-        spec = spec_for(component["kind"], item["attribute"])
+        spec = spec_for(spec_kind(component), item["attribute"])
         x, y, z = component["position"]
         wall = "north wall" if z < 0 else "south wall" if z > 0 else "centre of the room"  # wall by sign of z
         neighbours = sorted((c for c in components if c["id"] != component["id"]),
@@ -405,7 +455,8 @@ class RealityService:
             need = f"{spec['attributeClass']} record for {item['attribute'].replace('_', ' ')}"
             expected = "Reply with the document reference or photograph it."
         prefix = f"REMINDER {level}: " if level else ""
-        return (f"{prefix}{prop['name']}, plant room, {wall}.\n"
+        area = (SITE_BY_ID.get(property_id) or {}).get("area") or "plant room"
+        return (f"{prefix}{prop['name']}, {area}, {wall}.\n"
                 f"Asset {component['tag']}, {component['name'].lower()}, tag plate on the housing. Nearby: {near}.\n"
                 f"Need: {need}. Photograph it with the tag plate visible, or reply with the tag and value.\n"
                 f"{expected} Reply to this thread. Pays on verified proof only.\n"
@@ -459,7 +510,8 @@ class RealityService:
             self.store.event(property_id, f"agent-{property_id}", "dispatch.failed", f"{channel} dispatch failed", reason)
         if channel == "local":
             return self.record_dispatch(item, "local", "", body, None, None, "card stored for /api/inbound/local" + (f"; {reason}" if reason else ""))
-        return self.record_dispatch(item, channel, to, f"[not sent: {reason}]\n{body}", None, None, f"not sent: {reason[:160]}")
+        label = "dry-run, " if not external_messages_allowed() else ""
+        return self.record_dispatch(item, channel, to, f"[not sent: {label}{reason}]\n{body}", None, None, f"not sent: {label}{reason[:150]}")
 
     def dispatch(self, item: dict) -> dict:
         channel, to, reason = self.comms.dispatch_target(item["propertyId"])
@@ -491,19 +543,19 @@ class RealityService:
         elif level == 2:
             to = self.comms.contractor_email()
             self.send(item, "email", to, card) if to and self.comms.configured(property_id) else \
-                self.record_dispatch(item, "email", to, f"[not sent: INKBOX_CONTRACTOR_EMAIL or Inkbox identity not configured]\n{card}", None, None, "not sent: email not configured")
+                self.record_dispatch(item, "email", to, f"[not sent: {'dry-run, ' if not external_messages_allowed() else ''}INKBOX_CONTRACTOR_EMAIL or Inkbox identity not configured]\n{card}", None, None, "not sent: email not configured")
         elif level == 3:
             to = self.comms.contractor_phone()
             script = (f"This is Steward for {self.service.require_property(property_id)['name']}. We need the {item['attribute'].replace('_', ' ')} "
                       f"for asset {item['assetTag']}. Reference {item['reference']}. Please reply by text with the tag plate and the value.")
             self.send(item, "call", to, script) if to and self.comms.configured(property_id) else \
-                self.record_dispatch(item, "call", to, f"[not sent: Inkbox voice not configured]\n{script}", None, None, "not sent: voice not configured")
+                self.record_dispatch(item, "call", to, f"[not sent: {'dry-run, ' if not external_messages_allowed() else ''}Inkbox voice not configured]\n{script}", None, None, "not sent: voice not configured")
         else:
             to = self.comms.owner_phone()
             question = (f"Owner decision needed for {item['reference']}: {item['assetTag']} {item['attribute'].replace('_', ' ')} is still unverified"
                         f" after {len(item['dispatches'])} dispatch(es). Reply PROCEED or HOLD, or use the owner-decision control.")
             self.send(item, "sms", to, question) if to and self.comms.configured(property_id) else \
-                self.record_dispatch(item, "sms", to, f"[not sent: INKBOX_OWNER_PHONE or Inkbox identity not configured]\n{question}", None, None, "not sent: owner SMS not configured")
+                self.record_dispatch(item, "sms", to, f"[not sent: {'dry-run, ' if not external_messages_allowed() else ''}INKBOX_OWNER_PHONE or Inkbox identity not configured]\n{question}", None, None, "not sent: owner SMS not configured")
         item = self.work_item(work_item_id)
         item["state"] = "escalated"
         item["escalationLevel"] = max(int(item.get("escalationLevel", 0)), level)
@@ -565,7 +617,7 @@ class RealityService:
     def resolve(self, property_id: str, asset_tag: str, attribute: str, max_age_hours: float | None = None, budget: float = 0,
                 requester: str = "mcp-client", callback_url: str | None = None) -> dict:
         component = self.component_by_tag(property_id, asset_tag)
-        spec = spec_for(component["kind"], attribute)
+        spec = spec_for(spec_kind(component), attribute)
         tag = component["tag"]
         if callback_url:
             self.subscribe(property_id, callback_url, requester)
@@ -576,12 +628,15 @@ class RealityService:
         existing = self.open_work_item_for(property_id, tag, attribute)
 
         def with_item(result, item):
-            return {**result, "workItemId": item["id"], "workState": item["state"], "reference": item["reference"],
-                    "dispatchedVia": item["dispatches"][-1]["channel"] if item["dispatches"] else None, "cost": 0}
+            out = {**result, "workItemId": item["id"], "workState": item["state"], "reference": item["reference"], "cost": 0}
+            if item["dispatches"]:  # the contract's dispatchedVia is a Channel or absent, never null
+                out["dispatchedVia"] = item["dispatches"][-1]["channel"]
+            return out
 
         if facts:
             latest = facts[0]
-            fresh_disagreeing = [f for f in facts[1:] if (ttl is None or age_seconds(f["observedAt"], moment) <= ttl) and f["value"] != latest["value"]]
+            current = self.current_facts(property_id, tag, attribute, facts)
+            fresh_disagreeing = [f for f in current[1:] if (ttl is None or age_seconds(f["observedAt"], moment) <= ttl) and f["value"] != latest["value"]]
             if fresh_disagreeing and (ttl is None or age_seconds(latest["observedAt"], moment) <= ttl):
                 item = existing or self.create_work_item(property_id, component, attribute, spec, requester, budget, state="needs_clarification")
                 conflicts = [dict(attestationId=f["attestationId"], value=f["value"], observedAt=f["observedAt"]) for f in [latest, *fresh_disagreeing]]
@@ -617,7 +672,7 @@ class RealityService:
                filename: str | None = None, file_bytes: bytes | None = None, received_at: str | None = None) -> dict:
         self.service.require_property(property_id)
         component = self.component_by_tag(property_id, asset_tag)
-        spec = spec_for(component["kind"], attribute)
+        spec = spec_for(spec_kind(component), attribute)
         item = self.work_item(work_item_id) if work_item_id else None
         source = source if isinstance(source, dict) and source.get("kind") else {"kind": "human", "ref": "attest"}
         source = {"kind": str(source["kind"]), "ref": str(source.get("ref") or "attest")[:200]}
@@ -734,7 +789,7 @@ class RealityService:
             self.store.event(item["propertyId"], f"agent-{item['propertyId']}", "call.ended", f"Call ended for {item['reference']}",
                              f"outcome={message.get('callOutcome')}; transcript={message.get('transcriptUrl')}")
             component = self.store.get("component", item["componentId"], item["propertyId"])
-            spec = spec_for(component["kind"], item["attribute"])
+            spec = spec_for(spec_kind(component), item["attribute"])
             if self.extract_value(message.get("body") or "", spec) is None:
                 item.setdefault("verdicts", [])
                 self.save_work_item(item)
@@ -743,7 +798,7 @@ class RealityService:
                                  f"Call for {item['reference']} ended ({message.get('callOutcome') or 'no outcome'}); no reading in the transcript.", item["assetTag"], item)
                 return dict(routed=True, workItemId=item["id"], verdict=None, detail="Call transcript recorded; no value to verify.")
         component = self.store.get("component", item["componentId"], item["propertyId"])
-        spec = spec_for(component["kind"], item["attribute"])
+        spec = spec_for(spec_kind(component), item["attribute"])
         value = message.get("value")
         if value in (None, ""):
             value = self.extract_value(message.get("body") or "", spec)
@@ -830,7 +885,7 @@ class RealityService:
         moment = utcnow()
         written = 0
         for component in components:
-            if "serial" in SPECS.get(component["kind"], {}):
+            if "serial" in specs_of(component):
                 digest = hashlib.sha256(f"patrol:{job['id']}:{component['tag']}:serial".encode()).hexdigest()
                 checks = [dict(name="scope", passed=True, reason=f"Patrol {job['id']} checked registered asset {component['tag']}."),
                           dict(name="identity", passed=True, reason=f"Asset register tag {component['tag']} confirmed by patrol."),
@@ -839,8 +894,7 @@ class RealityService:
                                 dict(kind="patrol", ref=job["id"]), checks, [digest])
                 written += 1
             if component["kind"] == "sensor":
-                self.sensor_reading(property_id, component, moment)
-                written += 1
+                written += len(self.sensor_readings(property_id, component, moment))
         self.store.event(property_id, f"agent-{property_id}", "patrol.facts", "Patrol facts written",
                          f"{written} fact(s) written for {len(components)} asset(s); sensor readings are from the labelled simulated feed.")
         return dict(job, patrolFacts=written)
@@ -873,7 +927,7 @@ class RealityService:
         latest = self.latest_facts(property_id)
         known = sum(f["status"] == "known" for f in latest)
         stale = sum(f["status"] == "stale" for f in latest)
-        slots = sum(len(SPECS.get(c["kind"], {})) for c in components)
+        slots = sum(len(specs_of(c)) for c in components)
         waiting = [w for w in self.store.all("work_item", property_id) if w["state"] in OPEN_STATES]
         blockers = [dict(assetTag=w["assetTag"], attribute=w["attribute"], state=w["state"], reference=w["reference"]) for w in waiting[:6]]
         sensors = [dict(assetTag=f["assetTag"], attribute=f["attribute"], value=f["value"], ageSeconds=int(age_seconds(f["observedAt"])))
@@ -882,16 +936,45 @@ class RealityService:
                     facts=dict(known=known, stale=stale, unknown=max(slots - known - stale, 0)), blockers=blockers, sensors=sensors)
 
     def sensor_reading(self, property_id: str, component: dict, moment: datetime | None = None, value: float | None = None,
-                       simulated: bool = False) -> tuple[dict, dict]:
-        """Write one labelled sensor reading (source `sensor`, ref `sim:<tag>`); `value` overrides the drift for simulation."""
+                       simulated: bool = False, attribute: str | None = None) -> tuple[dict, dict]:
+        """Write one labelled sensor reading (source `sensor`, ref `sim:<tag>`); `value` overrides the drift for simulation.
+        The attribute defaults to `temperature_c` (every sensor table has it except Tomioka's seismic sensor, which reads
+        `seismic_gal`); the plausibility line uses the component's own spec range."""
         moment = moment or utcnow()
-        reading = simulated_temperature(component["tag"], moment) if value is None else value
-        digest = hashlib.sha256(f"sim:{component['tag']}:{iso(moment)}:{reading}".encode()).hexdigest()
+        table = specs_of(component)
+        if attribute is None:
+            attribute = "temperature_c" if "temperature_c" in table else next((a for a, spec in table.items() if spec["attributeClass"] == "reading"), None)
+        if attribute not in table:
+            raise RealityError(f"{component['tag']} has no reading attribute {attribute}.", "UNSUPPORTED_ATTRIBUTE", "Use a sensor reading attribute.")
+        spec = table[attribute]
+        reading = simulated_reading(component["tag"], attribute, moment) if value is None else value
+        unit = spec.get("unit") or ""
+        digest = hashlib.sha256(f"sim:{component['tag']}:{attribute}:{iso(moment)}:{reading}".encode()).hexdigest() if attribute != "temperature_c" else \
+            hashlib.sha256(f"sim:{component['tag']}:{iso(moment)}:{reading}".encode()).hexdigest()
         checks = [dict(name="scope", passed=True, reason=f"Simulated sensor feed for {component['tag']} (sim:{component['tag']}); not a physical instrument."),
-                  dict(name="plausibility", passed=5 <= reading <= 40, reason=f"{reading} °C against the 5–40 °C spec."),
+                  dict(name="plausibility", passed=spec["min"] <= reading <= spec["max"], reason=f"{reading} {unit} against the {spec['min']:g}–{spec['max']:g} {unit} spec."),
                   dict(name="integrity", passed=True, reason=f"SHA-256 of the sample: {digest}.")]
-        return self.write_fact(property_id, component, "temperature_c", "reading", reading, "°C", iso(moment),
+        return self.write_fact(property_id, component, attribute, "reading", reading, unit or None, iso(moment),
                                dict(kind="sensor", ref=f"sim:{component['tag']}"), checks, [digest], simulated=simulated)
+
+    def sensor_readings(self, property_id: str, component: dict, moment: datetime | None = None, simulated: bool = False,
+                        hold_seconds: float = 0) -> list[tuple[dict, dict]]:
+        """One simulated reading for every reading attribute of a sensor (Tomioka's humidity sensors report humidity and
+        temperature; every other sensor reports its single reading, as before). With `hold_seconds`, an attribute whose
+        latest fact is a scenario sample or a person's verified reading younger than that is left alone, so the feed
+        never overwrites a scenario ramp or a fix (the mill's humidity headline)."""
+        table = specs_of(component)
+        moment = moment or utcnow()
+        out = []
+        for attribute in [a for a, spec in table.items() if spec["attributeClass"] == "reading"]:
+            if hold_seconds:
+                latest = self.latest_facts(property_id, component["tag"], attribute)
+                source = (latest[0].get("source") or {}) if latest else {}
+                held = latest and not latest[0].get("simulated") and (source.get("kind") == "human" or str(source.get("ref", "")).startswith("scenario:"))
+                if held and age_seconds(latest[0]["observedAt"], moment) < hold_seconds:
+                    continue
+            out.append(self.sensor_reading(property_id, component, moment, simulated=simulated, attribute=attribute))
+        return out
 
     def issues(self, property_id: str) -> list[dict]:
         """Issue[] for the environment view: open clarification/escalated/expired items, out-of-range latest facts,
@@ -905,16 +988,35 @@ class RealityService:
         def add(kind, severity, component, summary, ref_id, at, simulated=False):
             issue = dict(id=f"iss-{hashlib.sha256(f'{kind}:{ref_id}:{component['tag']}'.encode()).hexdigest()[:12]}", assetTag=component["tag"],
                          componentId=component["id"], kind=kind, severity=severity, summary=summary[:300], refId=ref_id,
-                         pin=component.get("pin"), at=at)
+                         pin=component.get("pin"), pinSource=component.get("pinSource", "estimated"), at=at)
             if simulated:
                 issue["simulated"] = True
             issues.append(issue)
 
-        for item in self.store.all("work_item", property_id):
+        items = self.store.all("work_item", property_id)
+        # One overdue issue per (asset, attribute): the latest expiry in the last 24 h, unless a later fact or a resolved
+        # item for the same attribute superseded it (the simulation expires a fresh card every few minutes).
+        latest_expired: dict[tuple, dict] = {}
+        superseded_at: dict[tuple, str] = {}
+        for item in items:
+            key = (item["assetTag"], item["attribute"])
+            if item["state"] == "expired" and age_seconds(item["updatedAt"], moment) <= 86400:
+                if key not in latest_expired or item["updatedAt"] > latest_expired[key]["updatedAt"]:
+                    latest_expired[key] = item
+            elif item["state"] == "resolved":
+                superseded_at[key] = max(superseded_at.get(key, ""), item["updatedAt"])
+        for fact in self.store.all("fact", property_id):
+            key = (fact["assetTag"], fact["attribute"])
+            superseded_at[key] = max(superseded_at.get(key, ""), fact["createdAt"])
+        for item in items:
             component = components.get(item["componentId"])
             if not component:
                 continue
             simulated = bool(item.get("simulated"))
+            if item["state"] == "expired":
+                key = (item["assetTag"], item["attribute"])
+                if latest_expired.get(key) is not item or superseded_at.get(key, "") > item["updatedAt"]:
+                    continue
             if item["state"] == "escalated":
                 add("escalated", "high", component, f"{item['reference']} escalated to level {item.get('escalationLevel', 0)} for {item['assetTag']}.{item['attribute']}.",
                     item["id"], item["updatedAt"], simulated)
@@ -931,14 +1033,16 @@ class RealityService:
         latest = self.latest_facts(property_id)
         for fact in latest:
             component = by_tag.get(fact["assetTag"])
-            spec = SPECS.get(component["kind"], {}).get(fact["attribute"]) if component else None
+            spec = specs_of(component).get(fact["attribute"]) if component else None
             if not spec:
                 continue
             value = fact["value"]
             out = False
             if spec.get("min") is not None and isinstance(value, (int, float)) and not isinstance(value, bool):
                 out = not (spec["min"] <= value <= spec["max"])
-            elif spec.get("enum") and isinstance(value, str) and fact["attribute"] == "status" and value in ("tripped", "alarm"):
+            elif spec.get("enum") and isinstance(value, str) and fact["attribute"] == "status" and value in ("tripped", "alarm", "fault"):
+                out = True
+            elif spec.get("enum") and isinstance(value, str) and fact["attribute"] == "condition" and value == "defect":
                 out = True
             if out:
                 add("out_of_range", "high", component, f"{fact['assetTag']}.{fact['attribute']} = {value}{(' ' + fact['unit']) if fact.get('unit') else ''} is outside spec"
@@ -946,7 +1050,7 @@ class RealityService:
                     fact["attestationId"], fact["observedAt"], bool(fact.get("simulated")))
         identified = {f["assetTag"] for f in latest if f["attribute"] == "serial"}
         for component in components.values():
-            if "serial" in SPECS.get(component["kind"], {}) and component["tag"] not in identified:
+            if "serial" in specs_of(component) and component["tag"] not in identified:
                 add("unknown_identity", "low", component, f"No identity fact for {component['tag']}; run a patrol or attest its serial.", component["id"], now())
         issues.sort(key=lambda i: ({"high": 0, "medium": 1, "low": 2}[i["severity"]], i["at"]), reverse=False)
         return issues
@@ -954,5 +1058,5 @@ class RealityService:
     def specs(self, property_id: str) -> dict:
         self.service.require_property(property_id)
         return dict(propertyId=property_id, **spec_table(),
-                    assets=[dict(assetTag=c["tag"], componentId=c["id"], kind=c["kind"], attributes=sorted(SPECS.get(c["kind"], {})))
+                    assets=[dict(assetTag=c["tag"], componentId=c["id"], kind=c["kind"], specKind=spec_kind(c), attributes=sorted(specs_of(c)))
                             for c in self.components(property_id)])

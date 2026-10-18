@@ -1,0 +1,14 @@
+/* /app/memory: the filter bar and the remembered entries, laid on the shared list styles of dash3.css (rows3, r1 to r3,
+   tg, fld, lnk). A memory that arrives while the page is open rises from a lighter tone step once. */
+.bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; margin-bottom: 16px; }
+.list > li { gap: 6px; }
+.text { overflow-wrap: anywhere; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.more { display: flex; justify-content: center; margin-top: 12px; }
+@media (prefers-reduced-motion: no-preference) {
+  .list > li.fresh { animation: arrive 1800ms var(--ease-out) both; }
+}
+@keyframes arrive { from { background-color: var(--s4); } to { background-color: var(--s2); } }
+@media (max-width: 760px) {
+  .bar { grid-template-columns: minmax(0, 1fr); }
+}

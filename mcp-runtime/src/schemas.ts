@@ -160,9 +160,10 @@ export const IssueSchema = z.looseObject({
   id: z.string(), assetTag: z.string().nullable().optional(), componentId: z.string().nullable().optional(), kind: z.string(),
   severity: z.enum(['low', 'medium', 'high']), summary: z.string(), refId: z.string().nullable().optional(), pin: z.record(z.string(), z.number()).nullable().optional(), at: z.string().optional(), simulated: z.boolean().optional(),
 });
-export const AgentInfoSchema = z.object({
-  id: z.string(), level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), name: z.string(), role: z.string(), handle: z.string().nullable().optional(),
-  status: z.enum(['idle', 'working', 'waiting']), currentTask: z.string().nullable().optional(), lastActivityAt: z.string().nullable(), authority: z.array(z.string()),
+/** Contract 4 levels run 1 (the owner's agent) to 5 (field technicians); extra fields (siteId, role details) pass through. */
+export const AgentInfoSchema = z.looseObject({
+  id: z.string(), level: z.number().int().min(1).max(5), name: z.string(), role: z.string(), handle: z.string().nullable().optional(),
+  status: z.string(), currentTask: z.string().nullable().optional(), lastActivityAt: z.string().nullable(), authority: z.array(z.string()),
 });
 export const MissionStepSchema = z.object({
   id: z.string(), at: z.string(), agentId: z.string(), summary: z.string(), taskId: z.string().nullable().optional(), workItemId: z.string().nullable().optional(), attestationId: z.string().nullable().optional(),
@@ -179,7 +180,8 @@ export const TranscriptEntrySchema = z.object({
   refs: z.object({ missionId: z.string().optional(), taskId: z.string().optional(), workItemId: z.string().optional(), attestationId: z.string().optional() }), simulated: z.boolean().optional(),
 });
 export const EvalStepSchema = z.object({ name: z.string(), target: z.string(), result: z.enum(['PASS', 'FAIL']), ms: z.number(), detail: z.string() });
-export const EvalRunSchema = z.object({ id: z.string(), suite: z.string(), startedAt: z.string(), finishedAt: z.string().nullable(), passed: z.number(), failed: z.number(), steps: z.array(EvalStepSchema) });
+/** Extra fields the backend records on a run (before, after, budget for the efficiency eval) pass through. */
+export const EvalRunSchema = z.looseObject({ id: z.string(), suite: z.string(), startedAt: z.string(), finishedAt: z.string().nullable(), passed: z.number(), failed: z.number(), steps: z.array(EvalStepSchema) });
 export const PublicKeySchema = z.object({ algorithm: z.literal('ed25519'), publicKey: z.string(), verifierVersion: z.string() });
 /** Spec table: keyed by component kind, then attribute. Shape is the backend's; it is proxied verbatim as a resource. */
 export const SpecsSchema = z.record(z.string(), z.unknown());
@@ -198,16 +200,16 @@ export interface Attestation { id: string; propertyId: string; assetTag: string;
 export interface Dispatch { id: string; channel: Channel; to: string; reference: string; sentAt: string; providerRef?: string | null; body: string; }
 export interface Receipt { waitedSeconds: number; tokensWhileWaiting: 0; estimatedPollingTokens: number; dispatches: number; cost: number; currency: 'USD'; }
 export interface WorkItem { id: string; propertyId: string; assetTag: string; componentId: string; attribute: string; attributeClass: AttributeClass; reference: string; state: WorkState; requester: string; budget: number; deadlineAt: string | null; dispatches: Dispatch[]; verdicts: { attestationId: string; verdict: Verdict; reasons: string[]; at: string }[]; factId?: string | null; attestationId?: string | null; receipt?: Receipt | null; createdAt: string; updatedAt: string; }
-export interface Change { version: number; type: 'fact'|'work_item'|'attestation'|'dispatch'|'escalation'|'owner_decision'; propertyId: string; assetTag?: string; refId: string; summary: string; at: string; }
+export interface Change { version: number; type: 'fact'|'work_item'|'attestation'|'dispatch'|'escalation'|'owner_decision'|'a2a'|'eval'; propertyId: string; assetTag?: string; refId: string; summary: string; at: string; }
 export interface ResolveResult { status: FactStatus; propertyId: string; assetTag: string; attribute: string; value?: string | number | boolean; unit?: string | null; observedAt?: string; ageSeconds?: number; attestationId?: string; conflicts?: { attestationId: string; value: string | number | boolean; observedAt: string }[]; workItemId?: string; workState?: WorkState; reference?: string; dispatchedVia?: Channel; expiresAt?: string; cost?: number; nextStep: string; }
 export interface AttestResult { verdict: Verdict; reasons: string[]; checks: Check[]; attestationId?: string; factId?: string; workItemId?: string; nextStep: string; }
 export interface Subscription { id: string; propertyId: string; callbackUrl: string; requester: string; createdAt: string; }
 export interface ClearanceResult { clear: boolean; widthM: number; blockingAssetTag?: string | null; blockingComponentId?: string | null; path: [number, number][]; }
 export interface ContextMin { propertyId: string; name: string; version: number; assets: number; facts: { known: number; stale: number; unknown: number }; blockers: { assetTag: string; attribute: string; state: WorkState; reference: string }[]; sensors: { assetTag: string; attribute: string; value: string|number|boolean; ageSeconds: number }[]; }
-export type SiteId = 'harbor-works' | 'myer-plant' | 'bristol-pumps';
+export type SiteId = 'myer-plant' | 'bristol-pumps' | 'tomioka-mill';
 export interface Environment { kind: 'fixture' | 'splat'; splatId?: string; embedUrl?: string; thumbnailUrl?: string; credit: string; captureNote: string; }
 export interface Issue { id: string; assetTag: string; componentId: string; kind: 'out_of_range'|'rejected_evidence'|'overdue'|'unknown_identity'|'escalated'; severity: 'low'|'medium'|'high'; summary: string; refId: string; pin?: { x: number; y: number } | null; at: string; simulated?: boolean; }
-export type AgentId = 'operator' | 'atlas' | \`warden:\${string}\` | 'runner';
+export type AgentId = 'operator' | 'director' | 'myer-manager' | 'myer-engineer' | 'myer-compliance' | 'myer-technician' | 'bristol-manager' | 'bristol-engineer' | 'bristol-compliance' | 'bristol-technician' | 'tomioka-manager' | 'tomioka-engineer' | 'tomioka-compliance' | 'tomioka-technician';
 export interface AgentInfo { id: string; level: 1|2|3|4; name: string; role: string; handle?: string | null; status: 'idle'|'working'|'waiting'; currentTask?: string | null; lastActivityAt: string | null; authority: string[]; }
 export interface A2AMessage { role: 'caller'|'agent'; parts: { text?: string; data?: Record<string, unknown> }[]; at: string; }
 export interface A2ATask { id: string; contextId: string; caller: string; target: string; state: 'submitted'|'working'|'input_required'|'completed'|'failed'|'canceled'; messages: A2AMessage[]; transport: 'local'|'inkbox'; providerTaskId?: string | null; simulated?: boolean; createdAt: string; updatedAt: string; }

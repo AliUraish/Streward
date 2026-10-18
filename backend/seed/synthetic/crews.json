@@ -1,40 +1,372 @@
 {
   "family": "crews",
   "synthetic": true,
-  "generator": "hand-seed",
+  "generator": "claude-opus-5-5",
   "note": "Synthetic crew. The duty engineer on both sites is the user (contact resolved at send time from INKBOX_CONTRACTOR_PHONE / INKBOX_CONTRACTOR_EMAIL, never stored here); everyone else is fictional and has no contact details, so nobody outside the allowlist can be contacted.",
   "records": [
-    {"id": "crew-my-duty-engineer", "siteId": "myer-plant", "name": "Duty engineer (you)", "role": "Duty engineer", "shift": "on call, 24 h this week", "onShift": true, "contact": "user",
-     "certifications": [{"name": "Pressure systems competent person (demo)", "expiresInDays": 212}, {"name": "Confined space entry (demo)", "expiresInDays": 64}],
-     "owns": ["overpressure", "out_of_range", "escalated", "overdue", "rejected_evidence", "valve_not_fixed", "valve_uncertain"],
-     "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-my-safety-lead", "siteId": "myer-plant", "name": "Priya Nandakumar", "role": "Site safety lead", "shift": "days 07:00-15:00", "onShift": true,
-     "certifications": [{"name": "Occupational safety certificate (demo)", "expiresInDays": 410}, {"name": "Fire warden (demo)", "expiresInDays": 26}],
-     "owns": ["inspection_overdue", "unknown_identity"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-my-shift-tech", "siteId": "myer-plant", "name": "Tomas Reyes", "role": "Shift technician", "shift": "days 07:00-15:00", "onShift": true,
-     "certifications": [{"name": "Refrigerant handling (demo)", "expiresInDays": 155}],
-     "owns": [], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-my-facilities-manager", "siteId": "myer-plant", "name": "Grace Whitfield", "role": "Facilities manager", "shift": "office hours", "onShift": false,
-     "certifications": [],
-     "owns": ["document_injection", "certificate_expired"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-my-valve-contractor", "siteId": "myer-plant", "name": "Delta Valve Services (contractor)", "role": "Valve contractor", "shift": "call-out", "onShift": false,
-     "certifications": [{"name": "Contractor induction (demo)", "expiresInDays": -3}],
-     "owns": [], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-br-duty-engineer", "siteId": "bristol-pumps", "name": "Duty engineer (you)", "role": "Duty engineer", "shift": "on call, 24 h this week", "onShift": true, "contact": "user",
-     "certifications": [{"name": "Pressure systems competent person (demo)", "expiresInDays": 212}],
-     "owns": ["sump_overflow", "out_of_range", "escalated", "overdue", "rejected_evidence", "overpressure", "valve_not_fixed", "valve_uncertain"],
-     "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-br-restoration-lead", "siteId": "bristol-pumps", "name": "Hamish Corrigan", "role": "Restoration lead", "shift": "Tue-Sat 08:00-16:00", "onShift": true,
-     "certifications": [{"name": "Heritage boiler and engine management (demo)", "expiresInDays": 88}],
-     "owns": ["certificate_expired", "inspection_overdue", "unknown_identity"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-br-visitor-lead", "siteId": "bristol-pumps", "name": "Ama Owusu", "role": "Visitor operations lead", "shift": "open days 10:00-17:00", "onShift": true,
-     "certifications": [{"name": "First aid at work (demo)", "expiresInDays": 19}],
-     "owns": ["walkway_closure", "document_injection"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-br-engine-driver", "siteId": "bristol-pumps", "name": "Bill Tanner (volunteer)", "role": "Volunteer engine driver", "shift": "steam days only", "onShift": false,
-     "certifications": [{"name": "Heritage steam engine operation (demo)", "expiresInDays": 41}],
-     "owns": [], "synthetic": true, "generator": "hand-seed"},
-    {"id": "crew-br-surveyor", "siteId": "bristol-pumps", "name": "Northgate Engineering Inspection (competent person)", "role": "Insurance surveyor", "shift": "by appointment", "onShift": false,
-     "certifications": [],
-     "owns": [], "synthetic": true, "generator": "hand-seed"}
+    {
+      "id": "crew-my-duty-engineer",
+      "siteId": "myer-plant",
+      "name": "Duty engineer (you)",
+      "role": "Duty engineer",
+      "shift": "on call, 24 h this week",
+      "onShift": true,
+      "contact": "user",
+      "certifications": [
+        {
+          "name": "Pressure systems competent person (demo)",
+          "expiresInDays": 198
+        },
+        {
+          "name": "Confined space entry (demo)",
+          "expiresInDays": 57
+        }
+      ],
+      "owns": [
+        "overpressure",
+        "out_of_range",
+        "escalated",
+        "overdue",
+        "rejected_evidence",
+        "valve_not_fixed",
+        "valve_uncertain"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-my-safety-lead",
+      "siteId": "myer-plant",
+      "name": "Meera Vasquez-Lin",
+      "role": "Site safety lead",
+      "shift": "days 07:00-15:30",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Occupational safety certificate (demo)",
+          "expiresInDays": 387
+        },
+        {
+          "name": "Fire warden (demo)",
+          "expiresInDays": 22
+        }
+      ],
+      "owns": [
+        "inspection_overdue",
+        "unknown_identity"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-my-shift-tech",
+      "siteId": "myer-plant",
+      "name": "Rafael Okonjo",
+      "role": "Shift technician",
+      "shift": "days 07:00-15:30",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Refrigerant handling (demo)",
+          "expiresInDays": 143
+        },
+        {
+          "name": "Elevated work platform (demo)",
+          "expiresInDays": 301
+        }
+      ],
+      "owns": [],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-my-facilities-manager",
+      "siteId": "myer-plant",
+      "name": "Corinne Ashdale",
+      "role": "Facilities manager",
+      "shift": "office hours Mon-Fri 08:30-17:00",
+      "onShift": false,
+      "certifications": [],
+      "owns": [
+        "document_injection",
+        "certificate_expired"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-my-valve-contractor",
+      "siteId": "myer-plant",
+      "name": "Delta Valve Services (contractor)",
+      "role": "Valve contractor",
+      "shift": "call-out, 4 h response",
+      "onShift": false,
+      "certifications": [
+        {
+          "name": "Contractor induction (demo)",
+          "expiresInDays": -5
+        }
+      ],
+      "owns": [],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-br-duty-engineer",
+      "siteId": "bristol-pumps",
+      "name": "Duty engineer (you)",
+      "role": "Duty engineer",
+      "shift": "on call, 24 h this week",
+      "onShift": true,
+      "contact": "user",
+      "certifications": [
+        {
+          "name": "Pressure systems competent person (demo)",
+          "expiresInDays": 198
+        },
+        {
+          "name": "Working near water (demo)",
+          "expiresInDays": 120
+        }
+      ],
+      "owns": [
+        "sump_overflow",
+        "out_of_range",
+        "escalated",
+        "overdue",
+        "rejected_evidence",
+        "overpressure",
+        "valve_not_fixed",
+        "valve_uncertain"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-br-restoration-lead",
+      "siteId": "bristol-pumps",
+      "name": "Alasdair Pennock",
+      "role": "Restoration lead",
+      "shift": "Tue-Sat 08:00-16:00",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Heritage boiler and engine management (demo)",
+          "expiresInDays": 74
+        },
+        {
+          "name": "Lifting operations planning (demo)",
+          "expiresInDays": 233
+        }
+      ],
+      "owns": [
+        "certificate_expired",
+        "inspection_overdue",
+        "unknown_identity"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-br-visitor-lead",
+      "siteId": "bristol-pumps",
+      "name": "Efua Brightwell",
+      "role": "Visitor operations lead",
+      "shift": "open days 10:00-17:00",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "First aid at work (demo)",
+          "expiresInDays": 14
+        },
+        {
+          "name": "Crowd safety awareness (demo)",
+          "expiresInDays": 265
+        }
+      ],
+      "owns": [
+        "walkway_closure",
+        "document_injection"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-br-engine-driver",
+      "siteId": "bristol-pumps",
+      "name": "Reg Holloway (volunteer)",
+      "role": "Volunteer engine driver",
+      "shift": "steam days only, alternate Sundays",
+      "onShift": false,
+      "certifications": [
+        {
+          "name": "Heritage steam engine operation (demo)",
+          "expiresInDays": 36
+        }
+      ],
+      "owns": [],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-br-surveyor",
+      "siteId": "bristol-pumps",
+      "name": "Northgate Engineering Inspection (competent person)",
+      "role": "Insurance surveyor",
+      "shift": "by appointment, next visit booked in 3 weeks",
+      "onShift": false,
+      "certifications": [],
+      "owns": [],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "crew-tm-duty-engineer",
+      "siteId": "tomioka-mill",
+      "name": "Duty engineer (you)",
+      "role": "Duty engineer",
+      "shift": "on call, 24 h this week",
+      "onShift": true,
+      "contact": "user",
+      "certifications": [
+        {
+          "name": "Heritage building fire safety (demo)",
+          "expiresInDays": 210
+        },
+        {
+          "name": "Working at height (demo)",
+          "expiresInDays": 95
+        }
+      ],
+      "owns": [
+        "out_of_range",
+        "escalated",
+        "overdue",
+        "rejected_evidence",
+        "valve_not_fixed",
+        "valve_uncertain"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "crew-tm-site-manager",
+      "siteId": "tomioka-mill",
+      "name": "Sato Haruka",
+      "role": "Site manager on duty",
+      "shift": "opening days 08:30-17:30",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Cultural property site management (demo)",
+          "expiresInDays": 330
+        }
+      ],
+      "owns": [
+        "document_injection"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "crew-tm-conservation-architect",
+      "siteId": "tomioka-mill",
+      "name": "Takahashi Kenji",
+      "role": "Conservation architect",
+      "shift": "Mon-Fri 08:30-17:15",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Registered conservation architect (demo)",
+          "expiresInDays": 410
+        }
+      ],
+      "owns": [
+        "humidity_high",
+        "alteration_permit",
+        "certificate_expired"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "crew-tm-conservator",
+      "siteId": "tomioka-mill",
+      "name": "Kobayashi Mio",
+      "role": "Conservator, reeling machines",
+      "shift": "Tue-Sun 08:30-17:00",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Machinery conservation (demo)",
+          "expiresInDays": 160
+        }
+      ],
+      "owns": [
+        "unknown_identity"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "crew-tm-visitor-safety-lead",
+      "siteId": "tomioka-mill",
+      "name": "Watanabe Daiki",
+      "role": "Visitor safety lead",
+      "shift": "opening hours 09:00-17:00",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "First aid (demo)",
+          "expiresInDays": 45
+        },
+        {
+          "name": "Crowd safety awareness (demo)",
+          "expiresInDays": 300
+        }
+      ],
+      "owns": [
+        "visitor_route",
+        "walkway_closure"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "crew-tm-fire-officer",
+      "siteId": "tomioka-mill",
+      "name": "Ito Yuki",
+      "role": "Fire and facilities officer",
+      "shift": "days 08:00-16:30, rest day today",
+      "onShift": false,
+      "certifications": [
+        {
+          "name": "Fire prevention manager (demo)",
+          "expiresInDays": 18
+        }
+      ],
+      "owns": [
+        "inspection_overdue"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "crew-tm-guide-supervisor",
+      "siteId": "tomioka-mill",
+      "name": "Yamamoto Aiko",
+      "role": "Guide supervisor",
+      "shift": "opening hours 09:00-17:00",
+      "onShift": true,
+      "certifications": [
+        {
+          "name": "Heritage interpretation (demo)",
+          "expiresInDays": 240
+        }
+      ],
+      "owns": [],
+      "synthetic": true,
+      "generator": "hand-seed"
+    }
   ]
 }

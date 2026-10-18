@@ -1,6 +1,8 @@
 /**
- * PlayCanvas wrapper for one hosted SOG capture. Owns the device, the app, the gsplat entity, the camera
- * rig, picking and the synthetic-defect hook. React code talks to it through this class only.
+ * PlayCanvas wrapper for one hosted capture: a SOG file set, or a streamed LOD octree (lod-meta.json),
+ * which shows its coarsest level first and then streams finer chunk files around the camera up to a
+ * splat budget. Owns the device, the app, the gsplat entity, the camera rig, picking and the
+ * synthetic-defect hook. React code talks to it through this class only.
  */
 import {
   AppBase,
@@ -19,6 +21,7 @@ import {
   RESOLUTION_AUTO,
   TextureHandler,
   TONEMAP_NONE,
+  Vec2,
   Vec3,
   type GraphicsDevice,
   type Layer,
@@ -38,6 +41,26 @@ export interface EngineStats {
   fps: number | null;
   pixelRatio: number;
   renderer: string;
+  /** Streamed LOD captures only. */
+  lod: LodStats | null;
+}
+
+/** Streaming state of a LOD capture. Chunk files are the unit (CloudFront sends no timing headers for byte counts). */
+export interface LodStats {
+  /** Splat budget the LOD choice fills. */
+  budget: number;
+  /** Splats in the sorted, displayed set. */
+  activeSplats: number;
+  /** Chunk files downloading or queued for the current view. */
+  pendingFiles: number;
+  /** Chunk files resident in memory (loaded and not yet released after their cooldown). */
+  residentFiles: number;
+  /** True once the full LOD range is in use (after the coarse first view). */
+  refining: boolean;
+  /** True when the displayed set is sorted and nothing is loading for the current view. */
+  complete: boolean;
+  /** Milliseconds from creation until the full-detail view first completed. */
+  detailMs: number | null;
 }
 
 export interface EngineConfig {
@@ -56,7 +79,12 @@ export interface EngineConfig {
   preferWebGPU?: boolean;
   /** Render only when something changes once the first frame is up (default true). */
   onDemand?: boolean;
-  onProgress?(loaded: number, total: number): void;
+  /** Streamed LOD captures: splat budget instead of the site's interactive budget. */
+  splatBudget?: number;
+  /** Bytes of the scene file, then (streamed LOD captures) chunk files loaded of those needed so far. */
+  onProgress?(loaded: number, total: number, unit: 'bytes' | 'files'): void;
+  /** Streamed LOD captures: called when the streaming state changes. */
+  onStream?(lod: LodStats): void;
   onLoaded?(): void;
   onFirstFrame?(): void;
   onError?(error: Error): void;
@@ -77,8 +105,25 @@ export interface CameraInfo { position: Vec3Tuple; target: Vec3Tuple; fov: numbe
 
 export type MoveDirection = 'forward' | 'back' | 'left' | 'right' | 'up' | 'down';
 
+/** Insets in CSS px where HUD panels cover the canvas; the camera frames its target between them. */
+export interface SafeArea { top?: number; right?: number; bottom?: number; left?: number }
+
 const tmpA = new Vec3();
 const tmpB = new Vec3();
+
+/**
+ * The parts of PlayCanvas 2.23's GSplatOctree the engine reads. The frame:ready loading count also
+ * counts prefetch requests (each pending file twice), so file counts come from the octree's resident
+ * map and its asset loader's in-flight and queued sets instead.
+ */
+interface OctreeLike {
+  lodLevels?: number;
+  fileResources?: Map<number, unknown>;
+  assetLoader?: { maxConcurrentLoads: number; _currentlyLoading?: Set<string>; _loadQueue?: Map<string, number> } | null;
+}
+
+/** Rendered ticks with nothing loading and the latest set sorted before a streamed view counts as settled (a LOD update runs every 10 ticks). */
+const STREAM_CALM_TICKS = 12;
 
 export function hasWebGL2(): boolean {
   try {
@@ -98,6 +143,8 @@ export class SplatEngine {
   readonly stats: EngineStats;
   splat: Entity | null = null;
   fov: number;
+  /** Field of view the engine started with (the site's, or the capture route's). */
+  readonly baseFov: number;
   initialPose: RigPose;
 
   private cfg: EngineConfig;
@@ -112,14 +159,23 @@ export class SplatEngine {
   private sortCount = 0;
   private lastMoveAt = 0;
   private lastSortAt = 0;
-  /** Camera forward when the last sort result arrived (the CPU sort is directional, so only rotation needs a new sort). */
+  /**
+   * Camera forward and position when the last sort result arrived. The directional CPU sort only needs
+   * a new sort after a rotation; the radial one (streamed sites) only after a translation.
+   */
   private fwdAtSort = new Vec3(0, 0, 0);
+  private posAtSort = new Vec3(Infinity, Infinity, Infinity);
+  /** Streamed LOD state, from the gsplat system's frame:ready event. */
+  private stream = { ready: false, pending: 0, done: 0, total: 0, calm: 0, refining: false, complete: false, key: '' };
+  /** The streamed capture's octree (lod-meta.json resource), for exact chunk-file counts. */
+  private octree: OctreeLike | null = null;
   private framesSinceLoad = 0;
   private lastRequest = 0;
   private overlayDirty = true;
   private frameListeners = new Set<(rendered: boolean) => void>();
   private firstFrameFired = false;
   private defect: { kind: DefectKind; center: Vec3Tuple; radius: number } | null = null;
+  private safe = { top: 0, right: 0, bottom: 0, left: 0 };
 
   static async create(cfg: EngineConfig): Promise<SplatEngine> {
     const webgpu = !!cfg.preferWebGPU && typeof navigator !== 'undefined' && 'gpu' in navigator;
@@ -140,6 +196,7 @@ export class SplatEngine {
     this.device = device;
     this.site = cfg.site;
     this.fov = cfg.fov ?? cfg.site.camera.fov;
+    this.baseFov = this.fov;
     const ratioCap = cfg.maxPixelRatio ?? 1.5;
     device.maxPixelRatio = Math.max(0.5, Math.min(window.devicePixelRatio || 1, ratioCap));
 
@@ -158,6 +215,15 @@ export class SplatEngine {
     // the scan is large: keep the defaults that cull tiny and transparent splats
     const gs = app.scene.gsplat;
     gs.minPixelSize = 2;
+    const lod = cfg.site.lod;
+    if (lod) {
+      // target mode: LOD detail rises around the camera until the budget is used
+      gs.splatBudget = cfg.splatBudget ?? lod.budget;
+      gs.lodBehindPenalty = lod.lodBehindPenalty;
+      gs.lodUpdateAngle = lod.lodUpdateAngle;
+      gs.lodUpdateDistance = lod.lodUpdateDistance;
+      gs.radialSorting = lod.radialSorting;
+    }
 
     this.stats = {
       gaussians: cfg.site.gaussians,
@@ -169,9 +235,11 @@ export class SplatEngine {
       fps: null,
       pixelRatio: device.maxPixelRatio,
       renderer: device.deviceType,
+      lod: lod ? { budget: gs.splatBudget, activeSplats: 0, pendingFiles: 0, residentFiles: 0, refining: false, complete: false, detailMs: null } : null,
     };
 
     const camera = new Entity('camera', app);
+    // black until the first frame (the loading overlay is light text), then the site's background
     camera.addComponent('camera', {
       clearColor: new Color(0, 0, 0, 1),
       fov: this.fov,
@@ -204,10 +272,12 @@ export class SplatEngine {
       this.sortCount++;
       this.lastSortAt = performance.now();
       this.fwdAtSort.copy(this.camera.forward);
+      this.posAtSort.copy(this.camera.getPosition());
       this.stats.lastSortMs = ms;
       this.requestRender();
     });
     app.systems.gsplat?.on('frame:request', () => this.requestRender());
+    if (lod) app.systems.gsplat?.on('frame:ready', this.onStreamFrame);
 
     const parent = cfg.canvas.parentElement;
     if (!cfg.size && parent && typeof ResizeObserver !== 'undefined') {
@@ -224,12 +294,14 @@ export class SplatEngine {
 
   private load() {
     const { site } = this;
-    const asset = new Asset(`${site.sceneId}/meta.json`, 'gsplat', { url: site.metaUrl, filename: 'meta.json' });
+    // the gsplat handler picks its parser by file name: lod-meta.json is the streamed octree
+    const filename = site.format === 'lod' ? 'lod-meta.json' : 'meta.json';
+    const asset = new Asset(`${site.sceneId}/${filename}`, 'gsplat', { url: site.metaUrl, filename });
     this.asset = asset;
     asset.on('progress', (loaded: number, total: number) => {
       this.stats.bytesLoaded = loaded;
       this.stats.bytesTotal = total;
-      this.cfg.onProgress?.(loaded, total);
+      this.cfg.onProgress?.(loaded, total, 'bytes');
     });
     asset.on('error', (err: unknown) => {
       if (this.destroyed) return;
@@ -241,7 +313,24 @@ export class SplatEngine {
       const entity = new Entity('splat', this.app);
       // the SuperSplat viewer frame: scan data is rotated 180 degrees about Z
       entity.setLocalEulerAngles(0, 0, 180);
-      entity.addComponent('gsplat', { asset, unified: true });
+      const lod = site.lod;
+      if (lod) {
+        const octree = (asset.resource as { octree?: OctreeLike }).octree ?? null;
+        this.octree = octree;
+        const coarsest = Math.max(0, (octree?.lodLevels ?? lod.levels) - 1);
+        if (octree?.assetLoader) octree.assetLoader.maxConcurrentLoads = lod.concurrentLoads;
+        // coarsest level only until the first frame is up (two chunk files), then the full range
+        entity.addComponent('gsplat', {
+          asset,
+          unified: true,
+          lodBaseDistance: lod.lodBaseDistance,
+          lodMultiplier: lod.lodMultiplier,
+          lodRangeMin: coarsest,
+          lodRangeMax: coarsest,
+        });
+      } else {
+        entity.addComponent('gsplat', { asset, unified: true });
+      }
       this.app.root.addChild(entity);
       this.splat = entity;
       if (this.defect) this.applyDefect();
@@ -254,6 +343,66 @@ export class SplatEngine {
 
   get loaded() { return !!this.splat; }
 
+  // ---- LOD streaming ---------------------------------------------------------------------------
+
+  /** frame:ready (camera component, layer, ready, loadingCount) from the unified gsplat manager. */
+  private onStreamFrame = (cam: unknown, _layer: unknown, ready: boolean, loading: number) => {
+    if (this.destroyed || cam !== this.camera.camera) return;
+    const s = this.stream;
+    const loader = this.octree?.assetLoader;
+    const pending = loader?._currentlyLoading && loader._loadQueue ? loader._currentlyLoading.size + loader._loadQueue.size : loading;
+    const resident = this.octree?.fileResources?.size ?? 0;
+    s.ready = ready;
+    s.pending = Math.max(pending, loading > 0 ? 1 : 0);
+    s.calm = ready && loading === 0 ? s.calm + 1 : 0;
+    // progress through the files asked for since streaming last went quiet
+    if (s.pending === 0) s.total = 0;
+    else s.total = Math.max(s.total, s.done + s.pending);
+    s.done = s.pending === 0 ? 0 : Math.max(0, s.total - s.pending);
+    const lod = this.stats.lod;
+    if (!lod) return;
+    lod.activeSplats = (this.app.stats as unknown as { frame?: { gsplats?: number } }).frame?.gsplats ?? 0;
+    lod.pendingFiles = s.pending;
+    lod.residentFiles = resident;
+    lod.refining = s.refining;
+    const complete = s.refining && s.calm >= STREAM_CALM_TICKS;
+    if (complete && lod.detailMs === null) lod.detailMs = Math.round(performance.now() - this.loadStart);
+    s.complete = complete;
+    lod.complete = complete;
+    if (s.pending > 0) this.cfg.onProgress?.(s.done, s.total, 'files');
+    const key = `${s.pending}|${resident}|${s.refining}|${complete}`;
+    if (key !== s.key) {
+      s.key = key;
+      this.cfg.onStream?.({ ...lod });
+    }
+  };
+
+  /** Streamed LOD: after the coarse first view, open the full LOD range so finer chunks stream in. */
+  private beginRefine() {
+    const gs = this.splat?.gsplat;
+    const lod = this.site.lod;
+    if (!gs || !lod || this.stream.refining) return;
+    this.stream.refining = true;
+    this.stream.calm = 0;
+    gs.lodRangeMin = 0;
+    gs.lodRangeMax = Math.max(0, (this.octree?.lodLevels ?? lod.levels) - 1);
+    if (this.stats.lod) this.stats.lod.refining = true;
+    this.requestRender();
+  }
+
+  /** Streamed LOD: true when the full-detail set for the current view is loaded, sorted and displayed. */
+  get streamComplete() { return !this.site.lod || this.stream.complete; }
+
+  /**
+   * Streamed LOD: resolve when the view has streamed (nothing loading, the latest set sorted) for a
+   * stretch of rendered ticks long enough for a LOD update to have run, or when `late()` says stop.
+   */
+  private async waitForStream(late: () => boolean) {
+    if (!this.site.lod) return;
+    this.stream.calm = 0;
+    while (this.stream.calm < STREAM_CALM_TICKS && !late()) await this.nextTick(true);
+  }
+
   // ---- frame loop ------------------------------------------------------------------------------
 
   private onUpdate = (dt: number) => {
@@ -261,6 +410,8 @@ export class SplatEngine {
       this.applyPose();
       this.requestRender();
       this.lastMoveAt = performance.now();
+      // streamed captures: count the quiet stretch again once the camera stops (a LOD update follows)
+      this.stream.calm = 0;
     }
     if (this.overlayDirty) {
       this.overlayDirty = false;
@@ -284,10 +435,16 @@ export class SplatEngine {
         if (span > 0) this.stats.fps = Math.round(((this.frameTimes.length - 1) * 1000) / span);
       }
       if (this.splat) this.framesSinceLoad++;
-      // the CPU-sort renderer is ready after its first sort; the GPU-sort one after a few frames
-      if (this.splat && !this.firstFrameFired && (this.usesCpuSort ? this.sortCount > 0 : this.framesSinceLoad > 3)) {
+      // the CPU-sort renderer is ready after its first sort; the GPU-sort one after a few frames; a
+      // streamed capture once its coarse level has loaded and sorted
+      const sorted = this.usesCpuSort ? this.sortCount > 0 : this.framesSinceLoad > 3;
+      const streamed = !this.site.lod || (this.stream.calm >= 2 && (this.stats.lod?.activeSplats ?? 0) > 0);
+      if (this.splat && !this.firstFrameFired && sorted && streamed) {
         this.firstFrameFired = true;
         this.stats.firstFrameMs = Math.round(now - this.loadStart);
+        const bg = this.site.background;
+        if (bg && this.camera.camera) this.camera.camera.clearColor = new Color(bg[0], bg[1], bg[2], 1);
+        this.beginRefine();
         this.cfg.onFirstFrame?.();
         // after the first full frame, render on demand only
         if (this.cfg.onDemand !== false) {
@@ -295,6 +452,9 @@ export class SplatEngine {
         }
       }
     }
+    // streamed captures go idle only after a quiet stretch long enough for a LOD update to have run;
+    // while files download, their arrival requests the next frame (frame:request), so no polling
+    if (this.site.lod && this.firstFrameFired && this.stream.pending === 0 && this.stream.calm < STREAM_CALM_TICKS) this.requestRender();
     this.frameListeners.forEach((fn) => fn(rendered));
   };
 
@@ -330,11 +490,16 @@ export class SplatEngine {
     const t0 = performance.now();
     const late = () => performance.now() - t0 > timeoutMs;
     while (!this.rig.settled && !late()) await this.nextTick();
+    // streamed captures: the chunk files for the final pose, and the sort of the set they make
+    await this.waitForStream(late);
     if (this.usesCpuSort) {
       const start = this.sortCount;
-      // the sort key is the depth along the view direction: a pure translation needs no new sort
-      const rotated = Math.acos(Math.max(-1, Math.min(1, this.fwdAtSort.dot(this.camera.forward)))) > 1e-3;
-      if (rotated && this.lastSortAt <= this.lastMoveAt) {
+      // a directional sort key (depth along the view axis) needs no new sort for a pure translation,
+      // a radial one (distance from the camera) none for a pure rotation
+      const stale = this.app.scene.gsplat.radialSorting
+        ? this.posAtSort.distance(this.camera.getPosition()) > 1e-3
+        : Math.acos(Math.max(-1, Math.min(1, this.fwdAtSort.dot(this.camera.forward)))) > 1e-3;
+      if (stale && this.lastSortAt <= this.lastMoveAt) {
         while (this.sortCount === start && !late()) await this.nextTick();
       }
       let last = this.sortCount;
@@ -348,16 +513,17 @@ export class SplatEngine {
     for (let i = 0; i < frames && !late(); i++) await this.nextTick(true);
   }
 
-  /** Centre crop of the canvas with the aspect of a `width`×`height` frame. */
+  /**
+   * Crop of the canvas with the aspect of a `width`×`height` frame, centred on the view axis (the
+   * canvas centre, or the centre of the safe area when HUD insets shift the projection).
+   */
   frameCrop(width: number, height: number): FrameCrop {
     const cw = this.width, ch = this.height;
+    const { x: px, y: py } = this.principalPoint();
+    let hw = Math.max(1, Math.min(px, cw - px)), hh = Math.max(1, Math.min(py, ch - py));
     const aspect = width / height;
-    if (cw / ch > aspect) {
-      const sw = ch * aspect;
-      return { sx: (cw - sw) / 2, sy: 0, sw, sh: ch, width, height };
-    }
-    const sh = cw / aspect;
-    return { sx: 0, sy: (ch - sh) / 2, sw: cw, sh, width, height };
+    if (hw / hh > aspect) hw = hh * aspect; else hh = hw / aspect;
+    return { sx: px - hw, sy: py - hh, sw: hw * 2, sh: hh * 2, width, height };
   }
 
   /**
@@ -448,7 +614,49 @@ export class SplatEngine {
     const w = Math.max(1, Math.round(width ?? fixed?.width ?? parent?.clientWidth ?? this.cfg.canvas.clientWidth));
     const h = Math.max(1, Math.round(height ?? fixed?.height ?? parent?.clientHeight ?? this.cfg.canvas.clientHeight));
     this.app.resizeCanvas(w, h);
+    this.applySafeArea();
     this.requestRender();
+  }
+
+  // ---- safe area (HUD panels over the canvas) ----------------------------------------------------
+
+  /**
+   * Keep the orbit pivot (and so every focus, orbit and the start view) at the centre of the area
+   * between HUD panels. Uses an off-centre projection (lens shift), so the scan still fills the
+   * whole canvas and nothing is letterboxed.
+   */
+  setSafeArea(area: SafeArea | null | undefined) {
+    const v = (n: number | undefined) => (typeof n === 'number' && Number.isFinite(n) ? Math.max(0, n) : 0);
+    this.safe = { top: v(area?.top), right: v(area?.right), bottom: v(area?.bottom), left: v(area?.left) };
+    this.applySafeArea();
+    this.requestRender();
+  }
+
+  private applySafeArea() {
+    const cam = this.camera?.camera;
+    const W = this.width, H = this.height;
+    if (!cam || W < 2 || H < 2) return;
+    const s = this.safe;
+    // keep at least a fifth of the canvas usable whatever the insets say
+    const l = Math.min(s.left, W * 0.8), r = Math.min(s.right, W * 0.8 - l);
+    const t = Math.min(s.top, H * 0.8), b = Math.min(s.bottom, H * 0.8 - t);
+    const cx = (l + (W - r)) / 2, cy = (t + (H - b)) / 2;
+    const ndcX = (cx - W / 2) / (W / 2), ndcY = (H / 2 - cy) / (H / 2);
+    cam.projectionOffset = new Vec2(-ndcX, -ndcY);
+  }
+
+  /** Canvas point (CSS px) the view axis passes through: the centre of the safe area. */
+  principalPoint() {
+    const off = this.camera.camera?.projectionOffset ?? Vec2.ZERO;
+    return { x: (this.width / 2) * (1 - off.x), y: (this.height / 2) * (1 + off.y) };
+  }
+
+  /** How much of the canvas the safe area spans (0.55..1): focus distances grow as it shrinks. */
+  get safeFit() {
+    const W = this.width, H = this.height;
+    if (W < 2 || H < 2) return 1;
+    const s = this.safe;
+    return Math.max(0.55, Math.min(1, (W - s.left - s.right) / W, (H - s.top - s.bottom) / H));
   }
 
   setPixelRatio(ratio: number) {
@@ -487,6 +695,8 @@ export class SplatEngine {
 
   /** Ease to look at `point` from `distance`, keeping the current viewing side. */
   focusOn(point: Vec3Tuple, distance = 1.8, done?: MoveDone, seconds?: number) {
+    // a narrow safe area between HUD panels needs a little more distance to show the asset whole
+    distance /= this.safeFit;
     const cam = positionOf(this.rig.current);
     let dir: Vec3Tuple = [cam[0] - point[0], cam[1] - point[1], cam[2] - point[2]];
     const len = Math.hypot(dir[0], dir[1], dir[2]);
@@ -541,7 +751,48 @@ export class SplatEngine {
     return this.rig.animate(pose, this.duration(seconds ?? 0.9), 'orbit');
   }
 
+  /** Vertical field of view in degrees (10 to 120). */
+  setFov(fov: number) {
+    const f = Math.max(10, Math.min(120, fov));
+    if (f === this.fov) return;
+    this.fov = f;
+    if (this.camera.camera) this.camera.camera.fov = f;
+    this.requestRender();
+  }
+
+  /** Ease (or jump, in instant mode) to look from `position` at `target`; resolves when the camera is there. */
+  lookFrom(position: Vec3Tuple, target: Vec3Tuple, seconds?: number) {
+    const pose = poseLookingAt(position, target);
+    const cam = positionOf(this.rig.current);
+    const travel = Math.hypot(position[0] - cam[0], position[1] - cam[1], position[2] - cam[2]);
+    this.requestRender();
+    return this.rig.animate(pose, this.duration(seconds ?? Math.min(2.2, 0.8 + travel * 0.12)), 'path');
+  }
+
+  /**
+   * A camera position `distance` from `point` that depends only on the point and the site: on the side
+   * the site's start camera sees it from, with a gentle downward look (never straight above or below).
+   * Agent go_to and orbit start here, so the same command always gives the same frames.
+   */
+  approachPose(point: Vec3Tuple, distance: number): { position: Vec3Tuple; target: Vec3Tuple } {
+    const { position: start, target: startTarget } = this.site.camera;
+    let dir: Vec3Tuple = [start[0] - point[0], start[1] - point[1], start[2] - point[2]];
+    let horiz = Math.hypot(dir[0], dir[2]);
+    if (horiz < 1e-3) {
+      // the point is straight above or below the start camera: approach along the start view direction
+      dir = [start[0] - startTarget[0], 0, start[2] - startTarget[2]];
+      horiz = Math.hypot(dir[0], dir[2]);
+      if (horiz < 1e-3) { dir = [0, 0, 1]; horiz = 1; }
+    }
+    const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+    const elev = Math.max(-0.2, Math.min(0.55, dir[1] / len));
+    const h = Math.sqrt(1 - elev * elev);
+    const d: Vec3Tuple = [(dir[0] / horiz) * h, elev, (dir[2] / horiz) * h];
+    return { position: [point[0] + d[0] * distance, point[1] + d[1] * distance, point[2] + d[2] * distance], target: [...point] as Vec3Tuple };
+  }
+
   reset(animate = true) {
+    this.setFov(this.baseFov);
     this.rig.animateTo(this.initialPose, animate ? this.duration(1.4) : 0);
     this.requestRender();
   }
@@ -614,12 +865,9 @@ export class SplatEngine {
     try {
       picker.prepare(this.camera.camera!, this.app.scene, this.layer ? [this.layer] : undefined);
       const cam = this.camera.getPosition().clone();
-      const out: (number | null)[] = [];
-      for (const pt of points) {
-        const p = await picker.getWorldPointAsync((pt.x / this.width) * w, (pt.y / this.height) * h);
-        out.push(p && Number.isFinite(p.x) ? p.distance(cam) : null);
-      }
-      return out;
+      // one pick render, then all the 1x1 depth readbacks in flight together
+      const hits = await Promise.all(points.map((pt) => picker.getWorldPointAsync((pt.x / this.width) * w, (pt.y / this.height) * h)));
+      return hits.map((p) => (p && Number.isFinite(p.x) ? p.distance(cam) : null));
     } catch {
       return points.map(() => null);
     }
@@ -654,6 +902,7 @@ export class SplatEngine {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.app.systems.gsplat?.off('frame:ready', this.onStreamFrame);
     this.resizeObserver?.disconnect();
     this.rig.dispose();
     this.frameListeners.clear();

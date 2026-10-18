@@ -1,0 +1,127 @@
+{
+  "name": "steward-vision-agent-eye",
+  "suite": "vision",
+  "description": "REALITY-CONTRACT-4.md §2 vision suite: the agent eye returns rendered frames as images with the pose and the visible pins. Look, fly to a tagged asset and confirm its tag is visible, step and turn, orbit a valve, mark what is seen, on both factories.",
+  "notes": [
+    "Each eye step returns MCP image content (JPEG) plus a text with the pose and visible tags; structuredContent carries frames[].visiblePins and visibleTags, which these expectations read.",
+    "Needs a renderer on the backend (an open dashboard viewer in eye mode or the headless worker the backend starts); a frame can take up to ~20 s."
+  ],
+  "steps": [
+    {
+      "id": "look_myer",
+      "kind": "tool",
+      "tool": "eye_look",
+      "args": {
+        "siteId": "myer-plant"
+      },
+      "expect": {
+        "action": "look",
+        "imagesReturned": 1,
+        "frames[0].camera.position": {
+          "$exists": true
+        },
+        "frames[0].image": "included"
+      }
+    },
+    {
+      "id": "go_to_gauge",
+      "kind": "tool",
+      "tool": "eye_go_to",
+      "args": {
+        "siteId": "myer-plant",
+        "assetTag": "PG-601"
+      },
+      "expect": {
+        "visibleTags": {
+          "$contains": "PG-601"
+        },
+        "frames[0].visiblePins[assetTag=PG-601].occluded": false,
+        "imagesReturned": 1
+      }
+    },
+    {
+      "id": "small_step",
+      "kind": "tool",
+      "tool": "eye_move",
+      "args": {
+        "siteId": "myer-plant",
+        "direction": "back",
+        "meters": 0.5
+      },
+      "expect": {
+        "action": "move",
+        "imagesReturned": 1,
+        "visibleTags": {
+          "$contains": "PG-601"
+        }
+      }
+    },
+    {
+      "id": "turn",
+      "kind": "tool",
+      "tool": "eye_turn",
+      "args": {
+        "siteId": "myer-plant",
+        "yawDeg": 15,
+        "pitchDeg": 0
+      },
+      "expect": {
+        "action": "turn",
+        "imagesReturned": 1,
+        "frames[0].camera.target": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "orbit_valve",
+      "kind": "tool",
+      "tool": "eye_orbit",
+      "args": {
+        "siteId": "myer-plant",
+        "assetTag": "V-503",
+        "frames": 4
+      },
+      "expect": {
+        "action": "orbit",
+        "imagesReturned": 4,
+        "imagesOmitted": 0,
+        "visibleTags": {
+          "$contains": "V-503"
+        }
+      }
+    },
+    {
+      "id": "mark_it",
+      "kind": "tool",
+      "tool": "eye_mark",
+      "args": {
+        "siteId": "myer-plant",
+        "x": 0.5,
+        "y": 0.5,
+        "note": "Handwheel looks stiff on V-503 (eval)"
+      },
+      "expect": {
+        "action": "mark",
+        "annotation": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "go_to_sump",
+      "kind": "tool",
+      "tool": "eye_go_to",
+      "args": {
+        "siteId": "bristol-pumps",
+        "assetTag": "SU-201"
+      },
+      "expect": {
+        "visibleTags": {
+          "$contains": "SU-201"
+        },
+        "siteId": "bristol-pumps"
+      }
+    }
+  ]
+}

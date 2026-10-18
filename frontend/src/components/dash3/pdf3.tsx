@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
-export default function Pdf3({ url, title }: { url: string; title: string }) {
+export default function Pdf3({ url, title, initialPage = 1 }: { url: string; title: string; initialPage?: number }) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
@@ -19,7 +19,7 @@ export default function Pdf3({ url, title }: { url: string; title: string }) {
   }, []);
   useEffect(() => {
     let alive = true; let task: PDFDocumentLoadingTask | undefined; const abort = new AbortController();
-    setDoc(null); setError(""); setLoading(true); setPage(1);
+    setDoc(null); setError(""); setLoading(true); setPage(Math.max(1, initialPage));
     (async () => {
       try {
         const res = await fetch(url, { signal: abort.signal });
@@ -34,7 +34,7 @@ export default function Pdf3({ url, title }: { url: string; title: string }) {
       } catch (e) { if (alive && !abort.signal.aborted) { setError(e instanceof Error ? e.message : "The PDF could not be read."); setLoading(false); } }
     })();
     return () => { alive = false; abort.abort(); if (task) void task.destroy(); };
-  }, [url]);
+  }, [url, initialPage]);
   useEffect(() => {
     if (!doc || !canvas.current) return;
     let alive = true; let render: RenderTask | undefined;

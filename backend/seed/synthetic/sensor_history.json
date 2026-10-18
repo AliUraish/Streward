@@ -10,6 +10,7 @@
      "synthetic": true, "generator": "hand-seed"},
     {"id": "br-su201-level", "siteId": "bristol-pumps", "assetTag": "SU-201", "attribute": "level_pct", "unit": "%", "ratedLimit": 85, "overflowAt": 100,
      "points": [{"t": 0, "value": 92.8}, {"t": 5, "value": 93.6}, {"t": 10, "value": 94.4}, {"t": 15, "value": 95.2}, {"t": 20, "value": 96.0}],
-     "synthetic": true, "generator": "hand-seed"}
+     "synthetic": true, "generator": "hand-seed"},
+    {"id": "tm-hs301-humidity", "siteId": "tomioka-mill", "assetTag": "HS-301", "attribute": "humidity_pct", "unit": "%", "ratedLimit": 65, "points": [{"t": 0, "value": 79.6}, {"t": 5, "value": 81.8}, {"t": 10, "value": 83.9}, {"t": 15, "value": 85.6}, {"t": 20, "value": 86.9}, {"t": 25, "value": 88.0}, {"t": 30, "value": 88.6}], "synthetic": true, "generator": "hand-seed"}
   ]
 }

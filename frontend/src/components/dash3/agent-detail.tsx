@@ -9,6 +9,7 @@ import { AGENTS3, agentName, site3, type AgentIdentity } from "@/lib/sites-3";
 import { speak, speechAvailable, type SpeakHandle } from "@/lib/speech";
 import type { AgentInfo, TranscriptEntry } from "@/lib/types-2";
 import type { AgentMemory } from "@/lib/types-3";
+import { AgentTools } from "./tools";
 import { Btn, NotYet, Reveal, State, SynthTag, ago, n, when, words } from "./ui3";
 
 export const LISTEN_NOTE = "voiced by your browser's text-to-speech";
@@ -41,7 +42,7 @@ export function AgentDetail({ me, info, speaker }: { me: AgentIdentity; info?: A
   return <div className="ag-detail">
     <Reveal className="p3 ag-head">
       <div className="who"><h2 className="ag-name">{me.name}</h2><p>{me.role}</p>
-        <p className="ids">{me.inbox ? `${me.inbox}@inkboxmail.com, email and Inkbox A2A` : "No Inkbox identity: it is the customer's own agent, over MCP."}{me.team === "technician" ? "; SMS and calls to people through the Steward Dispatch Line" : ""}{me.siteId ? `; ${site3(me.siteId).name}` : ""}</p></div>
+        <p className="ids">{me.inbox ? `${me.inbox}@inkboxmail.com` : "The customer's own agent, over MCP."}{me.team === "technician" ? "; SMS and calls to people through the Steward Dispatch Line" : ""}{me.siteId ? `; ${site3(me.siteId).name}` : ""}</p></div>
       <dl className="kv3 now">
         <dt>Status</dt><dd>{info?.status ?? "not available yet"}{info?.lastActivityAt ? `, ${ago(info.lastActivityAt)}` : ""}</dd>
         <dt>Task</dt><dd>{a?.currentTask ?? info?.currentTask ?? "None"}</dd>
@@ -76,6 +77,7 @@ export function AgentDetail({ me, info, speaker }: { me: AgentIdentity; info?: A
           </>}
         </State>
       </Reveal>
+      {me.id !== "operator" ? <Reveal className="p3 agtools3" i={5}><AgentTools agentId={me.id} siteId={me.siteId} /></Reveal> : null}
     </div>
   </div>;
 }

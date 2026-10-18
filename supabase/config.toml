@@ -1,0 +1,14 @@
+# Steward's Supabase CLI config. Deliberately minimal: `supabase config push` only pushes what this file declares
+# (everything else on the hosted project stays as it is). The project ref is never stored here: pass
+# --project-ref "$SUPABASE_PROJECT_REF" (root .env) to every command.
+project_id = "steward"
+
+# The custom access token hook (supabase/migrations/0003_authority.sql) adds agent_id, agent_level, site_id and
+# agent_role from public.agents to every access token.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/steward/custom_access_token_hook"
+
+# Edge Function: Inkbox webhooks carry no Supabase JWT; the function verifies the Inkbox HMAC signature itself.
+[functions.inkbox-inbox]
+verify_jwt = false

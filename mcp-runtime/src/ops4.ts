@@ -4,9 +4,9 @@
  * cross-factory maintenance windows and notifications. Upstream bodies are parsed leniently and normalised here.
  */
 import { z } from 'zod';
-import type { PropertyId, RuntimeConfig } from './config.js';
+import { PROPERTY_IDS, type PropertyId, type RuntimeConfig } from './config.js';
 import { AdapterError, type Backend } from './upstream.js';
-import { LOCAL_WRITE, MISSION_WRITE, READ_ONLY, type ToolFn } from './tooling.js';
+import { LOCAL_WRITE, MISSION_WRITE, type ToolFn } from './tooling.js';
 import { list, normaliseIssue } from './factory.js';
 
 type Json = Record<string, unknown>;
@@ -17,7 +17,12 @@ const str = (value: unknown): string | null => typeof value === 'string' && valu
 const num = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
-export const METRIC_SERIES = ['pressure_bar', 'flow_m3h', 'temperature_c', 'level_pct', 'vibration_mms', 'power_kw'] as const;
+/**
+ * Series families: the factories' six (contract 4 §3), Tomioka's humidity and wall cracks (contract 5 §3), and on every
+ * site checked_in, the employees checked in at the badge readers (unit people, asset SITE; it replaced the mill's
+ * visitor_count).
+ */
+export const METRIC_SERIES = ['pressure_bar', 'flow_m3h', 'temperature_c', 'level_pct', 'vibration_mms', 'power_kw', 'humidity_pct', 'checked_in', 'crack_width_mm'] as const;
 export const LEGAL_NOTICE = 'Demo rule pack built on real government sources, explained in our own words. Not legal advice; the official text governs.';
 const MAX_POINTS = 48;
 
@@ -83,21 +88,23 @@ export function registerOps4Tools({ tool, backend, config, siteId, agentId, inSc
 
   // ---- metrics (§3) ----
 
-  tool('get_portfolio_summary', 'Both factories and their two-site average in one small answer: average pressure, average flow, uptime percent, open issues, compliance percent, crew on shift and agent actions today. Synthetic series, labelled. Call it for "how are the plants doing". Free, read-only, one request. NEXT: get_metrics(siteId) for a trend, get_overview for what the agents are doing, list_issues for the issues behind a count.',
+  tool('get_portfolio_summary', 'Every site (the two factories and the Tomioka silk mill) and the portfolio average in one small answer: average pressure, average flow, uptime percent, open issues, compliance percent, crew on shift, employees checked in at the badge readers (employeesCheckedIn) and agent actions today, plus whatever site KPIs the backend adds (Tomioka: humidity, crack width). Synthetic series, labelled. Call it for "how are the sites doing". Free, read-only, one request. NEXT: get_metrics(siteId) for a trend, get_overview for what the agents are doing, list_issues for the issues behind a count.',
     z.strictObject({}), PortfolioSchema, async () => {
       const raw = obj(await backend.json('/api/metrics/summary', ANY));
       const sites = list(raw, 'sites').map(site => ({ ...site, siteId: str(site.siteId) ?? str(site.id) ?? 'unknown' })).filter(site => inScope(site.siteId));
-      const average = raw.average ?? raw.twoSiteAverage ?? raw.portfolio;
+      const average = raw.average ?? raw.portfolioAverage ?? raw.twoSiteAverage ?? raw.portfolio;
       return { sites, average: average && typeof average === 'object' ? obj(average) : null, at: str(raw.at) ?? str(raw.generatedAt), source: str(raw.source) ?? 'Steward metrics (synthetic series)', synthetic: raw.synthetic !== false, nextStep: 'get_metrics(siteId, series, hours) for a trend behind a number.' };
     });
 
-  tool('get_metrics', `Time series for one site over the last hours (1 to 168): ${METRIC_SERIES.join(', ')}, each with unit, asset, spec band, last value, min / max / average, how many points sit outside spec, and up to ${MAX_POINTS} evenly spaced points. Synthetic series (seeded random walk, daily cycle, scenario overlays), labelled. Use it to see whether a reading is drifting (overpressure ramp, sump rise). Free, read-only; ~1-3k tokens for all series. NEXT: get_issue or eye_go_to for the asset behind an out-of-spec series.`,
-    z.strictObject({ siteId, series: z.array(z.enum(METRIC_SERIES)).min(1).max(6).optional().describe('Which series; omit for all.'), hours: z.number().min(1).max(168).default(24).describe('Window in hours, 1 to 168 (7 days).') }),
+  tool('get_metrics', `Time series for one site over the last hours (1 to 168): ${METRIC_SERIES.join(', ')}, each with unit, asset, spec band, last value, min / max / average, how many points sit outside spec, and up to ${MAX_POINTS} evenly spaced points. A site returns the series it has (Tomioka: humidity_pct, temperature_c, vibration_mms, crack_width_mm, power_kw; every site: checked_in, the employees checked in at the badge readers). Synthetic series, labelled. Use it to see whether a reading is drifting (overpressure ramp, sump rise, humidity after a typhoon). Free, read-only; ~1-3k tokens for all series. NEXT: get_issue or eye_go_to for the asset behind an out-of-spec series.`,
+    z.strictObject({ siteId, series: z.array(z.enum(METRIC_SERIES)).min(1).max(METRIC_SERIES.length).optional().describe('Which series; omit for all the site has.'), hours: z.number().min(1).max(168).default(24).describe('Window in hours, 1 to 168 (7 days).') }),
     MetricsSchema, async ({ siteId: id, series, hours }) => {
       const to = new Date(); const from = new Date(to.getTime() - hours * 3600_000);
       const step = Math.max(300, Math.round(hours * 3600 / MAX_POINTS));
       const raw = obj(await backend.json(`${backend.propertyPath(id, 'metrics')}${qs({ series: series?.join(','), from: from.toISOString(), to: to.toISOString(), step: String(step) })}`, ANY));
-      const out = list(raw, 'series').filter(row => !series || series.includes(str(row.key) as typeof METRIC_SERIES[number])).map(row => {
+      // The backend keys a series per asset (pressure_bar:PG-601); the family is the part before the colon.
+      const family = (row: Json) => (str(row.series) ?? str(row.key) ?? '').split(':')[0] as typeof METRIC_SERIES[number];
+      const out = list(raw, 'series').filter(row => !series || series.includes(family(row))).map(row => {
         const points = (Array.isArray(row.points) ? row.points : []).filter((point): point is [string, number] => Array.isArray(point) && typeof point[0] === 'string' && typeof point[1] === 'number');
         const values = points.map(point => point[1]);
         const spec = row.spec && typeof row.spec === 'object' ? { min: num(obj(row.spec).min), max: num(obj(row.spec).max) } : null;
@@ -142,7 +149,7 @@ export function registerOps4Tools({ tool, backend, config, siteId, agentId, inSc
 
   // ---- regulations and compliance (§5) ----
 
-  tool('list_regulations', 'The regulations a site\'s obligations cite, from official government sources cached with attribution: Bristol (England) Pressure Systems Safety Regulations 2000, Workplace Regulations 1992, Health and Safety at Work etc. Act 1974 (legislation.gov.uk, Open Government Licence v3.0); Myer (Victoria) OHS Regulations 2017 and Building Regulations 2018 (legislation.vic.gov.au). Each with instrument, provision, our plain-English summary, the official URL, the cached PDF URL and the licence. Not legal advice. Free, read-only. NEXT: explain_compliance_issue(issueId) for one issue.',
+  tool('list_regulations', 'The regulations a site\'s obligations cite, from official government sources cached with attribution: Bristol (England) Pressure Systems Safety Regulations 2000, Workplace Regulations 1992, Health and Safety at Work etc. Act 1974 (legislation.gov.uk, Open Government Licence v3.0); Myer (Victoria) OHS Regulations 2017 and Building Regulations 2018 (legislation.vic.gov.au); Tomioka (Japan) Act on Protection of Cultural Properties (文化財保護法, Act No. 214 of 1950) and Fire Service Act (消防法, Act No. 186 of 1948) (e-Gov laws.e-gov.go.jp, English from japaneselawtranslation.go.jp; Japanese article numbers alongside). Each with instrument, provision, our plain-English summary, the official URL, the cached PDF URL when the source\'s terms allow it and the licence or terms as the source states them. Not legal advice. Free, read-only. NEXT: explain_compliance_issue(issueId) for one issue.',
     z.strictObject({ siteId }), z.object({ siteId: z.string(), regulations: z.array(RegulationSchema), disclaimer: z.string() }), async ({ siteId: id }) => ({
       siteId: id, regulations: list(await backend.json(`/api/regulations${qs({ siteId: id })}`, ANY), 'regulations').map(row => normaliseRegulation(row, absolute)), disclaimer: LEGAL_NOTICE,
     }));
@@ -179,9 +186,12 @@ export function registerOps4Tools({ tool, backend, config, siteId, agentId, inSc
 
   // ---- the fix workflow (§6) ----
 
-  tool('request_fix', 'Ask the agents to fix an issue (the owner\'s agent only). Starts the simulated fix workflow, every step a recorded change: the engineer drives the eye to the asset and attaches a frame, calls the manager, the manager picks the responsible person and the compliance officer adds the regulation reason, the technician contacts the person through the dispatch line (simulated for synthetic crew; live SMS only to the duty engineer when live mode is on), the reply arrives, the engineer verifies, the compliance officer closes the obligation, and the manager notifies the site roster. Returns immediately; not idempotent. NEXT: wait_for(event "issue.changed", filter {issueId}) and call it again on still_waiting until status is resolved; list_notifications(siteId) at the end.',
-    z.strictObject({ issueId: idString.describe('Issue id from list_issues or explain_compliance_issue.') }), FixSchema, async ({ issueId }) => {
-      const raw = obj(await backend.json(`/api/issues/${enc(issueId)}/fix`, ANY, { method: 'POST', body: {} }));
+  tool('request_fix', 'Ask the agents to fix an issue (the owner\'s agent only). Starts the fix workflow, every step a recorded change: the engineer drives the eye to the asset and attaches a frame, calls the manager, the manager picks the responsible person and the compliance officer adds the regulation reason, the technician contacts the person through the dispatch line (a record only for synthetic crew; live SMS only to the duty engineer when live mode is on), the reply arrives, the engineer verifies, the compliance officer closes the obligation, and the manager notifies the site roster. Returns immediately; not idempotent. NEXT: wait_for(event "issue.changed", filter {issueId}) and call it again on still_waiting until status is resolved; list_notifications(siteId) at the end.',
+    z.strictObject({
+      issueId: idString.describe('Issue id from list_issues or explain_compliance_issue.'),
+      speed: z.number().min(0).max(1000).optional().describe('Time compression for the workflow steps; 0 plays every step at once; omit for the backend default.'),
+    }), FixSchema, async ({ issueId, speed }) => {
+      const raw = obj(await backend.json(`/api/issues/${enc(issueId)}/fix`, ANY, { method: 'POST', body: speed === undefined ? {} : { speed } }));
       scope(str(raw.siteId));
       return {
         ...raw, id: str(raw.id) ?? str(raw.runId) ?? str(raw.workflowId) ?? 'fix', issueId: str(raw.issueId) ?? issueId, state: str(raw.state) ?? str(raw.status) ?? 'running',
@@ -197,14 +207,14 @@ export function registerOps4Tools({ tool, backend, config, siteId, agentId, inSc
     conversationId: str(row.conversationId), synthetic: typeof row.synthetic === 'boolean' ? row.synthetic : null,
   });
 
-  tool('list_maintenance', 'Maintenance windows for a site (or both): date, scope, examiner, status proposed / approved / done, the sites sharing it and the conversation that agreed it (the x-maintenance scenario: Bristol and Myer share a pressure-equipment examiner visit, the director approves). Free, read-only. NEXT: get_conversation(conversationId) for how it was agreed; propose_maintenance_window (a manager or the director) to add one.',
+  tool('list_maintenance', 'Maintenance windows for a site (or every site): date, scope, examiner, status proposed / approved / done, the sites sharing it and the conversation that agreed it (Bristol and Myer share a pressure-equipment examiner visit; Tomioka and Bristol share heritage-safe sensor installation; the director approves). Free, read-only. NEXT: get_conversation(conversationId) for how it was agreed; propose_maintenance_window (a manager or the director) to add one.',
     z.strictObject({ siteId: siteId.optional() }), z.object({ windows: z.array(WindowSchema) }), async ({ siteId: id }) => ({
       windows: list(await backend.json(`/api/maintenance${qs({ siteId: id })}`, ANY), 'windows', 'maintenance').map(normaliseWindow).filter(row => !row.siteIds.length || row.siteIds.some(site => inScope(site))),
     }));
 
   tool('propose_maintenance_window', 'Propose a maintenance window (a site manager for their own site, or the director; cross-site windows need the director\'s approval). Records {siteIds, date, scope, examiner} as proposed; nobody outside Steward is contacted. Any other actor gets AUTHORITY_DENIED. Not idempotent: each call proposes a window. NEXT: wait_for(event "any", filter {kind: "maintenance"}) or list_maintenance for the approval.',
     z.strictObject({
-      siteIds: z.array(siteId).min(1).max(2).describe('One site, or both for a shared window.'),
+      siteIds: z.array(siteId).min(1).max(PROPERTY_IDS.length).describe('One site, or several for a shared window (a window covering another site needs the director).'),
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Day of the window, YYYY-MM-DD.'),
       scope: z.string().min(5).max(300).describe('What will be done, e.g. "Written-scheme examination of PV-301 and the Myer expansion vessel".'),
       examiner: z.string().min(2).max(120).optional().describe('Who examines, e.g. the shared pressure-equipment examiner.'),
@@ -218,5 +228,4 @@ export function registerOps4Tools({ tool, backend, config, siteId, agentId, inSc
       })),
     }));
 
-  void READ_ONLY;
 }

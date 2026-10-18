@@ -258,7 +258,8 @@ test('reality tools against a fake upstream: resolve/attest/check, requester, er
     // resources and prompt
     const guide = await client.readResource({ uri: GUIDE_URI });
     const guideText = guide.contents.map(item => ('text' in item ? item.text : '')).join('');
-    for (const needle of ['known', 'stale', 'unknown', 'conflict', 'budget', 'zero tokens', 'subscribe', 'get_changes', 'offline', 'myer-plant', 'bristol-pumps', 'Operator', 'Atlas', 'Warden', 'Counsel', 'Runner', 'AUTHORITY_DENIED', 'start_mission', 'get_mission', 'every 5 s', 'get_transcript', 'X-Steward-Actor', 'wait_for', 'still_waiting', 'decide', 'show_factory', 'focus_view', 'get_overview', 'steward://sites/{siteId}/overview']) assert(guideText.includes(needle), `guide mentions ${needle}`);
+    for (const needle of ['known', 'stale', 'unknown', 'conflict', 'budget', 'zero tokens', 'subscribe', 'get_changes', 'offline', 'myer-plant', 'bristol-pumps', "Owner's agent", 'Operations Director', 'Plant Manager', 'Site Engineer', 'Compliance Officer', 'Field Technician', 'Steward Dispatch Line', 'AUTHORITY_DENIED', 'start_mission', 'get_mission', 'every 5 s', 'get_transcript', 'X-Steward-Actor', 'wait_for', 'still_waiting', 'decide', 'show_factory', 'focus_view', 'get_overview', 'steward://sites/{siteId}/overview', 'eye_look', 'eye_go_to', 'eye_move', 'eye_mark', 'request_fix', 'list_regulations', 'get_metrics', 'list_conversations', 'not legal advice']) assert(guideText.includes(needle), `guide mentions ${needle}`);
+    for (const retired of ['Atlas', 'Warden', 'Counsel', 'Runner']) assert(!guideText.includes(retired), `guide no longer names ${retired}`);
     for (const stale of ['cedar', 'juniper', ' harbor ', 'residen']) assert(!guideText.includes(stale), `guide no longer mentions ${stale}`);
     const schema = await client.readResource({ uri: SCHEMA_URI });
     const schemaText = schema.contents.map(item => ('text' in item ? item.text : '')).join('');
@@ -277,7 +278,7 @@ test('reality tools against a fake upstream: resolve/attest/check, requester, er
     assert(badSite instanceof Error); assert.match(badSite.message, /PROPERTY_SCOPE|list_sites/);
     const prompt = await client.getPrompt({ name: 'prove-before-signing', arguments: { siteId: 'myer-plant', task: 'Clear the Myer Plant Room for restart. Budget $5.' } });
     const promptText = (prompt.messages[0]!.content as { text: string }).text;
-    assert.match(promptText, /resolve/); assert.match(promptText, /never poll/); assert.match(promptText, /attestationId/);
+    assert.match(promptText, /resolve/); assert.match(promptText, /never poll/i); assert.match(promptText, /attestationId/);
 
     // analytics hook saw every call with the client name
     assert(events.length > 10);
@@ -322,11 +323,11 @@ test('addendum 2: missions, agents, transcripts, issues, evals; actor header on 
 
     // agents
     const agents = data(await client.callTool({ name: 'list_agents', arguments: {} })).agents as { id: string; level: number; status: string; authority: string[] }[];
-    assert.deepEqual(agents.map(agent => agent.id), ['operator', 'atlas', 'warden:myer-plant', 'warden:bristol-pumps', 'counsel', 'runner']);
-    assert.deepEqual(agents.map(agent => agent.level), [1, 2, 3, 3, 3, 4]);
+    assert.deepEqual(agents.map(agent => agent.id), ['operator', 'director', 'myer-manager', 'myer-engineer', 'myer-compliance', 'myer-technician', 'bristol-manager', 'bristol-engineer', 'bristol-compliance', 'bristol-technician']);
+    assert.deepEqual(agents.map(agent => agent.level), [1, 2, 3, 4, 4, 5, 3, 4, 4, 5]);
     assert(agents.every(agent => agent.status === 'idle' && agent.authority.length > 0));
     const agentsResource = (await client.readResource({ uri: AGENTS_URI })).contents.map(item => ('text' in item ? item.text : '')).join('');
-    for (const needle of ['Operator', 'Atlas', 'Warden', 'Counsel', 'Runner', 'Live status', '"id":"warden:myer-plant"', '"id":"counsel"', 'X-Steward-Actor', 'operator']) assert(agentsResource.includes(needle), `agents resource mentions ${needle}`);
+    for (const needle of ["Owner's agent", 'Operations Director', 'Plant Manager', 'Site Engineer', 'Compliance Officer', 'Field Technician', 'Live status', '"id":"myer-engineer"', '"id":"bristol-compliance"', 'X-Steward-Actor', 'operator']) assert(agentsResource.includes(needle), `agents resource mentions ${needle}`);
 
     // evals (seeded run)
     const runs = data(await client.callTool({ name: 'list_evals', arguments: {} })).runs as { id: string; suite: string; passed: number }[];
@@ -344,34 +345,34 @@ test('addendum 2: missions, agents, transcripts, issues, evals; actor header on 
     assert.deepEqual(upstream.state.lastMissionBody, { siteId: 'myer-plant', goal: 'clear_for_restart', budget: 5, requester: 'mcp-client', actor: 'operator' });
     const missionId = mission.id as string;
     const steps = mission.steps as { agentId: string; summary: string; workItemId?: string | null; attestationId?: string | null; taskId?: string | null }[];
-    assert.equal(steps[0]!.agentId, 'atlas');
-    assert(steps.some(step => step.agentId === 'warden:myer-plant' && step.attestationId), 'known attributes are cited by the warden');
-    const runnerStep = steps.find(step => step.agentId === 'runner')!;
-    assert(runnerStep.workItemId, 'the runner dispatched a human for P-101.pressure_bar');
+    assert.equal(steps[0]!.agentId, 'director');
+    assert(steps.some(step => step.agentId === 'myer-engineer' && step.attestationId), 'known attributes are cited by the site engineer');
+    const runnerStep = steps.find(step => step.agentId === 'myer-technician')!;
+    assert(runnerStep.workItemId, 'the field technician dispatched a human for P-101.pressure_bar');
     assert.equal(steps.filter(step => step.workItemId).length >= 1, true);
     const same = data(await client.callTool({ name: 'get_mission', arguments: { missionId } }));
     assert.equal(same.id, missionId); assert.equal(same.state, 'running');
     assert.equal((data(await client.callTool({ name: 'list_missions', arguments: { siteId: 'myer-plant' } })).missions as unknown[]).length, 1);
     assert.equal((data(await client.callTool({ name: 'list_missions', arguments: { siteId: 'bristol-pumps' } })).missions as unknown[]).length, 0);
     const working = data(await client.callTool({ name: 'list_agents', arguments: {} })).agents as { id: string; status: string; currentTask: string | null }[];
-    assert.equal(working.find(agent => agent.id === 'atlas')!.status, 'working'); assert.equal(working.find(agent => agent.id === 'atlas')!.currentTask, missionId);
-    assert.equal(working.find(agent => agent.id === 'runner')!.status, 'waiting');
+    assert.equal(working.find(agent => agent.id === 'director')!.status, 'working'); assert.equal(working.find(agent => agent.id === 'director')!.currentTask, missionId);
+    assert.equal(working.find(agent => agent.id === 'myer-technician')!.status, 'waiting');
     const changes = data(await client.callTool({ name: 'get_changes', arguments: { siteId: 'myer-plant', since: 0, limit: 500 } }));
     const waiting = (changes.waiting as { assetTag: string; attribute: string; reference: string; id: string; requester: string }[]).find(item => item.assetTag === 'P-101' && item.attribute === 'pressure_bar')!;
-    assert.match(waiting.reference, /^MY-P101-PRESSURE_BAR-\d{4}$/); assert.equal(waiting.id, runnerStep.workItemId); assert.equal(waiting.requester, 'warden:myer-plant');
+    assert.match(waiting.reference, /^MY-P101-PRESSURE_BAR-\d{4}$/); assert.equal(waiting.id, runnerStep.workItemId); assert.equal(waiting.requester, 'myer-engineer');
     assert((changes.changes as { type: string }[]).some(change => change.type === 'a2a'), 'every agent message emits an a2a change');
 
     // transcripts
-    const runnerLog = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'runner' } }));
-    assert.equal(runnerLog.agentId, 'runner');
+    const runnerLog = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'myer-technician' } }));
+    assert.equal(runnerLog.agentId, 'myer-technician');
     const runnerEntries = runnerLog.entries as { kind: string; direction: string; counterpart: string; text: string; refs: { missionId?: string; workItemId?: string; taskId?: string } }[];
-    assert(runnerEntries.some(entry => entry.kind === 'a2a' && entry.direction === 'in' && entry.counterpart === 'warden:myer-plant'), 'runner received the field task');
+    assert(runnerEntries.some(entry => entry.kind === 'a2a' && entry.direction === 'in' && entry.counterpart === 'myer-engineer'), 'the technician received the field task');
     const dispatchEntry = runnerEntries.find(entry => entry.direction === 'out' && /dispatch/i.test(entry.text))!;
     assert.equal(dispatchEntry.refs.workItemId, waiting.id); assert.equal(dispatchEntry.refs.missionId, missionId);
-    const atlasLog = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'atlas', since: 0, limit: 10 } })).entries as { kind: string; parts?: unknown[]; refs: { missionId?: string } }[];
+    const atlasLog = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'director', since: 0, limit: 10 } })).entries as { kind: string; parts?: unknown[]; refs: { missionId?: string } }[];
     assert(atlasLog.length >= 2 && atlasLog.length <= 10);
     assert(atlasLog.every(entry => entry.kind === 'a2a' && entry.refs.missionId === missionId && Array.isArray(entry.parts)));
-    assert.equal((data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'atlas', since: 1, limit: 1 } })).entries as unknown[]).length, 1, 'since is a cursor');
+    assert.equal((data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'director', since: 1, limit: 1 } })).entries as unknown[]).length, 1, 'since is a cursor');
 
     // the technician replies: wrong tag rejected, mission still running; right tag accepted, mission completed with a valid checklist
     const inbound = async (statedTag: string, value: number) => (await fetch(`${upstream.url}/api/inbound/local`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference: waiting.reference, body: `Gauge on ${statedTag} reads ${value} bar`, statedTag, value }) })).json() as Promise<{ verdict: string }>;
@@ -387,17 +388,17 @@ test('addendum 2: missions, agents, transcripts, issues, evals; actor header on 
     const pressure = checklist.find(line => line.assetTag === 'P-101' && line.attribute === 'pressure_bar')!;
     assert.equal(pressure.value, 2.4);
     assert.equal(data(await client.callTool({ name: 'check', arguments: { attestationId: pressure.attestationId } })).valid, true);
-    const atlasAfter = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'atlas' } })).entries as { direction: string; counterpart: string; text: string }[];
+    const atlasAfter = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'director' } })).entries as { direction: string; counterpart: string; text: string }[];
     assert(atlasAfter.some(entry => entry.direction === 'out' && entry.counterpart === 'operator' && /completed/.test(entry.text)));
-    const wardenAfter = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'warden:myer-plant' } })).entries as { refs: { attestationId?: string } }[];
-    assert(wardenAfter.some(entry => entry.refs.attestationId === pressure.attestationId), 'the warden reported the attestation to atlas');
-    assert.equal((data(await client.callTool({ name: 'list_agents', arguments: {} })).agents as { id: string; status: string }[]).find(agent => agent.id === 'atlas')!.status, 'idle');
+    const wardenAfter = data(await client.callTool({ name: 'get_transcript', arguments: { agentId: 'myer-engineer' } })).entries as { refs: { attestationId?: string } }[];
+    assert(wardenAfter.some(entry => entry.refs.attestationId === pressure.attestationId), 'the engineer reported the attestation to the director');
+    assert.equal((data(await client.callTool({ name: 'list_agents', arguments: {} })).agents as { id: string; status: string }[]).find(agent => agent.id === 'director')!.status, 'idle');
 
     // issues: the rejected reply is a rejected_evidence issue; both registers are seeded with identity facts; the register issue passes through
     const issues = data(await client.callTool({ name: 'get_issues', arguments: { siteId: 'myer-plant' } })).issues as { kind: string; assetTag: string; pin: { x: number; y: number } | null; refId: string }[];
     assert(issues.some(issue => issue.kind === 'rejected_evidence' && issue.assetTag === 'P-101'));
     assert(!issues.some(issue => issue.kind === 'unknown_identity'));
-    assert(issues.some(issue => issue.assetTag === 'V-503' && issue.kind === 'condition'), 'addendum-3 register issues pass through get_issues');
+    assert(issues.some(issue => issue.assetTag === 'V-503' && issue.kind === 'valve_condition'), 'addendum-3 register issues pass through get_issues');
     assert(issues.every(issue => !issue.pin || (issue.pin.x >= 0 && issue.pin.x <= 1 && issue.pin.y >= 0 && issue.pin.y <= 1)));
     const bristolIssues = data(await client.callTool({ name: 'get_issues', arguments: { siteId: 'bristol-pumps' } })).issues as { kind: string }[];
     assert(!bristolIssues.some(issue => issue.kind === 'unknown_identity'), 'both registers are seeded with identity facts');
@@ -412,31 +413,31 @@ test('addendum 2: missions, agents, transcripts, issues, evals; actor header on 
     assert.match(await raw('start_mission', { siteId: 'myer-plant', goal: 'demolish', budget: 5 }), /invalid|literal|clear_for_restart/i);
     assert.match(await raw('start_mission', { siteId: 'myer-plant', budget: 5000 }), /invalid|<=|big|maximum/i);
     assert.match(await raw('start_mission', { siteId: 'harbor', budget: 5 }), /invalid|enum|myer-plant/i);
-    assert.match(await raw('get_transcript', { agentId: 'owner' }), /invalid|regex|pattern/i);
-    assert.match(await raw('get_transcript', { agentId: 'warden:MYER' }), /invalid|regex|pattern/i);
+    assert.match(await raw('get_transcript', { agentId: 'owner' }), /invalid|enum|option/i);
+    assert.match(await raw('get_transcript', { agentId: 'warden:myer-plant' }), /invalid|enum|option/i, 'contract-3 agent ids are gone');
+    assert.match(await raw('get_transcript', { agentId: 'atlas' }), /invalid|enum|option/i);
     assert.match(await raw('get_mission', { missionId: 'bad id!' }), /invalid|regex|pattern/i);
     assert.match(await raw('get_eval', { evalId: '' }), /invalid|small|minimum|>=1/i);
     assert.match(await raw('get_issues', { siteId: 'cedar' }), /invalid|enum/i);
     assert.equal(upstream.state.actors.length, requestsBefore, 'nothing reached the backend');
     const missingMission = await client.callTool({ name: 'get_mission', arguments: { missionId: 'msn-missing' } });
     assert.equal(missingMission.isError, true); assert.equal(data(missingMission).code, 'NOT_FOUND'); assert.match(String(data(missingMission).recovery), /list_missions/);
-    const unknownAgent = await client.callTool({ name: 'get_transcript', arguments: { agentId: 'warden:nowhere' } });
-    assert.equal(unknownAgent.isError, true); assert.equal(data(unknownAgent).code, 'PROPERTY_SCOPE');
+
 
     // prompt
     const prompt = await client.getPrompt({ name: 'clear-site-for-restart', arguments: { siteId: 'myer-plant', budget: '5' } });
     const promptText = (prompt.messages[0]!.content as { text: string }).text;
-    for (const needle of ['start_mission', 'never faster than every 5 s', 'get_transcript("atlas")', 'warden:myer-plant', 'check(attestationId)', 'budget=5', 'list_missions', 'wait_for']) assert(promptText.includes(needle), `prompt mentions ${needle}`);
+    for (const needle of ['start_mission', 'never faster than every 5 s', 'get_transcript("director")', 'get_transcript("myer-engineer")', 'get_transcript("myer-technician")', 'check(attestationId)', 'budget=5', 'list_missions', 'wait_for']) assert(promptText.includes(needle), `prompt mentions ${needle}`);
   } finally { await client.close(); await server.close(); await upstream.close(); }
 });
 
 test('addendum 2: AUTHORITY_DENIED is mapped through for a non-operator actor; input_required on an out-of-range reading; warden scope', async () => {
   const upstream = await fakeRealityBackend();
-  const asAtlas = createStewardServer(config(upstream.url, { actor: 'atlas' }));
+  const asAtlas = createStewardServer(config(upstream.url, { actor: 'director' }));
   const asOperator = createStewardServer(config(upstream.url));
   const scoped = createStewardServer(config(upstream.url, { allowedProperties: ['bristol-pumps'] }));
   const [atlasListener, operatorListener, scopedListener] = await Promise.all([asAtlas.listen(0, { host: '127.0.0.1' }), asOperator.listen(0, { host: '127.0.0.1' }), scoped.listen(0, { host: '127.0.0.1' })]);
-  const atlas = new Client({ name: 'atlas-probe', version: '1' }, { capabilities: {} });
+  const atlas = new Client({ name: 'director-probe', version: '1' }, { capabilities: {} });
   const operator = new Client({ name: 'operator-probe', version: '1' }, { capabilities: {} });
   const scopedClient = new Client({ name: 'scoped-probe', version: '1' }, { capabilities: {} });
   try {
@@ -445,32 +446,32 @@ test('addendum 2: AUTHORITY_DENIED is mapped through for a non-operator actor; i
     assert.equal(denied.isError, true);
     const deniedError = data(denied);
     assert.equal(deniedError.code, 'AUTHORITY_DENIED'); assert.equal(deniedError.httpStatus, 403); assert.equal(deniedError.retryable, false);
-    assert.match(String(deniedError.message), /atlas/); assert.match(String(deniedError.recovery), /operator/);
-    assert.equal(upstream.state.actors.at(-1), 'atlas', 'the configured actor is sent');
+    assert.match(String(deniedError.message), /director/); assert.match(String(deniedError.recovery), /operator/);
+    assert.equal(upstream.state.actors.at(-1), 'director', 'the configured actor is sent');
     assert.equal(upstream.state.missions.size, 0);
-    const deniedAttest = data(await atlas.callTool({ name: 'attest', arguments: { siteId: 'myer-plant', assetTag: 'V-502', attribute: 'position', value: 'open', source: { kind: 'agent', ref: 'atlas' }, statedTag: 'V-502' } }));
-    assert.equal(deniedAttest.code, 'AUTHORITY_DENIED'); assert.match(String(deniedAttest.message), /warden:myer-plant/);
-    assert.equal((await atlas.readResource({ uri: AGENTS_URI })).contents.map(item => ('text' in item ? item.text : '')).join('').includes('acts as agent "atlas"'), true);
+    const deniedAttest = data(await atlas.callTool({ name: 'attest', arguments: { siteId: 'myer-plant', assetTag: 'V-502', attribute: 'position', value: 'open', source: { kind: 'agent', ref: 'director' }, statedTag: 'V-502' } }));
+    assert.equal(deniedAttest.code, 'AUTHORITY_DENIED'); assert.match(String(deniedAttest.message), /myer-engineer/);
+    assert.equal((await atlas.readResource({ uri: AGENTS_URI })).contents.map(item => ('text' in item ? item.text : '')).join('').includes('acts as agent "director"'), true);
 
     // out-of-range evidence: the mission goes input_required, Atlas asks the owner and the other wardens
     const mission = data(await operator.callTool({ name: 'start_mission', arguments: { siteId: 'myer-plant', budget: 5 } }));
-    const workItemId = (mission.steps as { agentId: string; workItemId?: string | null }[]).find(step => step.agentId === 'runner')!.workItemId as string;
+    const workItemId = (mission.steps as { agentId: string; workItemId?: string | null }[]).find(step => step.agentId === 'myer-technician')!.workItemId as string;
     const reference = (await (await fetch(`${upstream.url}/api/work-items/${workItemId}`)).json() as { reference: string }).reference;
     const reply = await (await fetch(`${upstream.url}/api/inbound/local`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reference, body: 'Gauge on P-101 reads 9.8 bar', statedTag: 'P-101', value: 9.8 }) })).json() as { verdict: string };
     assert.equal(reply.verdict, 'needs_clarification');
     const asked = data(await operator.callTool({ name: 'get_mission', arguments: { missionId: mission.id as string } }));
     assert.equal(asked.state, 'input_required');
     assert.match((asked.steps as { summary: string }[]).at(-1)!.summary, /owner/i);
-    const atlasLog = data(await operator.callTool({ name: 'get_transcript', arguments: { agentId: 'atlas' } })).entries as { kind: string; counterpart: string; direction: string }[];
+    const atlasLog = data(await operator.callTool({ name: 'get_transcript', arguments: { agentId: 'director' } })).entries as { kind: string; counterpart: string; direction: string }[];
     assert(atlasLog.some(entry => entry.kind === 'sms' && entry.counterpart === 'owner' && entry.direction === 'out'));
-    assert(atlasLog.some(entry => entry.kind === 'a2a' && entry.counterpart === 'warden:bristol-pumps'), 'cross-site check');
+    assert(atlasLog.some(entry => entry.kind === 'a2a' && entry.counterpart === 'bristol-manager'), 'cross-site check, director to the other plant manager');
     const issues = data(await operator.callTool({ name: 'get_issues', arguments: { siteId: 'myer-plant' } })).issues as { kind: string }[];
     assert(issues.some(issue => issue.kind === 'overdue'), 'a needs_clarification work item is an issue');
 
     // a bristol-pumps-only endpoint hides the other Warden and its missions
     const agents = data(await scopedClient.callTool({ name: 'list_agents', arguments: {} })).agents as { id: string }[];
-    assert.deepEqual(agents.map(agent => agent.id), ['operator', 'atlas', 'warden:bristol-pumps', 'counsel', 'runner']);
-    assert.equal(data(await scopedClient.callTool({ name: 'get_transcript', arguments: { agentId: 'warden:myer-plant' } })).code, 'PROPERTY_SCOPE');
+    assert.deepEqual(agents.map(agent => agent.id), ['operator', 'director', 'bristol-manager', 'bristol-engineer', 'bristol-compliance', 'bristol-technician']);
+    assert.equal(data(await scopedClient.callTool({ name: 'get_transcript', arguments: { agentId: 'myer-engineer' } })).code, 'PROPERTY_SCOPE');
     assert.equal(data(await scopedClient.callTool({ name: 'get_mission', arguments: { missionId: mission.id as string } })).code, 'PROPERTY_SCOPE');
     assert.deepEqual(data(await scopedClient.callTool({ name: 'list_missions', arguments: {} })).missions, []);
     assert.equal(data(await scopedClient.callTool({ name: 'start_mission', arguments: { siteId: 'bristol-pumps', budget: 0 } })).state, 'failed', 'no budget and unknown restart facts: the mission fails and says what is missing');
@@ -522,13 +523,13 @@ test('eval runner: the mission workflow replays against the fake upstream (dispa
     assert.equal(first.failed, 0, failures(first));
     assert.equal(first.passed, workflow.steps.length);
     assert(!first.rows.some(row => row.skipped), 'a fresh database exercises every step');
-    assert.equal(first.rows.find(row => row.id === 'mission_reaches_runner')!.data.state, 'running');
+    assert.equal(first.rows.find(row => row.id === 'mission_reaches_technician')!.data.state, 'running');
     assert.equal(first.rows.find(row => row.id === 'inbound_wrong_tag_rejected')!.data.verdict, 'rejected');
     assert.equal(first.rows.find(row => row.id === 'mission_completed')!.data.state, 'completed');
     assert.equal(upstream.state.missions.size, 1);
     const second = await runWorkflow({ mcpUrl: listener.url, backendUrl: upstream.url, workflow }) as Report;
     assert.equal(second.failed, 0, failures(second));
-    assert.equal(second.rows.find(row => row.id === 'mission_reaches_runner')!.data.state, 'completed', 'inside the reading TTL the mission completes without a dispatch');
+    assert.equal(second.rows.find(row => row.id === 'mission_reaches_technician')!.data.state, 'completed', 'inside the reading TTL the mission completes without a dispatch');
     assert.deepEqual(second.rows.filter(row => row.skipped).map(row => row.id), ['find_pressure_work_item', 'inbound_wrong_tag_rejected', 'inbound_right_tag_accepted']);
     assert.equal(upstream.state.missions.size, 2);
   } finally { await server.close(); await upstream.close(); }

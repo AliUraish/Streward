@@ -33,7 +33,7 @@ export default function TeamPage({ siteId }: { siteId: SiteId3 }) {
   const me = team.find(a => a.id === selected) ?? team[0];
   const speaker = useSpeaker();
   return <div className="page3">
-    <PageHead id="team" title="Team" sub={`${site3(siteId).name}: four agents and the people they work for. Agents email from their own Inkbox identities and talk over Inkbox A2A; people are reached by SMS or call only through the Steward Dispatch Line.`} />
+    <PageHead id="team" title="Team" sub={`${site3(siteId).name}: four agents and the people they work for.`} />
     <Reveal as="section" className="p3" aria-labelledby="agents-h">
       <div className="p-head"><h2 id="agents-h">Agents</h2>{!rows.some(r => r.known) ? <NotYet remote={overview.readiness === "ready" ? agents as Remote<unknown> : overview as Remote<unknown>} what="agent status" /> : <span className="meta">select one for its transcript, memory and tokens</span>}</div>
       <div className="team-cards">{team.map(a => { const r = rows.find(x => x.id === a.id); const st = r?.status ?? (r?.known ? "idle" : "unknown");
@@ -52,7 +52,7 @@ export default function TeamPage({ siteId }: { siteId: SiteId3 }) {
             <div className="tr head" role="row"><span role="columnheader">Name</span><span role="columnheader">Role and shift</span><span role="columnheader">Certifications</span><span role="columnheader">Owns</span></div>
             {list.map(c => <div className="tr" role="row" key={c.id}>
               <span role="cell" className="c-name"><strong>{c.name}</strong><SynthTag rec={c} />
-                <small>{c.contactable || c.phone || c.email ? `Real contact, allowlisted: ${[c.phone ? `phone ${masked(c.phone)}` : "", c.email ? `email ${masked(c.email)}` : ""].filter(Boolean).join(", ") || "via Runner"}` : "No contact details: recorded, never contacted"}</small></span>
+                <small>{c.contactable || c.phone || c.email ? `Contact: ${[c.phone ? `phone ${masked(c.phone)}` : "", c.email ? `email ${masked(c.email)}` : ""].filter(Boolean).join(", ") || "through the Steward Dispatch Line"}` : "No contact details on file"}</small></span>
               <span role="cell" className="c-role">{c.role}<small><span className={`sig ${c.onShift ? "ok" : "off"}`} aria-hidden="true" />{c.onShift ? "on shift" : "off shift"}, {shiftText(c.shift)}</small></span>
               <span role="cell" className="c-certs">{c.certifications.length ? <ul>{c.certifications.map(x => { const st = certState(x.expiresAt, now, x.status); return <li key={x.name} className={st === "bad" ? "bad" : ""}><span className={`sig ${st}`} aria-hidden="true" />{x.name}<small>{x.expiresAt ? `${st === "bad" ? "expired" : "expires"} ${day(x.expiresAt)}` : "no expiry"}</small></li>; })}</ul> : <small>None recorded</small>}</span>
               <span role="cell" className="c-owns">{c.owns.length ? c.owns.map(k => <span className="tg" key={k}>{words(k)}</span>) : <small>Nothing</small>}</span>
@@ -75,7 +75,7 @@ function ContactMap({ siteId, crew }: { siteId: SiteId3; crew: CrewMember[] }) {
   const [kind, setKind] = useState<string | null>(null);
   const responsible = useResponsible(siteId, kind);
   return <div className="cmap">
-    <p>The Steward Dispatch Line holds the one phone number; the field technician sends anything that must reach a person by SMS or voice through it. Only allowlisted contacts are ever reached.</p>
+    <p>The Steward Dispatch Line holds the one phone number; the field technician sends anything that must reach a person by SMS or voice through it.</p>
     <ul className="rows3 plain">{kinds.map(k => {
       const owners = crew.filter(c => c.owns.includes(k));
       return <li key={k} className={kind === k ? "sel" : ""}>

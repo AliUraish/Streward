@@ -1,6 +1,13 @@
 /* The same gas-filled equipment held still for reduced motion or without WebGL. */
-import { EDGE_X, GAUGE, PIPE_Y, VOLUTE_R, VOLUTE_Y, WORLD_CY, WORLD_H, WORLD_W, X } from "./story";
-import { Draw, GAS_TUBES, TANK, TICKS, WHEEL_Y, buildStatic, needle, tick, wheel } from "./hero-sketch";
+import { AGENT_REPLY, AGENT_REQUEST, GAUGE, VOLUTE_R, VOLUTE_Y, WORLD_CY, WORLD_H, WORLD_W, X } from "./story";
+import { Draw, GAS_TUBES, TANK, TICKS, WHEEL_Y, buildFactoryContext, buildFactoryDetails, buildStatic, needle, tick, wheel, type Seg } from "./hero-sketch";
+import HeroAgent from "./hero-agent";
+
+function Lines({ segments, opacity, className }: { segments: Seg[]; opacity: number; className?: string }) {
+  return <g className={className} stroke="#ffffff" strokeOpacity={opacity} strokeWidth={1} fill="none" strokeLinecap="round">
+    {segments.map((s, i) => <line key={i} x1={s[0]} y1={-s[1]} x2={s[2]} y2={-s[3]} vectorEffect="non-scaling-stroke" />)}
+  </g>;
+}
 
 function GasStill() {
   return <>
@@ -32,20 +39,22 @@ export default function HeroStatic({ attestationId }: { attestationId: string })
   wheel(d, [X.v501, WHEEL_Y]); wheel(d, [X.v504, WHEEL_Y], 0.4);
   needle(d, GAUGE, 2.4);
   for (const c of TICKS) tick(d, c);
+  const links = new Draw(); links.poly(AGENT_REQUEST); links.poly(AGENT_REPLY);
   const x0 = -WORLD_W / 2, y0 = -(WORLD_CY + WORLD_H / 2);
   return <div className="static-hero">
-    <svg className="plan" viewBox={`${x0} ${y0} ${WORLD_W} ${WORLD_H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gas fills the Harbor Works pipe network, pump chambers and tank. The pressure gauge reads 2.4 bar and six verification ticks surround P-101.">
+    <svg className="plan" viewBox={`${x0} ${y0} ${WORLD_W} ${WORLD_H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Detailed Harbor Works factory pipework with bolted flanges, valve housings, motor skids, pipe supports and a pressure vessel. Gas fills the pipe network, pump chambers and tank. The pressure gauge reads 2.4 bar.">
+      <Lines segments={buildFactoryContext()} opacity={0.17} className="factory-context" />
       <GasStill />
-      <g stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke" fill="none" strokeLinecap="round">
-        {d.segs.map((s, i) => <line key={i} x1={s[0]} y1={-s[1]} x2={s[2]} y2={-s[3]} vectorEffect="non-scaling-stroke" />)}
-      </g>
+      <Lines segments={d.segs} opacity={0.82} />
+      <Lines segments={buildFactoryDetails()} opacity={0.44} className="factory-details" />
+      <Lines segments={links.segs} opacity={0.5} className="hero-agent-wires" />
       <g fill="#ffffff" fontFamily="var(--font-sans)" fontSize={0.3} textAnchor="middle">
-        <text x={EDGE_X + 0.25} y={-(PIPE_Y + 0.55)} textAnchor="start">agent · {attestationId}</text>
         <text x={X.p101} y={1.95}>P-101 · 2.4 bar · accepted</text>
         <text x={X.p102} y={1.95}>P-102</text>
         <text x={GAUGE[0] - 0.95} y={-GAUGE[1] + 0.1} textAnchor="end">PG-601</text>
         <text x={X.tank} y={2.55}>TK-201</text>
       </g>
     </svg>
+    <HeroAgent attestationId={attestationId} />
   </div>;
 }

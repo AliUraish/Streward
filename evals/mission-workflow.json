@@ -1,10 +1,10 @@
 {
   "name": "steward-mission-myer-plant-clear-for-restart",
   "suite": "mission-workflow",
-  "description": "The restart mission (Operator → Atlas → Warden → Runner → human) as replayable steps: list the agents, start a clear_for_restart mission on myer-plant with a $5 budget as the operator, wait until Atlas → Warden → Runner has asked a human (or the owner is needed), play the technician through POST /api/inbound/local (wrong tag rejected, right tag accepted), wait for the mission to complete with a signed checklist, verify the P-101 pressure attestation offline-checkably, and read the Atlas and Runner transcripts.",
+  "description": "The restart mission (owner's agent → Operations Director → site engineer → field technician → human) as replayable steps: list the agents, start a clear_for_restart mission on myer-plant with a $5 budget as the operator, wait until the director has delegated and the field technician has asked a human (or the owner is needed), play the technician through POST /api/inbound/local (wrong tag rejected, right tag accepted), wait for the mission to complete with a signed checklist, verify the P-101 pressure attestation, and read the director's and the technician's transcripts.",
   "siteId": "myer-plant",
   "notes": [
-    "Replayable: on a fresh database the mission dispatches the Runner for P-101.pressure_bar (the only restart attribute without a fact). On a replay inside the reading TTL (1 h) the fact is known, the mission can complete without a dispatch, and the inbound steps are skipped (skipIf missionState completed); the transcripts still contain the earlier dispatch because since is 0.",
+    "Replayable: on a fresh database the mission dispatches the Myer field technician for P-101.pressure_bar (the only restart attribute without a fact). On a replay inside the reading TTL (1 h) the fact is known, the mission can complete without a dispatch, and the inbound steps are skipped (skipIf missionState completed); the transcripts still contain the earlier dispatch because since is 0.",
     "Polling: the harness polls get_mission every 2 s for at most 30 s per wait step (an agent should not poll faster than every 5 s; use subscribe). Operators: $any lists alternative expectation maps; [key=value] selects the first matching array element in a path.",
     "The mission eval needs the addendum-2 backend endpoints: POST/GET /api/missions, GET /api/agents, GET /api/agents/{id}/transcript, GET /api/properties/{id}/issues."
   ],
@@ -16,41 +16,105 @@
       "args": {},
       "expect": {
         "agents[id=operator].level": 1,
-        "agents[id=atlas].level": 2,
-        "agents[id=warden:myer-plant].level": 3,
-        "agents[id=runner].level": 4,
-        "agents[id=counsel].level": 3,
-        "agents[id=atlas].authority": { "$exists": true }
+        "agents[id=director].level": 2,
+        "agents[id=myer-manager].level": 3,
+        "agents[id=myer-engineer].level": 4,
+        "agents[id=myer-compliance].level": 4,
+        "agents[id=myer-technician].level": 5,
+        "agents[id=bristol-engineer].level": 4,
+        "agents[id=director].authority": {
+          "$exists": true
+        }
       }
     },
     {
       "id": "start_mission",
       "kind": "tool",
       "tool": "start_mission",
-      "args": { "siteId": "myer-plant", "goal": "clear_for_restart", "budget": 5 },
-      "expect": { "siteId": "myer-plant", "goal": "clear_for_restart", "budget": 5, "state": { "$in": ["running", "input_required", "completed"] }, "id": { "$exists": true }, "contextId": { "$exists": true } },
-      "capture": { "missionId": "id", "contextId": "contextId" }
+      "args": {
+        "siteId": "myer-plant",
+        "goal": "clear_for_restart",
+        "budget": 5
+      },
+      "expect": {
+        "siteId": "myer-plant",
+        "goal": "clear_for_restart",
+        "budget": 5,
+        "state": {
+          "$in": [
+            "running",
+            "input_required",
+            "completed"
+          ]
+        },
+        "id": {
+          "$exists": true
+        },
+        "contextId": {
+          "$exists": true
+        }
+      },
+      "capture": {
+        "missionId": "id",
+        "contextId": "contextId"
+      }
     },
     {
-      "id": "mission_reaches_runner",
+      "id": "mission_reaches_technician",
       "kind": "tool",
       "tool": "get_mission",
-      "args": { "missionId": "${missionId}" },
-      "until": { "$any": [ { "state": "input_required" }, { "steps": { "$jsonContains": "\"agentId\":\"runner\"" } }, { "state": "completed" } ] },
+      "args": {
+        "missionId": "${missionId}"
+      },
+      "until": {
+        "$any": [
+          {
+            "state": "input_required"
+          },
+          {
+            "steps": {
+              "$jsonContains": "\"agentId\":\"myer-technician\""
+            }
+          },
+          {
+            "state": "completed"
+          }
+        ]
+      },
       "timeoutMs": 30000,
       "intervalMs": 2000,
-      "expect": { "id": "${missionId}", "steps": { "$jsonContains": "\"agentId\":\"atlas\"" } },
-      "capture": { "missionState": "state" },
-      "note": "Waits (max 30 s) until the mission needs the owner, a Runner step exists (a human has been asked), or it already completed (replay inside the TTL)."
+      "expect": {
+        "id": "${missionId}",
+        "steps": {
+          "$jsonContains": "\"agentId\":\"director\""
+        }
+      },
+      "capture": {
+        "missionState": "state"
+      },
+      "note": "Waits (max 30 s) until the mission needs the owner, a field-technician step exists (a human has been asked), or it already completed (replay inside the TTL)."
     },
     {
       "id": "find_pressure_work_item",
       "kind": "tool",
       "tool": "get_changes",
-      "args": { "siteId": "myer-plant", "since": 0, "limit": 500 },
-      "skipIf": { "missionState": "completed" },
-      "expect": { "waiting[assetTag=P-101,attribute=pressure_bar].reference": { "$contains": "MY-P101" } },
-      "capture": { "reference": "waiting[assetTag=P-101,attribute=pressure_bar].reference", "workItemId": "waiting[assetTag=P-101,attribute=pressure_bar].id" },
+      "args": {
+        "siteId": "myer-plant",
+        "since": 0,
+        "limit": 500
+      },
+      "skipIf": {
+        "missionState": "completed"
+      },
+      "expect": {
+        "waiting[assetTag=P-101,attribute=pressure_bar].reference": {
+          "$contains": "MY-P101"
+        }
+      },
+      "capture": {
+        "reference": "waiting[assetTag=P-101,attribute=pressure_bar].reference",
+        "workItemId": "waiting[assetTag=P-101,attribute=pressure_bar].id"
+      },
       "note": "The Runner's work item for P-101 pressure is in the waiting list; its reference is what the technician replies with."
     },
     {
@@ -58,9 +122,19 @@
       "kind": "http",
       "method": "POST",
       "path": "/api/inbound/local",
-      "body": { "reference": "${reference}", "body": "Gauge on P-102 reads 2.4 bar", "statedTag": "P-102", "value": 2.4 },
-      "skipIf": { "missionState": "completed" },
-      "expect": { "routed": true, "verdict": "rejected" },
+      "body": {
+        "reference": "${reference}",
+        "body": "Gauge on P-102 reads 2.4 bar",
+        "statedTag": "P-102",
+        "value": 2.4
+      },
+      "skipIf": {
+        "missionState": "completed"
+      },
+      "expect": {
+        "routed": true,
+        "verdict": "rejected"
+      },
       "note": "The technician photographs the sibling pump by mistake. The Warden's verifier rejects it; the mission keeps waiting."
     },
     {
@@ -68,60 +142,125 @@
       "kind": "http",
       "method": "POST",
       "path": "/api/inbound/local",
-      "body": { "reference": "${reference}", "body": "Gauge on P-101 reads 2.4 bar", "statedTag": "P-101", "value": 2.4 },
-      "skipIf": { "missionState": "completed" },
-      "expect": { "routed": true, "verdict": "accepted" }
+      "body": {
+        "reference": "${reference}",
+        "body": "Gauge on P-101 reads 2.4 bar",
+        "statedTag": "P-101",
+        "value": 2.4
+      },
+      "skipIf": {
+        "missionState": "completed"
+      },
+      "expect": {
+        "routed": true,
+        "verdict": "accepted"
+      }
     },
     {
       "id": "mission_completed",
       "kind": "tool",
       "tool": "get_mission",
-      "args": { "missionId": "${missionId}" },
-      "until": { "state": "completed" },
+      "args": {
+        "missionId": "${missionId}"
+      },
+      "until": {
+        "state": "completed"
+      },
       "timeoutMs": 30000,
       "intervalMs": 2000,
       "expect": {
         "state": "completed",
-        "checklist[assetTag=P-101,attribute=pressure_bar].attestationId": { "$exists": true },
+        "checklist[assetTag=P-101,attribute=pressure_bar].attestationId": {
+          "$exists": true
+        },
         "checklist[assetTag=P-101,attribute=pressure_bar].valid": true,
         "checklist[assetTag=P-101,attribute=commissioning_certificate].valid": true
       },
-      "capture": { "pressureAttestationId": "checklist[assetTag=P-101,attribute=pressure_bar].attestationId" }
+      "capture": {
+        "pressureAttestationId": "checklist[assetTag=P-101,attribute=pressure_bar].attestationId"
+      }
     },
     {
       "id": "check_pressure_attestation",
       "kind": "tool",
       "tool": "check",
-      "args": { "attestationId": "${pressureAttestationId}" },
-      "expect": { "valid": true, "verdict": "accepted", "assetTag": "P-101", "attribute": "pressure_bar", "signature": { "$exists": true } }
+      "args": {
+        "attestationId": "${pressureAttestationId}"
+      },
+      "expect": {
+        "valid": true,
+        "verdict": "accepted",
+        "assetTag": "P-101",
+        "attribute": "pressure_bar",
+        "signature": {
+          "$exists": true
+        }
+      }
     },
     {
-      "id": "transcript_atlas_a2a",
+      "id": "transcript_director_a2a",
       "kind": "tool",
       "tool": "get_transcript",
-      "args": { "agentId": "atlas", "since": 0, "limit": 1000 },
-      "expect": { "agentId": "atlas", "entries": { "$jsonContains": "\"kind\":\"a2a\"" }, "$": { "$jsonContains": "\"missionId\":\"${missionId}\"" } }
+      "args": {
+        "agentId": "director",
+        "since": 0,
+        "limit": 1000
+      },
+      "expect": {
+        "agentId": "director",
+        "entries": {
+          "$jsonContains": "\"kind\":\"a2a\""
+        },
+        "$": {
+          "$jsonContains": "\"missionId\":\"${missionId}\""
+        }
+      }
     },
     {
-      "id": "transcript_runner_dispatch",
+      "id": "transcript_technician_dispatch",
       "kind": "tool",
       "tool": "get_transcript",
-      "args": { "agentId": "runner", "since": 0, "limit": 1000 },
-      "expect": { "agentId": "runner", "entries": { "$matches": "/dispatch/i" }, "$": { "$jsonContains": "\"workItemId\"" } }
+      "args": {
+        "agentId": "myer-technician",
+        "since": 0,
+        "limit": 1000
+      },
+      "expect": {
+        "agentId": "myer-technician",
+        "entries": {
+          "$matches": "/dispatch/i"
+        },
+        "$": {
+          "$jsonContains": "\"workItemId\""
+        }
+      }
     },
     {
       "id": "list_missions_site",
       "kind": "tool",
       "tool": "list_missions",
-      "args": { "siteId": "myer-plant" },
-      "expect": { "missions": { "$jsonContains": "\"id\":\"${missionId}\"" } }
+      "args": {
+        "siteId": "myer-plant"
+      },
+      "expect": {
+        "missions": {
+          "$jsonContains": "\"id\":\"${missionId}\""
+        }
+      }
     },
     {
       "id": "issues_site",
       "kind": "tool",
       "tool": "get_issues",
-      "args": { "siteId": "myer-plant" },
-      "expect": { "siteId": "myer-plant", "issues": { "$exists": true } }
+      "args": {
+        "siteId": "myer-plant"
+      },
+      "expect": {
+        "siteId": "myer-plant",
+        "issues": {
+          "$exists": true
+        }
+      }
     }
   ]
 }

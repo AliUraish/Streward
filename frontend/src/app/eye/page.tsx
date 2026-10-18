@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { isSplatSiteId } from '@/components/splat/sites';
 import EyeView, { type EyeViewParams } from './eye-view';
 
 export const metadata: Metadata = {
@@ -13,14 +14,15 @@ const one = (sp: Search, key: string) => {
 };
 
 /**
- * `/eye?site=<myer-plant|bristol-pumps>&renderer=<rendererId>` mounts the splat viewer in agent eye
+ * `/eye?site=<a SPLAT_SITES id>&renderer=<rendererId>` mounts the splat viewer in agent eye
  * mode (REALITY-CONTRACT-4.md section 2). Optional: `overlay=0` hides the HUD, `size=full|WxH` sets the
  * stage (headless renderers default to 640x400, the frame size), `motion=instant|eased` (headless
  * defaults to instant), `api=<origin>` points the eye at another backend.
  */
 export default async function EyePage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
-  const site = one(sp, 'site') === 'bristol-pumps' ? 'bristol-pumps' : 'myer-plant';
+  const requested = one(sp, 'site');
+  const site = isSplatSiteId(requested) ? requested : 'myer-plant';
   const renderer = (one(sp, 'renderer') ?? '').replace(/[^\w.:-]/g, '').slice(0, 64);
   const headless = renderer.startsWith('headless');
   const sizeParam = one(sp, 'size') ?? (headless ? '640x400' : 'full');

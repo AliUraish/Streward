@@ -21,3 +21,9 @@ mcp-runtime/dist/
 qa/*.jpg
 qa/*.png
 *.log
+# Supabase CLI state (linked project, versions, branches); secrets live only in .env files
+supabase/.temp/
+supabase/.branches/
+# leftover of the env merge; carries a filled STEWARD_INBOUND_SECRET, so never commit it
+backend/.env.merged-into-root
+.gstack/

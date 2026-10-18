@@ -23,14 +23,17 @@ def client(tmp_path, monkeypatch):
 def test_original_project_sources_and_contract(client):
     assert client.get("/health").json() == {"status": "ok", "database": "connected", "mode": "local"}
     properties = client.get("/api/properties").json()
-    assert [p["id"] for p in properties] == ["harbor-works", "myer-plant", "bristol-pumps"]
+    assert [p["id"] for p in properties] == ["myer-plant", "bristol-pumps", "tomioka-mill"]
     workspace = client.get("/api/properties/myer-plant/workspace").json()
     assert len(workspace["components"]) == 24
     assert len(workspace["requirements"]) == workspace["stats"]["total"] == 96
-    assert len(workspace["agents"]) == 4
+    assert len(workspace["agents"]) == 1 + 3  # the portfolio agent and one legacy site agent per site
     assert "_check" not in json.dumps(workspace)
-    docs = client.get("/api/properties/myer-plant/documents").json()
+    all_docs = client.get("/api/properties/myer-plant/documents").json()
+    docs = [d for d in all_docs if d["id"].startswith("myer-plant-")]
     assert len(docs) == 3
+    # Contract 3: the site's synthetic compliance documents (certificates, permits, contractor reports) sit beside them.
+    assert {d["docType"] for d in all_docs if d.get("docType")} == {"certificate", "permit", "inspection_record", "contractor_report"}
     content = client.get(docs[0]["url"])
     assert content.content.startswith(b"%PDF")
     assert "DEMONSTRATION" in docs[0]["extractedText"].upper() or "fixture" in docs[2]["extractedText"]
@@ -41,7 +44,7 @@ def test_original_project_sources_and_contract(client):
 def test_scope_isolation_and_upload_guards(client):
     assert client.get("/api/properties/no-such-property/workspace").status_code == 404
     assert client.get("/api/properties/myer-plant/components/no-such-asset").status_code == 404
-    bad = client.post("/api/properties/myer-plant/evidence", data={"componentId": "pump-01", "requirementId": "harbor-works-pump-01-cond"},
+    bad = client.post("/api/properties/myer-plant/evidence", data={"componentId": "pump-01", "requirementId": "bristol-pumps-pump-03-cond"},
                       files={"file": ("proof.json", b"{}", "application/json")})
     assert bad.status_code == 400
     invalid_type = client.post("/api/properties/myer-plant/documents", files={"file": ("x.html", b"<script>alert(1)</script>")})
@@ -60,7 +63,7 @@ def test_wrong_asset_evidence_never_becomes_verified(client):
     check = next(r for r in detail["requirements"] if r["id"].endswith("-cond"))
     assert check["status"] == "issue"
     assert "does not match" in check["evidence"]
-    assert client.get("/api/properties/harbor-works/components/pump-01").json()["evidence"] != detail["evidence"]
+    assert client.get("/api/properties/bristol-pumps/components/pump-03").json()["evidence"] != detail["evidence"]
 
 
 def test_consistent_evidence_updates_records_and_retains_provenance(client):
@@ -113,7 +116,7 @@ def test_jobs_execute_real_tools_and_are_idempotently_queued(client):
     assert len(client.get("/api/properties/myer-plant/events").json()) == len(events)
 
 
-def test_portfolio_hands_work_to_all_three_agents(client):
+def test_portfolio_hands_work_to_every_site_agent(client):
     job = client.post("/api/properties/myer-plant/agents/run", json={"goal": "Inspect all properties"}).json()
     assert job["kind"] == "portfolio"
     client.app.state.service.execute_job(job["id"])
@@ -121,10 +124,10 @@ def test_portfolio_hands_work_to_all_three_agents(client):
     assert completed["status"] == "completed"
     assert len(completed["result"]["properties"]) == 3
     memory = client.app.state.service.store.get("memory", "memory-" + job["id"], "myer-plant")
-    assert "Myer Plant Room:" in memory["content"] and "Harbor Works:" in memory["content"] and "Bristol Dock Machine Room:" in memory["content"]
+    assert "Myer Plant Room:" in memory["content"] and "Bristol Dock Pump House:" in memory["content"] and "Harbor Works" not in memory["content"]
     assert "verified project records" in memory["content"]
     assert "{\"" not in memory["content"]
-    for property_id in ("myer-plant", "harbor-works", "bristol-pumps"):
+    for property_id in ("myer-plant", "bristol-pumps"):
         events = client.get(f"/api/properties/{property_id}/events").json()
         assert any(e["agentId"] == f"agent-{property_id}" and e["type"] == "job.completed" for e in events)
 

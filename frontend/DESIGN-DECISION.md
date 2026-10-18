@@ -369,3 +369,194 @@ on black. At phone width the thin pipe naturally compresses to a few pixels and 
 visible texture. Existing text, controls, photographs and page composition are preserved.
 Proof: `frontend/qa/gas-flow-final.png`, `gas-flow-1440.png`, `gas-flow-tablet.png`, `gas-flow-mobile.png`,
 `gas-flow-reduced-motion.png` and `gas-flow-console.json`.
+
+### Factory pipework detail, Oct 18 2026
+
+The user approved the gas and asked for a more detailed factory appearance. The existing monochrome direction
+is retained, with no direction redraw. Harbor Works' mechanical hardware becomes the subject of the elevation:
+bolted flanges and gasket plates, weld seams and outer pipe walls, reinforced tees, cast valve bodies with
+bonnets and threaded yokes, five-spoke handwheels, graduated gauges with isolation fittings, finned motors with
+terminal boxes, casing studs, anchored pump skids, vessel bands, sight-glass graduations and braced vessel legs.
+A quiet secondary layer adds steel pipe-rack columns, threaded hangers, clamps, electrical raceway and cable tray.
+
+The gas shader, density texture, flow parameters and shared gas interior dimensions are unchanged. Verified shader
+SHA-256 before and after: `0169baa78690a190a58582c7486675ae1ccff6d44d410bd2ee30fe2e01cd2b9f`.
+No extra equipment readings or operating claims are introduced. The additional surfaces are line geometry.
+Three merged line batches provide 974 equipment segments, 494 detail segments and 164 rack/support segments.
+The two additional batches are memoized and disposed with the scene; the background rack hides below 640px and
+fine detail becomes lighter on phones. The SVG shares every mechanical shape and follows the same responsive rule.
+The tablet gauge label now stays inside the left edge.
+
+Validation: TypeScript and the final Next production build pass, retaining the pre-existing `/llms.txt`
+filesystem-tracing warning. Scoped taste lint: **0 FAIL, 0 WARN**. All generated line coordinates are finite.
+The React checklist covers stable geometry allocation, cleanup and the absence of new per-frame mesh creation.
+CUA screenshots at 1280, 1440, 768 and 390 pixels show the fittings, preserved gas and no horizontal page overflow;
+the SVG fallback was separately rendered and visually checked. The skill's external browser driver was not used.
+
+Scoped visual critique: design 8.5, usability 8, creativity 8, content 8 (**8.2/10**, subjective). The denser
+mechanical silhouettes now read as factory equipment; the darker rack gives depth while the gas remains the
+brightest moving element. At phone width hardware details naturally compress; removing the rack at that width
+keeps the main equipment and gas legible. The original page copy, navigation, buttons and photographs remain.
+Proof: `frontend/qa/factory-pipes-before.png`, `factory-pipes-final.png`, `factory-pipes-1440.png`,
+`factory-pipes-tablet.png`, `factory-pipes-mobile.png`, `factory-pipes-reduced-motion.png`, `factory-pipes-console.json`.
+
+---
+
+# Dashboard, Oct 17 2026 (late night): two factory worlds, the agent eye, mission view, agent mode
+
+Dashboard stream for REALITY-CONTRACT-3.md and REALITY-CONTRACT-4.md (contract 4 wins). It replaces the phase-2 route
+group and the one-page phase-3 draft. The home page (`components/site/**`, `app/page.tsx`) is untouched; the splat
+viewer (`components/splat/**`) and `/capture`, `/eye` belong to the VIEWER stream and are only mounted. The old
+Inspection wall, Library, Agent chat and the hand-built Three.js twin stay on disk (`components/steward-app.tsx`,
+`components/dash/**`, `components/scene/**`) and are mounted nowhere.
+
+## Decisions
+
+- **Ground, ink, one signal.** Black ground, `#ededed` ink, tone steps `#0a0a0a` → `#333`. White marks what is
+  verified, ok or active (selected nav item, the active tab, the acting agent, a passing step). One warm red,
+  `--issue #ff6a5c`, is the only hue and is reserved for what is wrong: high severity, overdue, blocked, failed,
+  not fixed, out of spec. Medium severity and "due soon" are a mid grey square. Marks are 8 px filled squares.
+- **Type.** Geist Sans; five working sizes, 44 figures, 30 page titles, 20 panel heads, 16 text, 13 small (17 for the
+  wordmark as on the home page; 12 inside the mission-view HUD and chart ticks). Geist Mono appears in two places only:
+  the agent-view stream, which is literally tool-call and A2A traffic, and asset tags and record ids in the mission
+  HUD (`<code>`), each marked `taste-skill-ignore`.
+- **Controls are the home page's.** The white button with the `#333` fill sliding in from the left, difference-blended
+  words, press scale and arrow nudge; the factory switch (Myer · Bristol) and the Human · Agent switch reuse the home
+  page's gliding white knob. Tabs mark the selected item with a white fill.
+- **Structure (contract 4 §8).** A 236 px sidebar: factory switch, the selected factory's pages (Overview, Metrics,
+  Environment, Team, Compliance, Maintenance), the portfolio pages (Portfolio, Agents map, Conversations, Evals), the
+  Human · Agent switch and a live mark. Below 1024 px it becomes a bar with the factory switch and a Menu. Routes:
+  `/app`, `/app/[site]` (+ `metrics`, `environment`, `team`, `compliance`, `maintenance`; `dynamicParams = false`,
+  only the two sites), `/app/agents`, `/app/conversations`, `/app/evals`, `/app/agent-view`; `/app/environment` redirects
+  to `/app/myer-plant/environment`.
+- **Agent names everywhere are contract 4 §1's.** Retired ids (atlas, warden:*, counsel, runner) map to the new
+  names in `lib/sites-3.ts`; record text written before the migration is shown with the new names (`rn()`), and
+  1:1 retired ids (atlas → director, warden:<site> → <site>-engineer) are read as a fallback while a store migrates.
+- **Charts** (`components/dash3/charts.tsx`, inline SVG, measured to the container so text is never scaled): one
+  axis, no grid lines, the spec band as a tone step behind the line, out-of-spec segments in the issue signal,
+  series told apart by tone and dash with a legend and direct end labels pushed apart so they never collide, a hover
+  readout that also works with the arrow keys, an `aria-label` summary and the numbers in a screen-reader table.
+  Bars for tokens and tool calls per agent and suite pass rates; columns for A2A messages per day; sparklines on the
+  factory overview. Black and white; source line "Steward telemetry, also delivered to Armature".
+- **Agent mode** dissolves the page with the home page's technique (deterministic scatter offsets, 460 to 520 ms,
+  staggered, transform and opacity only), routes to `/app/agent-view`, and coming back the page mounts scattered and
+  glides home; reduced motion makes both instant. The agent view is a HUD, not a document: the latest eye frame per
+  factory with the visible tags placed where the renderer projected them, a stream of tool calls, eye moves and A2A
+  messages typing in, a pulsing agent map and token meters.
+- **Mission view** (Environment, "Mission view", `?mission=1`, Esc or Exit to leave). The viewer's container becomes a
+  fixed full-window host (Fullscreen API when allowed) and the same viewer instance keeps running with `fill` and a
+  `safeArea` matching the panels, so the 3-D dots stay visible and the camera keeps following eye commands. Panels at
+  90 percent tone, no blur, no shadow, each collapsible, and Hide HUD (key `h`): Agent cameras (3 × 2 latest eye frames,
+  "Site Engineer · V-501", "2 assets · 1 issue", the issue tile outlined in the signal; capture renders labelled as
+  such until the eye looks), Evals per version (v1 before the director's first reconfigure, v2 after, derived from
+  eval runs and telemetry split at that moment until `/api/evals/metrics` sends per-version rows; best value per row in
+  white, regressions marked), Changes to the next version (the director's reconfigures with measured token effect and
+  accepted or rejected), Alerts (open issues and notices with severity, site time, who raised them and the regulation
+  cited; a click turns the camera), the Inkbox team graph (the pair talking now in white, the acting node filled) and
+  one live line. It leads with what is ours: the last signed proof (attestation id, Ed25519), the regulation cited,
+  the Inkbox team; it copies nothing from the reference image.
+- **Regulations, licensing.** England (Open Government Licence, `servePdf: true`) is embedded from
+  `/api/regulations/{id}/file` at its page with "Contains public sector information licensed under the Open Government
+  Licence v3.0." under it. Victoria (`servePdf: false`) is never embedded: provision, our summary, version and "Open the
+  official PDF" at `#page=<pageHint>`, with "Victorian legislation, personal use only; opened from
+  legislation.vic.gov.au". The VBA practice note is also linked only, with a note naming its own host
+  (bpc.vic.gov.au), because "opened from legislation.vic.gov.au" would be untrue for it. Bristol's pages say England
+  (ENG-UK), Myer's say Victoria, Australia (VIC-AU), and "Demo rule pack, not legal advice." stays on the page. Until
+  `/api/regulations` answers, the records come from `backend/seed/regulations/regulations.json` (real sources, our
+  summaries), labelled as the repository's rule pack.
+- **Honesty labels.** Every synthetic record carries a "synthetic" tag; every control that starts something carries
+  "demo control" ("operator tool" for pin placement); Listen says "voiced by your browser's text-to-speech"; calls are
+  described as Inkbox A2A conversations, never phone calls.
+- **Degraded states.** Every panel shows "Not available yet" with Retry on 404/405/501 and polls slower (20 s) while an
+  endpoint is missing. Polling is the baseline; `lib/live-3.ts` is the seam for the SUPABASE stream's
+  `lib/realtime` (one channel per site per tab via a single bridge in the shell, closed when the tab hides). Until it
+  lands the bridge is a no-op and views poll (eye feed 2 to 3 s, overview 3 s).
+
+## API used (lib/api-3.ts, normalised to lib/types-3.ts)
+
+overview, agents (+ activity, memory, config, transcript, send-document), scenarios (+ start, scenario-runs),
+board-meetings, properties/{id}/scene, assets/{tag}/pin (PUT), viewer (GET since, POST), issues (+ issue, assign, fix),
+fix-workflows, inspections/vision (+ frames), crew, responsible, obligations (+ request-document), documents
+(+ file), notices, document-emails, notifications, maintenance, regulations (+ file), metrics, metrics/summary,
+evals (+ run, findings, metrics), conversations, eye/{site}/feed, eye/frames/{id}.jpg, waits, a2a/tasks.
+
+## QA (Oct 17 2026, against 127.0.0.1:3000 with the new backend on 8001)
+
+- `tsc --noEmit` clean; `npm run build` from the repo root green (24 routes; the only warning is the existing
+  `/llms.txt` filesystem trace).
+- Taste lint over `components/dash3`, `lib`, `app/app`: **0 FAIL, 0 WARN**.
+- Inspector, 1440 and 390: portfolio and factory overview **2 FAIL** (few-pictures, focal-point), agent view **2 FAIL**
+  (same two, `--allow mono`), metrics **2 FAIL** (same two). Defended: both are landing-page rules and the brief
+  exempts app screens from the photography and headline rules. WARNs card-rows (dense rows of records are the content
+  of an app screen), no-footage (no honest clip of these plants exists), blend-text (difference-blended words only over
+  white, `#333` or black). Fixed in the loop: small captions read as eyebrows above KPI figures and sparkline values
+  (captions moved under the figures), a wrapped issue row at 390, screen-reader tables widening the phone viewport,
+  long agent names truncated on the map, 13 px running text (raised to 16), chart legends scaled by a global SVG rule.
+- No horizontal scroll at 390 on any page (measured `scrollWidth` 390).
+- Screenshots in `frontend/qa/`: `dash4-<page>-1440.jpg` for every page against the live backend,
+  `dash4-portfolio-390.jpg`, `dash4-agent-view-390.jpg`, `mission-myer-1440.jpg`, `mission-bristol-1440.jpg`,
+  `dash4-mode-dissolve-1440.jpg` (mid-dissolve), and `dash4-seeded-*.jpg`, `mission-*-seeded-1440.jpg` taken with the
+  page on :3000 but `/api/*` answered by an isolated copy of the current backend (temp data dir, every provider
+  variable cleared, workers off, port 8031 because 8012 and 8022 were in use by other streams) after playing every
+  scenario, one fix workflow and two eye frames, so the data states can be seen without touching the live stack.
+  The older names `dash3-{overview,factories,people,compliance,agents,evals}-1440.jpg` and `dash3-390.jpg` are copies
+  mapped to Portfolio, Environment, Team, Compliance, Agents map and Evals.
+
+---
+
+# Dashboard, Oct 18 2026: the third site, the Tool Forge, the California comparison, realtime
+
+Streams DASH-5 and DASH-6 (REALITY-CONTRACT-5.md, REALITY-CONTRACT-6.md and the coordinator's additions). Same language
+as the late-night section above: black ground, tone steps, one issue signal, Geist, mono only for identifiers.
+
+- **Tomioka Silk Mill (`tomioka-mill`) is a first-class site.** `lib/sites-3.ts` carries it (with `jaName`, a site
+  line, `credit`, `scanNote`, `tz`, its KPI set and metric series, and `valves: false`), the Tomioka team with the
+  contract's names (Site Manager, Conservation Engineer, Compliance Officer, Field Technician · Tomioka) and the
+  tm-humidity, tm-alteration-permit and x-heritage scenarios. The factory switch has three stops (the knob is a
+  third of the track, `--k` of `--n`, focus follows arrows, Home and End); on phones it fits beside Menu. Portfolio:
+  three tiles, three-site averages (the note says pressure, flow and uptime come from the two pumped sites, and names
+  any site the summary does not cover yet), three team columns. The agents map has three clusters (manager on top,
+  engineer and technician, compliance at the foot) so manager-to-manager and compliance-to-compliance lines run
+  straight between clusters; 15 seats. Agent view: three eyes across the top. Mission view: Tokyo time, Bristol as
+  the mill's peer. Maintenance: windows say whom they are shared with (x-heritage: Tomioka and Bristol).
+- **Japanese text.** Geist has no Japanese glyphs, so only Japanese runs (`JaText`, `SiteTitle`: 富岡製糸場 beside the
+  English name, law titles, article numbers such as 第43条, the 出典 line) carry `lang="ja"` and `.ja`: Geist, then
+  Hiragino Sans, Hiragino Kaku Gothic ProN, Yu Gothic, Meiryo, Noto Sans JP.
+- **Mill figures.** KPIs average humidity (signal outside 40 to 65 %), visitors over 24 h (the integral of the
+  per-hour rate) and the widest crack (signal above 0.3 mm), taken from the summary when it carries them, else from
+  the site's own series. Metrics shows the site's series with spec bands, then any further series the backend sends.
+- **Regulations.** Jurisdictions are explicit (myer-plant VIC-AU, bristol-pumps ENG-UK, tomioka-mill JP, "Japan (JP)").
+  One licence rule: servePdf true embeds the cached PDF with the record's own attribution under it (England: the OGL
+  line; Japan: the part of `licence` after "Attribution:", the e-Gov 出典 line with PDL1.0, the English source and the
+  note that the summaries are ours, with working links), never the OGL line for Japan; servePdf false links "Open the
+  official PDF" or "Open the official source" with the licence note.
+- **California (US-CA) comparison.** Binding law first, always. A separate panel, "If this site were in California",
+  lists the US-CA records (`comparisonRegulationIds`, `GET /api/regulations?siteId=&include=comparison`, else the
+  rule pack), each tagged "comparison, not binding here", same embed-or-link rule; each compliance issue has its own
+  separated block. Comparison records never count as a site's law (mission alerts, citations). "Demo rule pack, not
+  legal advice." stays on the page and on the panel. No US-CA records exist yet, so the panel shows its empty state.
+- **Tools (contract 6).** `/app/[site]/tools` and `/app/tools`: the list beside one tool; the tool shows who built it
+  and when, who asked, why (task, gap, tools considered and why not), the lifecycle as a step row, inputs and output,
+  the recipe as numbered steps (readable op names, template references set apart), the test (sample input and output),
+  approval or refusal, usage (calls, tokens saved, calls per day) and history. "Ask the team for a new tool" (demo
+  control: pick the agent, type the task, or use the contract's demo task) follows the lifecycle live: request, draft,
+  validate, test, approve, publish, one endpoint at a time; approval is sent as the approver the contract names (the
+  site's manager for read-only tools); a tool that writes stops for the Operations Director with Approve and Refuse.
+  Forged tools also show on each agent's page. Mono here is limited to tool names, op names and template references.
+  Until `GET /api/tools` answers, the contract's two demo tools appear as labelled contract drafts, with only the
+  contract's words (task, gap, inputs, output shape) and no recipe, test, approval or usage.
+- **Realtime.** `HudBridge` (`lib/live-3.ts`) subscribes once, for the shell's current site, to
+  `useHudChannel` and `useSitePresence` (viewer, or renderer on that site's environment page); new events go out on
+  the bus once; presence feeds the mission top bar ("N watching · eye renderer online · realtime", else the eye feed's
+  renderer list and "polling"). Polling stays the baseline. Signed eye-frame URLs are kept per frame id for 10 minutes
+  so polls stop restarting image loads; a frame that no longer loads falls back to the capture thumbnail.
+
+QA (dev server on :3000, backend on 8001, which does not serve the mill or `/api/tools` yet, so those panels show their
+"Not available yet" states): `tsc --noEmit` clean; `npm run build` green (every site page, including Tools, for the
+three sites; the only warning is the existing `/llms.txt` trace); taste lint over `components/dash3`, `lib`, `app/app`
+0 FAIL, 0 WARN; no horizontal scroll at 390 or 1100 (portfolio, tools, agents map, mill compliance, agent view).
+Screenshots: `qa/dash5-portfolio-1440.jpg`, `dash5-tomioka-1440.jpg`, `dash5-tomioka-environment-1440.jpg` (the mill's
+streamed scan in the viewer), `dash5-agents-1440.jpg`, `dash6-tools-myer-1440.jpg`, `dash6-tools-bristol-1440.jpg`,
+`dash6-tool-detail-1440.jpg`; `dash6-tool-detail-fixture-1440.jpg` is the detail rendered with `/api/tools` answered by a
+contract-shaped fixture through CDP request interception (QA only, labelled FIXTURE in its text), to exercise the recipe,
+test, approval, usage and published controls before the backend ships them.

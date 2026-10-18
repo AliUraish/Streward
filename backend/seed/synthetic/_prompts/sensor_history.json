@@ -1,0 +1,101 @@
+{
+ "family": "sensor_history",
+ "mode": "dry-run",
+ "note": "Request body only; nothing was sent.",
+ "request": {
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "system": "You generate synthetic demonstration data for Steward, an agent platform that runs two industrial sites from their 3D scans: myer-plant (a modern basement plant room in the Kenneth Myer building, Melbourne) and bristol-pumps (a 1907 dock pump house under restoration in Bristol, England). Every record is fictional and must be plausible to a facilities engineer. Never use real people's names, phone numbers or email addresses; the only contactable crew member is 'Duty engineer (you)' with contact 'user'. Rule references are a labelled demo rule pack (DEMO-RP/...), never statutory advice. Keep every id, asset tag, agent id and cross-reference consistent with the example you are given; you may vary wording, numbers and dates.",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Family: sensor_history. Scenario sensor series in scenario minutes: the PG-601 overpressure ramp to 4.1 bar and the SU-201 sump rise to 96 %.\n\nReturn JSON with a `records` array of 2 records in exactly this shape. Every record must keep `synthetic: true`. Example (the current hand-written seed):\n\n[\n {\n  \"id\": \"my-pg601-pressure\",\n  \"siteId\": \"myer-plant\",\n  \"assetTag\": \"PG-601\",\n  \"attribute\": \"pressure_bar\",\n  \"unit\": \"bar\",\n  \"ratedLimit\": 3.5,\n  \"points\": [\n   {\n    \"t\": 0,\n    \"value\": 3.2\n   },\n   {\n    \"t\": 5,\n    \"value\": 3.28\n   },\n   {\n    \"t\": 10,\n    \"value\": 3.36\n   },\n   {\n    \"t\": 15,\n    \"value\": 3.45\n   },\n   {\n    \"t\": 20,\n    \"value\": 3.56\n   },\n   {\n    \"t\": 25,\n    \"value\": 3.68\n   },\n   {\n    \"t\": 30,\n    \"value\": 3.82\n   },\n   {\n    \"t\": 35,\n    \"value\": 3.96\n   },\n   {\n    \"t\": 40,\n    \"value\": 4.1\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"br-su201-level\",\n  \"siteId\": \"bristol-pumps\",\n  \"assetTag\": \"SU-201\",\n  \"attribute\": \"level_pct\",\n  \"unit\": \"%\",\n  \"ratedLimit\": 85,\n  \"overflowAt\": 100,\n  \"points\": [\n   {\n    \"t\": 0,\n    \"value\": 92.8\n   },\n   {\n    \"t\": 5,\n    \"value\": 93.6\n   },\n   {\n    \"t\": 10,\n    \"value\": 94.4\n   },\n   {\n    \"t\": 15,\n    \"value\": 95.2\n   },\n   {\n    \"t\": 20,\n    \"value\": 96.0\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n }\n]"
+   }
+  ],
+  "output_config": {
+   "effort": "high",
+   "format": {
+    "type": "json_schema",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "records": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "siteId": {
+          "type": "string"
+         },
+         "assetTag": {
+          "type": "string"
+         },
+         "attribute": {
+          "type": "string"
+         },
+         "unit": {
+          "type": "string"
+         },
+         "ratedLimit": {
+          "type": "number"
+         },
+         "points": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "t": {
+             "type": "integer"
+            },
+            "value": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "t",
+            "value"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "synthetic": {
+          "type": "boolean"
+         },
+         "generator": {
+          "type": "string"
+         },
+         "overflowAt": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "id",
+         "siteId",
+         "assetTag",
+         "attribute",
+         "unit",
+         "ratedLimit",
+         "points",
+         "synthetic",
+         "generator"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "betas": [
+   "server-side-fallback-2026-07-01"
+  ],
+  "fallbacks": "default"
+ }
+}

@@ -1,45 +1,522 @@
 {
   "name": "steward-factory-myer-plant-overpressure",
   "suite": "factory-workflow",
-  "description": "REALITY-CONTRACT-3.md §10 factory workflow: overview → issue → focus_view → wait_for → resolution, on the my-overpressure scenario (PG-601 at 4.1 bar on a 3.5 bar circuit). The operator starts the scenario, holds wait_for (zero tokens, progress every 15 s) until it moves, finds the issue, points the dashboard camera at it, holds wait_for again until Atlas's board meeting resolves, then reads the resolution, the owner and the scene.",
+  "description": "REALITY-CONTRACT-3.md §10 factory workflow on contract-4 agents: overview → issue → focus_view → the agent eye → wait_for → resolution, on the my-overpressure scenario (PG-601 at 4.1 bar on a 3.5 bar circuit). The owner's agent starts the scenario in compressed time, holds wait_for (zero tokens, progress every 15 s) until it moves, finds the issue, points the dashboard camera at it, looks at the gauge through the agent eye, holds wait_for until the scenario completes, then reads the meeting's resolution, the owner and the scene. Then the third site (REALITY-CONTRACT-5.md): Tomioka's headline tm-humidity scenario plays to completion (88 % relative humidity after a typhoon, the site team meets, the conservator starts the dehumidifier, the Conservation Engineer verifies through the eye and signs), and the Tomioka scene streams its level-of-detail scan.",
   "siteId": "myer-plant",
   "notes": [
     "wait_for steps use until + carry: a still_waiting result is re-called with the same waitId (still one held call per window, no polling). timeoutMs bounds the whole step.",
-    "The suite assumes the backend opens the PG-601 issue with scenarioId my-overpressure and that Atlas's board meeting on it names the duty engineer; the fixture (mcp-runtime/tests/fake-reality.ts) does exactly that.",
-    "A backend that runs a scenario faster than the MCP can open the second wait would fire board.resolved before the wait exists; the backend's wait semantics (only future changes) decide that, so a miss shows as a timeout here."
+    "start_scenario passes speed 600 (script minutes per real minute) and restart true so a replay starts a fresh run; the fixture ignores speed and plays its steps every few tens of milliseconds.",
+    "Scenario changes are Changes of type scenario carrying {scenarioId, runId, status: started | step | completed}; the scenario waits use event any with filter type scenario, and the completion wait filters on status completed.",
+    "The PG-601 issue opens as medium (gauge trending) and is escalated to high later in the script; the suite accepts either at first sight and checks high after the run completes.",
+    "The tm_ steps cover Tomioka (contract 5): they run after the Myer steps, so a backend without the third site still reports the Myer workflow."
   ],
   "steps": [
-    { "id": "overview", "kind": "tool", "tool": "get_overview", "args": {},
-      "expect": { "sites[siteId=myer-plant].name": { "$exists": true }, "sites[siteId=bristol-pumps].name": { "$exists": true }, "agents": { "$jsonContains": "\"agentId\":\"atlas\"" }, "tokensEstimate": { "$lte": 600 } } },
-    { "id": "scenarios_listed", "kind": "tool", "tool": "list_scenarios", "args": {},
-      "expect": { "scenarios[id=my-overpressure].siteId": "myer-plant", "scenarios": { "$jsonContains": "\"id\":\"br-sump\"" } } },
-    { "id": "start_overpressure", "kind": "tool", "tool": "start_scenario", "args": { "scenarioId": "my-overpressure" },
-      "expect": { "scenarioId": "my-overpressure", "state": { "$in": ["running", "completed"] } }, "capture": { "runId": "id" } },
-    { "id": "wait_scenario_moves", "kind": "tool", "tool": "wait_for",
-      "args": { "event": "scenario.step", "filter": { "scenarioId": "my-overpressure" }, "timeoutSeconds": 50 },
-      "until": { "status": "fired" }, "carry": { "waitId": "waitId" }, "intervalMs": 0, "timeoutMs": 120000,
-      "expect": { "status": "fired", "tokensWhileWaiting": 0, "event.scenarioId": "my-overpressure", "waitId": { "$exists": true } } },
-    { "id": "issue_listed", "kind": "tool", "tool": "list_issues", "args": { "siteId": "myer-plant", "status": "open" },
-      "until": { "issues[scenarioId=my-overpressure].id": { "$exists": true } }, "intervalMs": 1000, "timeoutMs": 30000,
-      "expect": { "issues[scenarioId=my-overpressure].assetTag": "PG-601", "issues[scenarioId=my-overpressure].severity": "high" },
-      "capture": { "issueId": "issues[scenarioId=my-overpressure].id" } },
-    { "id": "issue_detail", "kind": "tool", "tool": "get_issue", "args": { "issueId": "${issueId}" },
-      "expect": { "id": "${issueId}", "siteId": "myer-plant", "assetTag": "PG-601", "severity": "high", "summary": { "$matches": "/4\\.1/" } } },
-    { "id": "focus_dashboard", "kind": "tool", "tool": "focus_view", "args": { "siteId": "myer-plant", "issueId": "${issueId}", "action": "highlight" },
-      "expect": { "commandId": { "$exists": true }, "siteId": "myer-plant", "action": "highlight" } },
-    { "id": "wait_board_resolved", "kind": "tool", "tool": "wait_for",
-      "args": { "event": "board.resolved", "siteId": "myer-plant", "filter": { "scenarioId": "my-overpressure" }, "timeoutSeconds": 50 },
-      "until": { "status": "fired" }, "carry": { "waitId": "waitId" }, "intervalMs": 0, "timeoutMs": 180000,
-      "expect": { "status": "fired", "tokensWhileWaiting": 0, "event.type": "board.resolved" } },
-    { "id": "board_resolution", "kind": "tool", "tool": "get_board_meeting", "args": { "issueId": "${issueId}" },
-      "expect": { "resolution": { "$exists": true }, "state": "resolved", "participants": { "$contains": "atlas" }, "contact.role": { "$matches": "/duty engineer/i" }, "contact.phone": { "$exists": false } } },
-    { "id": "owner", "kind": "tool", "tool": "who_is_responsible", "args": { "siteId": "myer-plant", "issueKind": "out_of_range" },
-      "expect": { "crewMember.role": { "$matches": "/duty engineer/i" }, "crewMember.hasPhone": { "$in": [true, false] } } },
-    { "id": "issue_after_resolution", "kind": "tool", "tool": "get_issue", "args": { "issueId": "${issueId}" },
-      "expect": { "status": { "$in": ["assigned", "acknowledged", "resolved"] } } },
-    { "id": "scene_shows_issue", "kind": "tool", "tool": "get_scene", "args": { "siteId": "myer-plant" },
-      "expect": { "assets[assetTag=PG-601].severity": "high", "assets[assetTag=PG-601].pin": { "$exists": true }, "sogUrl": "https://d28zzqy0iyovbz.cloudfront.net/66b655d3/v1/meta.json", "credit.url": "https://superspl.at/scene/66b655d3" } },
-    { "id": "show_factory", "kind": "tool", "tool": "show_factory", "args": { "siteId": "myer-plant" },
-      "expect": { "summary": { "$matches": "/PG-601/" }, "widget.resourceUri": "ui://views/steward-factory.html", "counts.openIssues": { "$gte": 1 } } }
+    {
+      "id": "overview",
+      "kind": "tool",
+      "tool": "get_overview",
+      "args": {},
+      "expect": {
+        "sites[siteId=myer-plant].name": {
+          "$exists": true
+        },
+        "sites[siteId=bristol-pumps].name": {
+          "$exists": true
+        },
+        "agents": {
+          "$jsonContains": "\"agentId\":\"director\""
+        },
+        "tokensEstimate": {
+          "$lte": 600
+        }
+      }
+    },
+    {
+      "id": "scenarios_listed",
+      "kind": "tool",
+      "tool": "list_scenarios",
+      "args": {},
+      "expect": {
+        "scenarios[id=my-overpressure].siteId": "myer-plant",
+        "scenarios": {
+          "$jsonContains": "\"id\":\"br-sump\""
+        }
+      }
+    },
+    {
+      "id": "start_overpressure",
+      "kind": "tool",
+      "tool": "start_scenario",
+      "args": {
+        "scenarioId": "my-overpressure",
+        "speed": 600,
+        "restart": true
+      },
+      "expect": {
+        "scenarioId": "my-overpressure",
+        "state": {
+          "$in": [
+            "running",
+            "completed"
+          ]
+        }
+      },
+      "capture": {
+        "runId": "id"
+      }
+    },
+    {
+      "id": "wait_scenario_moves",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "any",
+        "filter": {
+          "type": "scenario",
+          "scenarioId": "my-overpressure",
+          "runId": "${runId}"
+        },
+        "timeoutSeconds": 50
+      },
+      "until": {
+        "status": "fired"
+      },
+      "carry": {
+        "waitId": "waitId"
+      },
+      "intervalMs": 0,
+      "timeoutMs": 120000,
+      "expect": {
+        "status": "fired",
+        "tokensWhileWaiting": 0,
+        "event.scenarioId": "my-overpressure",
+        "waitId": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "issue_listed",
+      "kind": "tool",
+      "tool": "list_issues",
+      "args": {
+        "siteId": "myer-plant",
+        "status": "open"
+      },
+      "until": {
+        "issues[scenarioId=my-overpressure].id": {
+          "$exists": true
+        }
+      },
+      "intervalMs": 1000,
+      "timeoutMs": 60000,
+      "expect": {
+        "issues[scenarioId=my-overpressure].assetTag": "PG-601",
+        "issues[scenarioId=my-overpressure].severity": {
+          "$in": [
+            "medium",
+            "high"
+          ]
+        }
+      },
+      "capture": {
+        "issueId": "issues[scenarioId=my-overpressure].id"
+      }
+    },
+    {
+      "id": "issue_detail",
+      "kind": "tool",
+      "tool": "get_issue",
+      "args": {
+        "issueId": "${issueId}"
+      },
+      "expect": {
+        "id": "${issueId}",
+        "siteId": "myer-plant",
+        "assetTag": "PG-601",
+        "severity": {
+          "$in": [
+            "medium",
+            "high"
+          ]
+        },
+        "summary": {
+          "$matches": "/PG-601/"
+        }
+      }
+    },
+    {
+      "id": "focus_dashboard",
+      "kind": "tool",
+      "tool": "focus_view",
+      "args": {
+        "siteId": "myer-plant",
+        "issueId": "${issueId}",
+        "action": "highlight"
+      },
+      "expect": {
+        "commandId": {
+          "$exists": true
+        },
+        "siteId": "myer-plant",
+        "action": "highlight"
+      }
+    },
+    {
+      "id": "eye_on_the_gauge",
+      "kind": "tool",
+      "tool": "eye_go_to",
+      "args": {
+        "siteId": "myer-plant",
+        "assetTag": "PG-601"
+      },
+      "expect": {
+        "visibleTags": {
+          "$contains": "PG-601"
+        },
+        "imagesReturned": 1,
+        "frames[0].camera.position": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "wait_scenario_completed",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "any",
+        "siteId": "myer-plant",
+        "filter": {
+          "type": "scenario",
+          "scenarioId": "my-overpressure",
+          "runId": "${runId}",
+          "status": "completed"
+        },
+        "timeoutSeconds": 50
+      },
+      "until": {
+        "status": "fired"
+      },
+      "carry": {
+        "waitId": "waitId"
+      },
+      "intervalMs": 0,
+      "timeoutMs": 240000,
+      "expect": {
+        "status": "fired",
+        "tokensWhileWaiting": 0,
+        "event.status": "completed"
+      }
+    },
+    {
+      "id": "issue_escalated",
+      "kind": "tool",
+      "tool": "get_issue",
+      "args": {
+        "issueId": "${issueId}"
+      },
+      "expect": {
+        "id": "${issueId}",
+        "severity": "high"
+      },
+      "note": "The script raises the PG-601 issue as medium at t+20 min and escalates it to high at t+35 min."
+    },
+    {
+      "id": "meeting_resolution",
+      "kind": "tool",
+      "tool": "get_board_meeting",
+      "args": {
+        "issueId": "${issueId}"
+      },
+      "until": {
+        "state": "resolved"
+      },
+      "intervalMs": 1000,
+      "timeoutMs": 20000,
+      "expect": {
+        "resolution": {
+          "$exists": true
+        },
+        "state": "resolved",
+        "contact.phone": {
+          "$exists": false
+        }
+      }
+    },
+    {
+      "id": "owner",
+      "kind": "tool",
+      "tool": "who_is_responsible",
+      "args": {
+        "siteId": "myer-plant",
+        "issueKind": "overpressure"
+      },
+      "expect": {
+        "crewMember.name": {
+          "$exists": true
+        },
+        "crewMember.hasPhone": {
+          "$in": [
+            true,
+            false
+          ]
+        }
+      }
+    },
+    {
+      "id": "scene_shows_issue",
+      "kind": "tool",
+      "tool": "get_scene",
+      "args": {
+        "siteId": "myer-plant"
+      },
+      "expect": {
+        "assets[assetTag=PG-601].severity": "high",
+        "assets[assetTag=PG-601].pin": {
+          "$exists": true
+        },
+        "sogUrl": "https://d28zzqy0iyovbz.cloudfront.net/66b655d3/v1/meta.json",
+        "credit.url": "https://superspl.at/scene/66b655d3"
+      }
+    },
+    {
+      "id": "show_factory",
+      "kind": "tool",
+      "tool": "show_factory",
+      "args": {
+        "siteId": "myer-plant"
+      },
+      "expect": {
+        "summary": {
+          "$matches": "/PG-601/"
+        },
+        "widget.resourceUri": "ui://views/steward-factory.html",
+        "counts.openIssues": {
+          "$gte": 1
+        }
+      }
+    },
+    {
+      "id": "tm_overview",
+      "kind": "tool",
+      "tool": "get_overview",
+      "args": {},
+      "expect": {
+        "sites[siteId=tomioka-mill].name": "Tomioka Silk Mill",
+        "agents": {
+          "$jsonContains": "\"agentId\":\"tomioka-engineer\""
+        },
+        "tokensEstimate": {
+          "$lte": 600
+        }
+      }
+    },
+    {
+      "id": "tm_scenarios_listed",
+      "kind": "tool",
+      "tool": "list_scenarios",
+      "args": {},
+      "expect": {
+        "scenarios[id=tm-humidity].siteId": "tomioka-mill",
+        "scenarios[id=tm-alteration-permit].siteId": "tomioka-mill",
+        "scenarios": {
+          "$jsonContains": "\"id\":\"x-heritage\""
+        }
+      }
+    },
+    {
+      "id": "tm_start_humidity",
+      "kind": "tool",
+      "tool": "start_scenario",
+      "args": {
+        "scenarioId": "tm-humidity",
+        "speed": 600,
+        "restart": true
+      },
+      "expect": {
+        "scenarioId": "tm-humidity",
+        "state": {
+          "$in": [
+            "running",
+            "completed"
+          ]
+        }
+      },
+      "capture": {
+        "tmRunId": "id"
+      }
+    },
+    {
+      "id": "tm_wait_humidity_resolved",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "any",
+        "siteId": "tomioka-mill",
+        "filter": {
+          "type": "scenario",
+          "scenarioId": "tm-humidity",
+          "runId": "${tmRunId}",
+          "status": "completed"
+        },
+        "timeoutSeconds": 50
+      },
+      "until": {
+        "status": "fired"
+      },
+      "carry": {
+        "waitId": "waitId"
+      },
+      "intervalMs": 0,
+      "timeoutMs": 240000,
+      "expect": {
+        "status": "fired",
+        "tokensWhileWaiting": 0,
+        "event.status": "completed"
+      }
+    },
+    {
+      "id": "tm_wait_fix_verified",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "issue.changed",
+        "siteId": "tomioka-mill",
+        "filter": {
+          "runId": "${tmRunId}",
+          "status": "resolved"
+        },
+        "timeoutSeconds": 50
+      },
+      "until": {
+        "status": "fired"
+      },
+      "carry": {
+        "waitId": "waitId"
+      },
+      "intervalMs": 0,
+      "timeoutMs": 240000,
+      "expect": {
+        "status": "fired",
+        "tokensWhileWaiting": 0,
+        "event.status": "resolved"
+      },
+      "note": "With live workers the scenario completes as soon as it starts the fix workflow, which then plays at its own pace (evidence, call, contact, fix, verify, inform). Wait for the verified fix to resolve this run's issue; the runId filter replays a resolution that already happened."
+    },
+    {
+      "id": "tm_humidity_issue",
+      "kind": "tool",
+      "tool": "list_issues",
+      "args": {
+        "siteId": "tomioka-mill",
+        "status": "all"
+      },
+      "expect": {
+        "issues[scenarioId=tm-humidity].kind": "humidity_high",
+        "issues[scenarioId=tm-humidity].assetTag": {
+          "$matches": "/^HS-30[1-3]$/"
+        },
+        "issues[scenarioId=tm-humidity].status": "resolved",
+        "issues[scenarioId=tm-humidity].synthetic": true
+      },
+      "capture": {
+        "tmSensor": "issues[scenarioId=tm-humidity].assetTag"
+      }
+    },
+    {
+      "id": "tm_signed_reading",
+      "kind": "tool",
+      "tool": "resolve",
+      "args": {
+        "siteId": "tomioka-mill",
+        "assetTag": "${tmSensor}",
+        "attribute": "humidity_pct"
+      },
+      "expect": {
+        "status": "known",
+        "value": {
+          "$lte": 65
+        },
+        "attestationId": {
+          "$exists": true
+        }
+      },
+      "note": "The Conservation Engineer verified the recovery through the eye and signed the reading; resolve cites that attestation."
+    },
+    {
+      "id": "tm_humidity_trend",
+      "kind": "tool",
+      "tool": "get_metrics",
+      "args": {
+        "siteId": "tomioka-mill",
+        "series": [
+          "humidity_pct"
+        ],
+        "hours": 2
+      },
+      "expect": {
+        "series[0].key": {
+          "$matches": "/^humidity_pct/"
+        },
+        "series[0].spec.max": 65,
+        "series[0].outOfSpec": {
+          "$gte": 1
+        },
+        "synthetic": true
+      }
+    },
+    {
+      "id": "tm_owner",
+      "kind": "tool",
+      "tool": "who_is_responsible",
+      "args": {
+        "siteId": "tomioka-mill",
+        "issueKind": "humidity_high"
+      },
+      "expect": {
+        "crewMember.role": {
+          "$matches": "/conservation architect/i"
+        },
+        "crewMember.hasPhone": {
+          "$in": [
+            true,
+            false
+          ]
+        }
+      }
+    },
+    {
+      "id": "tm_scene",
+      "kind": "tool",
+      "tool": "get_scene",
+      "args": {
+        "siteId": "tomioka-mill"
+      },
+      "expect": {
+        "sogUrl": "https://d28zzqy0iyovbz.cloudfront.net/849bce2a/v1/lod-meta.json",
+        "scanFormat": "lod",
+        "credit.url": "https://superspl.at/scene/849bce2a",
+        "credit.author": "acrylagitt",
+        "assets[assetTag=BW-251].kind": "structure",
+        "assets[assetTag=RM-101].kind": "machine",
+        "assets[assetTag=DH-1101].kind": "dehumidifier"
+      }
+    },
+    {
+      "id": "tm_show_factory",
+      "kind": "tool",
+      "tool": "show_factory",
+      "args": {
+        "siteId": "tomioka-mill"
+      },
+      "expect": {
+        "summary": {
+          "$matches": "/Tomioka Silk Mill/"
+        },
+        "widget.resourceUri": "ui://views/steward-factory.html",
+        "scanFormat": "lod"
+      }
+    }
   ]
 }

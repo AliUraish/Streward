@@ -1,9 +1,12 @@
-"""Site registry (contract 3): IDs, display names, environments, scan pins and the in-place migrations.
+"""Site registry (contracts 3 and 5): IDs, display names, environments, scan pins and the in-place migrations.
 
-Site == property: the API keeps the `/api/properties/{id}` prefix and `propertyId` field names. Two sites remain,
-both third-party Gaussian-splat captures hosted on SuperSplat and loaded at runtime from the CloudFront origin
-(never copied or rehosted): `myer-plant` (the demo site) and `bristol-pumps`. `harbor-works` and its Three.js
-fixture twin were retired; `retire_sites` archives its records once, after a backup.
+Site == property: the API keeps the `/api/properties/{id}` prefix and `propertyId` field names. Three sites, all
+third-party Gaussian-splat captures hosted on SuperSplat and loaded at runtime from the CloudFront origin (never
+copied or rehosted): `myer-plant` (the demo site, MY), `bristol-pumps` (BR) and, from contract 5, `tomioka-mill` (TM),
+the Tomioka Silk Mill, whose capture is a streamed level-of-detail octree (`lod-meta.json`, `environment.format: lod`)
+rather than a single SOG `meta.json`. `harbor-works` and its Three.js fixture twin were retired; `retire_sites`
+archives its records once, after a backup. A site added to an existing database is seeded by `seed.add_new_sites`
+(once, after a backup `pre-third-site-<stamp>`).
 
 Databases created before the first rename (`cedar` / `harbor` / `juniper`) are still migrated in place on startup,
 once, idempotently (`migrate_site_ids`), before the retirement runs. Signed attestations whose body changed are
@@ -28,11 +31,14 @@ OLD_PREFIX_TO_NEW = {"CH": "MY", "HW": "HW", "JR": "BR"}
 RETIRED_SITES = {"harbor-works": "HW"}
 SPLAT_CAPTURE_NOTE = "Scene rendered from a third-party capture hosted on SuperSplat; shown here as the site environment."
 SOG_ORIGIN = "https://d28zzqy0iyovbz.cloudfront.net"
+TOMIOKA_LOD_META = f"{SOG_ORIGIN}/849bce2a/v1/lod-meta.json"
 # Scan facts from the SuperSplat scene pages and their meta.json (gaussian counts are meta.json `count`).
 SITES: list[dict] = [
     dict(id="myer-plant", prefix="MY", name="Myer Plant Room", site="Myer Plant Room, basement plant room (demonstration site)",
-         operator="Myer facilities team (demonstration)", status="operational",
-         environment=dict(kind="splat", splatId="66b655d3", sogMetaUrl=f"{SOG_ORIGIN}/66b655d3/v1/meta.json",
+         operator="Myer facilities team (demonstration)", status="operational", jurisdiction="VIC-AU", area="plant room",
+         siteKind="modern building plant room",
+         environment=dict(kind="splat", format="sog", scanFormat="sog", splatId="66b655d3", sogMetaUrl=f"{SOG_ORIGIN}/66b655d3/v1/meta.json",
+                          sogUrl=f"{SOG_ORIGIN}/66b655d3/v1/meta.json", contentUrl=f"{SOG_ORIGIN}/66b655d3/v1/meta.json",
                           viewerUrl="https://superspl.at/scene/66b655d3", embedUrl="https://superspl.at/s?id=66b655d3",
                           thumbnailUrl="https://s3-eu-west-1.amazonaws.com/images.playcanvas.com/splat/66b655d3/v1/xl.webp",
                           sceneName="industrial plant room within Kenneth Myer building", author="azha007", gaussians=14158102,
@@ -42,8 +48,10 @@ SITES: list[dict] = [
                           cameraPresets=[dict(id="initial", label="Initial view", fov=75, position=[-8.4004, -0.4771, 0.5886],
                                               target=[88.5429, 2.1959, -82.384])])),
     dict(id="bristol-pumps", prefix="BR", name="Bristol Dock Pump House", site="Bristol Dock Pump House, 1907 pump house under restoration (demonstration site)",
-         operator="Dock pump house restoration project (demonstration)", status="under restoration",
-         environment=dict(kind="splat", splatId="8a8ce192", sogMetaUrl=f"{SOG_ORIGIN}/8a8ce192/v1/meta.json",
+         operator="Dock pump house restoration project (demonstration)", status="under restoration", jurisdiction="ENG-UK", area="engine house",
+         siteKind="heritage pump house under restoration, open to visitors",
+         environment=dict(kind="splat", format="sog", scanFormat="sog", splatId="8a8ce192", sogMetaUrl=f"{SOG_ORIGIN}/8a8ce192/v1/meta.json",
+                          sogUrl=f"{SOG_ORIGIN}/8a8ce192/v1/meta.json", contentUrl=f"{SOG_ORIGIN}/8a8ce192/v1/meta.json",
                           viewerUrl="https://superspl.at/scene/8a8ce192", embedUrl="https://superspl.at/s?id=8a8ce192",
                           thumbnailUrl="https://s3-eu-west-1.amazonaws.com/images.playcanvas.com/splat/8a8ce192/v1/xl.webp",
                           sceneName="1907 pumps being restored", author="scanomatic_labs", gaussians=6934105, captureDevice="portal cam",
@@ -51,11 +59,31 @@ SITES: list[dict] = [
                           captureNote=SPLAT_CAPTURE_NOTE,
                           cameraPresets=[dict(id="initial", label="Initial view", fov=120, position=[-0.0713, 2.8039, -0.5236],
                                               target=[-0.0221, 2.7469, -0.6373])])),
+    # Contract 5 §1. The operator is a demonstration operator: nothing here implies the real site operator uses Steward.
+    # The capture streams by level of detail: lod-meta.json (LOD v1, 23,564,860 gaussians over 5 levels in 44 chunk
+    # files, octree `tree`, CORS *). `sogMetaUrl`, `sogUrl`, `lodMetaUrl` and `contentUrl` all carry that URL so every
+    # existing consumer finds it; `format: "lod"` tells a viewer to use the streamed loader (the v1/meta.json object 403s).
+    dict(id="tomioka-mill", prefix="TM", name="Tomioka Silk Mill",
+         site="\u5bcc\u5ca1\u88fd\u7cf8\u5834, Tomioka, Gunma Prefecture, Japan (UNESCO World Heritage; buildings designated National Treasures)",
+         operator="Demonstration operator (fictional; not the site's real operator)", status="open to visitors", jurisdiction="JP",
+         jurisdictionName="Japan (Gunma Prefecture)", area="Silk Reeling Mill",
+         siteKind="heritage industrial site; an 1872 silk reeling mill preserved with its reeling machines",
+         environment=dict(kind="splat", format="lod", scanFormat="lod", splatId="849bce2a", sogMetaUrl=TOMIOKA_LOD_META, sogUrl=TOMIOKA_LOD_META,
+                          lodMetaUrl=TOMIOKA_LOD_META, contentUrl=TOMIOKA_LOD_META,
+                          lod=dict(version=1, levels=5, chunkFiles=44, count=23564860, octree="tree"),
+                          viewerUrl="https://superspl.at/scene/849bce2a", embedUrl="https://superspl.at/s?id=849bce2a",
+                          thumbnailUrl="https://s3-eu-west-1.amazonaws.com/images.playcanvas.com/splat/849bce2a/v1/xl.webp",
+                          sceneName="\u5bcc\u5ca1\u88fd\u7cf8\u5834", author="acrylagitt", gaussians=23564860, sizeMB=271.06,
+                          credit="\u201c\u5bcc\u5ca1\u88fd\u7cf8\u5834\u201d by acrylagitt on SuperSplat (https://superspl.at/scene/849bce2a); third-party capture, not ours",
+                          captureNote=SPLAT_CAPTURE_NOTE,
+                          cameraPresets=[dict(id="initial", label="Initial view", fov=75, position=[-32.414, 0.287, -43.351],
+                                              target=[-33.558, 0.001, -44.495])])),
 ]
 SITE_IDS = [site["id"] for site in SITES]
 SITE_BY_ID = {site["id"]: site for site in SITES}
 SITE2 = {site["id"]: site["prefix"] for site in SITES}
 SITE_BY_PREFIX = {prefix: site_id for site_id, prefix in SITE2.items()}
+SITE_JURISDICTION = {site["id"]: site["jurisdiction"] for site in SITES}
 _OLD_ID_RE = re.compile(r"^(cedar|harbor|juniper)([-:])")
 _OLD_AGENT_RE = re.compile(r"^agent-(cedar|harbor|juniper)$")
 _OLD_SEED_RE = re.compile(r"^seed-(cedar|harbor|juniper)-")
@@ -69,9 +97,12 @@ def site_env_suffix(site_id: str) -> str:
     return site_id.upper().replace("-", "_")
 
 
+SHAPE_KEYS = ("name", "site", "operator", "status", "jurisdiction", "jurisdictionName", "prefix", "siteKind")
+
+
 def property_record(site: dict, component_count: int, updated_at: str) -> dict:
-    return dict(id=site["id"], name=site["name"], site=site["site"], operator=site["operator"], status=site["status"],
-                environment=dict(site["environment"]), readiness=0, componentCount=component_count, openIssues=0, updatedAt=updated_at)
+    return dict(id=site["id"], **{key: site[key] for key in SHAPE_KEYS if key in site}, environment=dict(site["environment"]),
+                readiness=0, componentCount=component_count, openIssues=0, updatedAt=updated_at)
 
 
 def pin_for(site_id: str, component: dict) -> dict | None:
@@ -205,8 +236,10 @@ def migrate_site_ids(store) -> dict:
 
 
 def apply_site_shape(store) -> None:
-    """Industrial property records with the contract-3 environments; idempotent and safe to re-run."""
-    if store.meta("steward_site_shape_version") == "3":
+    """Industrial property records with the registry's environments; idempotent and safe to re-run. Version 5 (contract
+    5) also writes the registry's `jurisdiction` (VIC-AU, ENG-UK, JP; it replaces the first generation's free-text
+    jurisdiction), the reference `prefix` and `siteKind`, and the environments' `format` / `sogUrl` / `contentUrl`."""
+    if store.meta("steward_site_shape_version") == "5":
         return
     for site in SITES:
         prop = store.get("property", site["id"])
@@ -214,8 +247,7 @@ def apply_site_shape(store) -> None:
             continue
         for stale_key in ("address", "jurisdiction", "phase"):
             prop.pop(stale_key, None)
-        prop.update(name=site["name"], site=site["site"], operator=site["operator"], status=site["status"],
-                    environment=dict(site["environment"]))
+        prop.update({key: site[key] for key in SHAPE_KEYS if key in site}, environment=dict(site["environment"]))
         store.put("property", prop)
         legacy = store.get("agent", f"agent-{site['id']}")
         if legacy:
@@ -226,7 +258,7 @@ def apply_site_shape(store) -> None:
     if portfolio:
         portfolio.update(name="Atlas", role="Portfolio coordinator")
         store.put("agent", portfolio)
-    store.meta("steward_site_shape_version", "3")
+    store.meta("steward_site_shape_version", "5")
 
 
 def _mentions_retired(body: dict) -> str | None:

@@ -14,7 +14,7 @@ from pathlib import Path
 from .env import env
 
 SYNTH_DIR = Path(__file__).resolve().parents[1] / "seed" / "synthetic"
-FAMILIES = ("crews", "obligations", "documents", "sensor_history", "scenarios", "conversations", "maintenance", "armature_traces")
+FAMILIES = ("crews", "obligations", "documents", "sensor_history", "scenarios", "conversations", "maintenance", "armature_traces", "forged_tools")
 
 
 def synth_dir() -> Path:

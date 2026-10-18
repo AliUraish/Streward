@@ -23,7 +23,7 @@ Board style decision: blackboard (dark) matches the dashboard's dark UI; the sam
 | 4 | Live demo: `start_mission clear_for_restart` from Claude Code through the Manufact-hosted MCP. | Screen | Screen, with a small caption strip per step. |
 | 5 | Inkbox: Runner texts the technician the task card, wrong photo rejected, right photo accepted, escalation call. | Screen + board | Draw-over-UI: ring the SMS thread and the rejection reason "tag plate reads P-102, expected P-101". |
 | 6 | Verification: six checks (scope, identity, geometry, plausibility, time, integrity), Ed25519 signature, `check` returns `valid: true`. | Board | Board: six checkboxes ticked one by one, then a signature line. |
-| 7 | Supabase: the attestation row lands, realtime drives the timeline. | Screen | Draw-over-UI: ring the `attestations` row and the `changes` stream. |
+| 7 | Supabase: `select verify_ledger();` returns ok over 6,000+ signed rows; an UPDATE on `attestations` is refused by the append-only trigger; Storage shows the walkthrough frames. | Screen | Draw-over-UI: ring `ok: true`, the red refusal, and the `signature` / `prev_hash` / `row_hash` columns. |
 | 8 | Manufact: Sessions replay of `initialize` / `tools/list` / `tools/call`, publish score. | Screen | Draw-over-UI: ring the session and the tool call. |
 | 9 | Armature: scored session, eval suite "Steward demo workflow" with judge marks. | Screen | Draw-over-UI: ring the score. |
 | 10 | Close: honesty line (fictional plant, rule-based verification, no certification) and the one-line pitch. | Board | Board: the pitch written big. |
@@ -32,7 +32,7 @@ Per-sponsor "how we used it" boards (one each, 15 to 25 s), to insert where Ali 
 
 - **Inkbox**: one identity, three channels (SMS, email, call), signed webhook back, tunnel as the public URL. Draw: identity in the middle, channels fanning out to a phone, webhook arrow back, tunnel arrow to the laptop.
 - **Manufact**: laptop backend, tunnel, hosted MCP on Manufact, Claude Code client. Draw: four boxes left to right with the gateway in the middle labelled "Sessions, Analytics, Publish checks".
-- **Supabase**: SQLite is truth, upsert mirror, Realtime `postgres_changes` to the dashboard. Draw: SQLite box, arrow "upsert" to Postgres, arrow "realtime" to the browser.
+- **Supabase**: an append-only, hash-chained ledger whose Ed25519 signatures Postgres verifies itself (pgsodium); every agent a Supabase Auth user under row-level security; Inkbox replies through an Edge Function into a pgmq queue; eye frames in private Storage behind signed URLs; private Realtime channels for the live HUD. Draw: signed reading into a chain of blocks with a padlock; three boxes underneath (Auth + RLS, Edge Function + queue, Storage); a browser labelled Realtime HUD.
 - **Armature**: SDK wraps the MCP, sessions scored, eval suite runs a tester agent. Draw: the MCP box wrapped by a ring labelled "analytics", a tester agent arrow in, a 0 to 5 score out.
 
 ## Length target

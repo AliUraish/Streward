@@ -80,14 +80,22 @@ Drawing: identity in the middle, SMS, email and call fanning out to a phone, a w
 
 Drawing: laptop, tunnel, Manufact box in the middle labelled "Sessions, Analytics, Publish", Claude Code on the right.
 
-## Supabase (YOU, ~16 s)
+## Supabase (YOU, ~25 s)
 
-1. "SQLite on the laptop stays the source of truth."
-2. "Every fact, attestation and work item is mirrored into Supabase."
-3. "Realtime pushes each change to the dashboard timeline."
-4. "So a judge can open the attestations table and see the signed rows land."
+1. "Supabase is where the agents' work becomes evidence."
+2. "Every reading an agent signs goes into an append-only ledger. Each row is chained to the one before it, and Postgres checks the signature itself."
+3. (SQL editor, run `select verify_ledger();`) "Over six thousand rows. The chain is intact and every signature is valid."
+4. (second tab, run the update) "And nobody can rewrite history. Even as the database owner, this edit is refused."
+5. "Each agent is a Supabase user, so row-level security decides who can touch which site. Inkbox replies land in an Edge Function and a queue, and the eye's photos sit in private Storage behind signed links."
 
-Drawing: SQLite box, arrow "upsert" to Postgres, arrow "realtime" to a browser, a row with a signature.
+On screen, prepared before recording (Supabase dashboard, project "hackathon"; never open Settings > API or anything that shows a key):
+- SQL editor tab 1: `select verify_ledger();` The result shows `ok: true`, the rows checked and `pgsodium.crypto_sign_verify_detached (Ed25519)`.
+- SQL editor tab 2: `update public.attestations set verdict = 'rejected' where chain_seq = 1;` It fails: the `steward_00_append_only` trigger refuses it, so nothing changes.
+- Table editor > `attestations`, newest first: ring `signature`, `prev_hash`, `row_hash`.
+- Storage > `eye-frames`: the frames from the walkthrough you just showed.
+- Optional, 2 s each: Authentication > Users (the 14 agents), Database > Policies, Edge Functions > `inkbox-inbox` > Logs (after a reply email arrives).
+
+Drawing: an agent's eye signs a reading, an arrow into a chain of linked blocks with a padlock ("Postgres verifies Ed25519"); under it three small boxes, "Auth + RLS: 14 agents", "Edge Function + queue: Inkbox replies", "Storage: eye frames, signed links"; on the right a browser labelled "Realtime HUD".
 
 ## Armature (YOU, ~16 s)
 

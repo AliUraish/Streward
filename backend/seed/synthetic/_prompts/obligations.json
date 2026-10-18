@@ -1,0 +1,103 @@
+{
+ "family": "obligations",
+ "mode": "dry-run",
+ "note": "Request body only; nothing was sent.",
+ "request": {
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "system": "You generate synthetic demonstration data for Steward, an agent platform that runs two industrial sites from their 3D scans: myer-plant (a modern basement plant room in the Kenneth Myer building, Melbourne) and bristol-pumps (a 1907 dock pump house under restoration in Bristol, England). Every record is fictional and must be plausible to a facilities engineer. Never use real people's names, phone numbers or email addresses; the only contactable crew member is 'Duty engineer (you)' with contact 'user'. Rule references are a labelled demo rule pack (DEMO-RP/...), never statutory advice. Keep every id, asset tag, agent id and cross-reference consistent with the example you are given; you may vary wording, numbers and dates.",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Family: obligations. Compliance obligations per site (inspection, examination, permits) with lastDoneDaysAgo, dueInDays, owners and regulation citation hints.\n\nReturn JSON with a `records` array of 10 records in exactly this shape. Every record must keep `synthetic: true`. Example (the current hand-written seed):\n\n[\n {\n  \"id\": \"ob-my-fe1001-monthly\",\n  \"siteId\": \"myer-plant\",\n  \"assetTag\": \"FE-1001\",\n  \"title\": \"Fire extinguisher monthly visual inspection\",\n  \"ruleRef\": \"DEMO-RP/FIRE-07 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"monthly\",\n  \"lastDoneDaysAgo\": 22,\n  \"dueInDays\": 8,\n  \"documentId\": \"doc-my-fe1001-tag\",\n  \"ownerId\": \"crew-my-safety-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"vic-br-2018-reg-195\",\n   \"vic-br-2018-reg-216\",\n   \"vic-br-2018-sch-8\",\n   \"vic-br-2018-reg-226\",\n   \"vic-br-2018-reg-225\",\n   \"vic-br-2018-reg-223\",\n   \"vic-vba-pn-esm-02\"\n  ]\n },\n {\n  \"id\": \"ob-my-tk201-scheme\",\n  \"siteId\": \"myer-plant\",\n  \"assetTag\": \"TK-201\",\n  \"title\": \"TK-201 expansion vessel inspection and maintenance record\",\n  \"ruleRef\": \"DEMO-RP/PRESS-02 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"annual\",\n  \"lastDoneDaysAgo\": 140,\n  \"dueInDays\": 225,\n  \"documentId\": \"doc-my-tk201-scheme\",\n  \"ownerId\": \"crew-my-duty-engineer\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"vic-ohsr-2017-reg-105\",\n   \"vic-ohsr-2017-reg-106\",\n   \"vic-ohsr-2017-reg-74\"\n  ]\n },\n {\n  \"id\": \"ob-my-db401-periodic\",\n  \"siteId\": \"myer-plant\",\n  \"assetTag\": \"DB-401\",\n  \"title\": \"Distribution board periodic inspection and test\",\n  \"ruleRef\": \"DEMO-RP/ELEC-05 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"5-yearly\",\n  \"lastDoneDaysAgo\": 700,\n  \"dueInDays\": 1125,\n  \"documentId\": \"doc-my-db401-test\",\n  \"ownerId\": \"crew-my-facilities-manager\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [],\n  \"note\": \"Electrical installation rules are outside this demo rule pack.\"\n },\n {\n  \"id\": \"ob-my-hotwork-permit\",\n  \"siteId\": \"myer-plant\",\n  \"assetTag\": \"V-504\",\n  \"title\": \"Hot-work permit, supply manifold brazing\",\n  \"ruleRef\": \"DEMO-RP/PERMIT-03 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"per job\",\n  \"lastDoneDaysAgo\": 1,\n  \"dueInDays\": 6,\n  \"documentId\": \"doc-my-hotwork-permit\",\n  \"ownerId\": \"crew-my-safety-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"vic-br-2018-sch-8\",\n   \"vic-br-2018-reg-216\"\n  ]\n },\n {\n  \"id\": \"ob-my-contractor-report\",\n  \"siteId\": \"myer-plant\",\n  \"assetTag\": \"V-504\",\n  \"title\": \"Contractor service report on file after each visit\",\n  \"ruleRef\": \"DEMO-RP/CONTR-01 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"per visit\",\n  \"lastDoneDaysAgo\": 2,\n  \"dueInDays\": 12,\n  \"documentId\": \"doc-my-contractor-v504\",\n  \"ownerId\": \"crew-my-facilities-manager\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": []\n },\n {\n  \"id\": \"ob-br-pv301-exam\",\n  \"siteId\": \"bristol-pumps\",\n  \"assetTag\": \"PV-301\",\n  \"title\": \"Steam receiver written-scheme examination certificate\",\n  \"ruleRef\": \"DEMO-RP/PRESS-01 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"14-monthly\",\n  \"lastDoneDaysAgo\": 400,\n  \"dueInDays\": 25,\n  \"documentId\": \"doc-br-pv301-cert\",\n  \"ownerId\": \"crew-br-restoration-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"eng-pssr-2000-reg-9-6\",\n   \"eng-pssr-2000-reg-9\",\n   \"eng-pssr-2000-reg-8\",\n   \"eng-pssr-2000-reg-14\",\n   \"eng-pssr-2000-reg-2\",\n   \"eng-hswa-1974-s-3\"\n  ]\n },\n {\n  \"id\": \"ob-br-steam-demo\",\n  \"siteId\": \"bristol-pumps\",\n  \"assetTag\": \"SP-102\",\n  \"title\": \"Public steam demonstration permit\",\n  \"ruleRef\": \"DEMO-RP/PUBLIC-04 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"per event\",\n  \"lastDoneDaysAgo\": 30,\n  \"dueInDays\": 10,\n  \"documentId\": \"doc-br-steam-demo-permit\",\n  \"ownerId\": \"crew-br-visitor-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"eng-pssr-2000-reg-9-6\",\n   \"eng-hswa-1974-s-3\"\n  ]\n },\n {\n  \"id\": \"ob-br-v505-lift\",\n  \"siteId\": \"bristol-pumps\",\n  \"assetTag\": \"V-505\",\n  \"title\": \"Receiver safety valve lift test\",\n  \"ruleRef\": \"DEMO-RP/PRESS-03 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"annual\",\n  \"lastDoneDaysAgo\": 330,\n  \"dueInDays\": 35,\n  \"documentId\": \"doc-br-v505-lift\",\n  \"ownerId\": \"crew-br-restoration-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"eng-pssr-2000-reg-8\",\n   \"eng-pssr-2000-reg-9\"\n  ]\n },\n {\n  \"id\": \"ob-br-fe1001-monthly\",\n  \"siteId\": \"bristol-pumps\",\n  \"assetTag\": \"FE-1001\",\n  \"title\": \"Fire extinguisher monthly visual inspection\",\n  \"ruleRef\": \"DEMO-RP/FIRE-07 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"monthly\",\n  \"lastDoneDaysAgo\": 15,\n  \"dueInDays\": 15,\n  \"documentId\": \"doc-br-fe1001-tag\",\n  \"ownerId\": \"crew-br-restoration-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": []\n },\n {\n  \"id\": \"ob-br-walkway-check\",\n  \"siteId\": \"bristol-pumps\",\n  \"assetTag\": \"W-1201\",\n  \"title\": \"Visitor walkway pre-opening check\",\n  \"ruleRef\": \"DEMO-RP/PUBLIC-02 (demo rule pack, not statutory advice)\",\n  \"frequency\": \"daily\",\n  \"lastDoneDaysAgo\": 0,\n  \"dueInDays\": 1,\n  \"ownerId\": \"crew-br-visitor-lead\",\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\",\n  \"regulationIds\": [\n   \"eng-whswr-1992-reg-12\",\n   \"eng-whswr-1992-reg-5\",\n   \"eng-hswa-1974-s-3\",\n   \"eng-hswa-1974-s-2\"\n  ]\n }\n]"
+   }
+  ],
+  "output_config": {
+   "effort": "high",
+   "format": {
+    "type": "json_schema",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "records": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "siteId": {
+          "type": "string"
+         },
+         "assetTag": {
+          "type": "string"
+         },
+         "title": {
+          "type": "string"
+         },
+         "ruleRef": {
+          "type": "string"
+         },
+         "frequency": {
+          "type": "string"
+         },
+         "lastDoneDaysAgo": {
+          "type": "integer"
+         },
+         "dueInDays": {
+          "type": "integer"
+         },
+         "documentId": {
+          "type": "string"
+         },
+         "ownerId": {
+          "type": "string"
+         },
+         "synthetic": {
+          "type": "boolean"
+         },
+         "generator": {
+          "type": "string"
+         },
+         "regulationIds": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "note": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "id",
+         "siteId",
+         "assetTag",
+         "title",
+         "ruleRef",
+         "frequency",
+         "lastDoneDaysAgo",
+         "dueInDays",
+         "ownerId",
+         "synthetic",
+         "generator",
+         "regulationIds"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "betas": [
+   "server-side-fallback-2026-07-01"
+  ],
+  "fallbacks": "default"
+ }
+}

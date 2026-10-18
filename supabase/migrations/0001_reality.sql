@@ -1,3 +1,5 @@
+-- SUPERSEDED by 0002_steward.sql .. 0007_storage.sql (see supabase/README.md). Do not apply this file: its NOT NULLs, CHECKs
+-- and anon reads no longer match the mirror. 0002 converges a database that already ran it.
 -- Steward reality layer: Supabase mirror of the backend's SQLite source of truth.
 -- Written against REALITY-CONTRACT.md (domain types) on 2026-10-17.
 -- Column names are snake_case versions of the contract's camelCase JSON fields.

@@ -2,7 +2,7 @@
 requests, agent-to-agent document email and the document review that treats document text as data.
 
 Crew (`crew_member`): `{id, siteId, name, role, shift, onShift, phone?, email?, contactable, certifications:
-[{name, expiresAt, status}], owns: [issueKind], synthetic, generator}`. The duty engineer on both sites is the user:
+[{name, expiresAt, status}], owns: [issueKind], synthetic, generator}`. The duty engineer on every site is the user:
 their phone and email are read from `INKBOX_CONTRACTOR_PHONE` / `INKBOX_CONTRACTOR_EMAIL` at send time and are only
 ever shown masked; every other crew member is synthetic and has no contact details, so nobody outside the
 allowlist can be contacted.
@@ -36,16 +36,19 @@ from .agents import (DIRECTOR, OPERATOR, OWNER, agent_key, authorize, compliance
                      kind_of, message_allowed, site_of, technician_id)
 from .env import env
 from .errors import RealityError
-from .providers import EMAIL_RE, PHONE_RE, allowed_recipients, clean_env, inkbox_base_url
+from .providers import EMAIL_RE, PHONE_RE, allowed_recipients, clean_env, external_messages_allowed, inkbox_base_url
 from .store import now, uid
 from .synthetic import load_family
 from .verify import iso, parse_time
 
-PEOPLE_VERSION = "1"
+# Version 2 (contract 5): the loader re-runs once, insert-if-missing, so the Tomioka crew, obligations and documents (and
+# Bristol's heritage method statement) reach databases created before the third site.
+PEOPLE_VERSION = "2"
 DUE_SOON_DAYS = 14
-COMPLIANCE_KINDS = ("inspection_overdue", "certificate_expired", "walkway_closure", "permit_blocked")
-FREQUENCY_DAYS = {"daily": 1, "weekly": 7, "monthly": 30, "quarterly": 91, "annual": 365, "14-monthly": 425, "5-yearly": 1826,
-                  "per job": 7, "per visit": 30, "per event": 30}
+# Contract 5 adds `alteration_permit` (altering National Treasure fabric) and `visitor_route` (route closure procedure).
+COMPLIANCE_KINDS = ("inspection_overdue", "certificate_expired", "walkway_closure", "permit_blocked", "alteration_permit", "visitor_route")
+FREQUENCY_DAYS = {"daily": 1, "weekly": 7, "monthly": 30, "quarterly": 91, "6-monthly": 182, "annual": 365, "14-monthly": 425, "3-yearly": 1095,
+                  "5-yearly": 1826, "per job": 7, "per visit": 30, "per event": 30}
 
 
 def agent_for_kind(site_id: str, issue_kind: str) -> str:
@@ -56,7 +59,8 @@ def agent_for_kind(site_id: str, issue_kind: str) -> str:
     if issue_kind in COMPLIANCE_KINDS:
         return compliance_id(site_id)
     return engineer_id(site_id)
-DOCUMENT_TYPES = ("certificate", "permit", "inspection_record", "contractor_report")
+# Expiry-tracked compliance records (the compliance sweep re-reads these); method statements are reference documents.
+DOCUMENT_TYPES = ("certificate", "permit", "inspection_record", "contractor_report", "work_order")
 # Instruction-shaped text inside a document. A match never changes state; it flags the document and raises an issue.
 INJECTION_PATTERNS = [
     re.compile(r"\bignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+instructions\b", re.I),
@@ -188,8 +192,11 @@ class PeopleService:
                               ruleRef=record["ruleRef"], frequency=record.get("frequency", ""),
                               lastDoneAt=iso(moment - timedelta(days=int(record.get("lastDoneDaysAgo", 0)))),
                               dueAt=iso(moment + timedelta(days=int(record.get("dueInDays", 30)))), status="ok",
-                              documentId=record.get("documentId"), ownerId=record.get("ownerId"), blockedBy=None, blockedReason=None,
-                              cites=list(record.get("cites") or []), synthetic=True, generator=record["generator"], updatedAt=now())
+                              documentId=record.get("documentId"), ownerId=record.get("ownerId"),
+                              # Contract 7 §6: a seeded compliance gap may be blocked; it names its blocker.
+                              blockedBy=record.get("blockedBy"), blockedReason=record.get("blockedReason"),
+                              regulationIds=list(record.get("regulationIds") or []), note=record.get("note"), synthetic=True,
+                              generator=record["generator"], updatedAt=now())
             obligation["status"] = self.status_of(obligation)
             self._put("obligation", obligation)
         self.store.meta("steward_people_version", PEOPLE_VERSION)
@@ -293,13 +300,31 @@ class PeopleService:
                 record["status"] = current
                 record["updatedAt"] = now()
                 self._put("obligation", record)
-            regulations = getattr(self.service, "regulations", None)
-            records.append({**record, "regulationIds": regulations.for_obligation(record) if regulations else []})
+            records.append(self.obligation_view(record))
         if status:
             if status not in ("ok", "due_soon", "overdue", "blocked"):
                 raise RealityError("status must be ok, due_soon, overdue or blocked.", "INVALID_REQUEST", "Pass a valid ?status=.")
             records = [r for r in records if r["status"] == status]
         return sorted(records, key=lambda r: ({"blocked": 0, "overdue": 1, "due_soon": 2, "ok": 3}[r["status"]], r["dueAt"]))
+
+    def obligation_view(self, record: dict) -> dict:
+        """The stored obligation plus the regulation ids that resolve in the rule pack and, when the REGULATIONS stream
+        suggests a matching obligation, its `why`, closing evidence and who tracks it."""
+        regulations = getattr(self.service, "regulations", None)
+        view = dict(record, regulationIds=regulations.for_obligation(record) if regulations else [])
+        known = regulations.by_id() if regulations else {}
+        unknown = [rid for rid in record.get("regulationIds") or [] if rid not in view["regulationIds"] and rid not in known]
+        if unknown:
+            view["unresolvedRegulationIds"] = unknown
+        # Contract 5: Tomioka cites Japanese provisions the regulations stream is still adding; until the records exist
+        # the obligation says so instead of failing (`regulationPending`), and resolves as soon as they appear.
+        view["regulationPending"] = bool(unknown)
+        view["comparisonRegulationIds"] = regulations.comparison_for_obligation(record) if regulations else []
+        suggestion = regulations.suggestion_for(record["id"]) if regulations else None
+        if suggestion:
+            view.update(why=suggestion.get("why"), closingEvidence=suggestion.get("evidence") or [], closesWhen=suggestion.get("closesWhen"),
+                        trackedBy=suggestion.get("trackedBy"), suggestedObligationId=suggestion.get("id"))
+        return view
 
     def obligation(self, obligation_id: str) -> dict:
         record = self.store.get("obligation", obligation_id)
@@ -398,7 +423,7 @@ class PeopleService:
         if crew and crew["contactable"]:
             channel = "sms" if crew["phone"] else "email"
             phone = user_phone()
-            gates = [flag("STEWARD_ALLOW_EXTERNAL_MESSAGES"), flag("STEWARD_ALLOW_NOTICE_SMS"), channel == "sms",
+            gates = [external_messages_allowed(), flag("STEWARD_ALLOW_NOTICE_SMS"), channel == "sms",
                      bool(phone) and phone.casefold() in allowed_recipients()]
             if all(gates):
                 try:
@@ -423,6 +448,72 @@ class PeopleService:
         self.service.telemetry.record(via, "tool", "send_notice", text=text, site_id=site_id, scenario_id=scenario_id, run_id=run_id)
         return notice
 
+    def decide(self, issue: dict, question: str, options: list[str], actor: str) -> dict:
+        """The MCP `decide` fallback for clients without elicitation. The question always goes to the site's Plant Manager
+        (an A2A one-question conversation plus a notification record); in live mode only (STEWARD_ALLOW_EXTERNAL_MESSAGES,
+        STEWARD_ALLOW_NOTICE_SMS, an allowlisted INKBOX_OWNER_PHONE, Inkbox configured) it also goes to the owner by SMS
+        through the dispatch line. Otherwise the owner's copy is recorded as `dry_run`. Answer with
+        POST /api/decision-requests/{id}/answer."""
+        site = issue.get("siteId")
+        if not site:
+            raise RealityError("The issue has no site.", "INVALID_REQUEST", "Decide on a site issue.")
+        from .agents import manager_id, message_allowed
+        manager = manager_id(site)
+        sender = actor if actor != manager and message_allowed(actor, manager)[0] else DIRECTOR
+        choices = [str(o).strip()[:40] for o in options if str(o).strip()][:6]
+        text = f"Decision needed on {issue.get('assetTag') or issue['id']}: {question[:300]}" + (f" Options: {' / '.join(choices)}." if choices else "")
+        record_id = uid("dec")
+        conversation = self.service.conversations.message(sender, manager, f"Decision: {question[:120]}", text, site_ids=[site], issue_id=issue["id"],
+                                                          data=dict(decisionRequestId=record_id))
+        owner = clean_env("INKBOX_OWNER_PHONE")
+        owner = owner if PHONE_RE.match(owner) else ""
+        gates = [external_messages_allowed(), flag("STEWARD_ALLOW_NOTICE_SMS"), bool(owner) and owner.casefold() in allowed_recipients()]
+        mode, reason, provider_ref = "dry_run", "owner SMS is live only with STEWARD_ALLOW_EXTERNAL_MESSAGES, STEWARD_ALLOW_NOTICE_SMS and an allowlisted INKBOX_OWNER_PHONE", None
+        if not owner:
+            mode, reason = "not_contactable", "no valid INKBOX_OWNER_PHONE configured"
+        elif all(gates):
+            try:
+                provider_ref = self.reality.comms.send_sms(site, owner, f"Steward: {text}"[:1500]).get("id")
+                mode, reason = "sent", "sent through the dispatch line"
+            except Exception as error:
+                mode, reason = "failed", f"provider request failed ({type(error).__name__})"
+        notifications = []
+        for to_kind, to, to_name, channel, note_mode, extra in (
+                ("agent", manager, display_name(manager), "a2a", "sent", dict(a2aTaskId=conversation["a2aTaskIds"][0], transport=conversation["transport"])),
+                ("owner", "owner", "the owner", "sms", mode, dict(providerRef=provider_ref, reason=reason, toMasked=mask_phone(owner)))):
+            note = dict(id=uid("ntf"), siteId=site, workflowId=None, issueId=issue["id"], sender=sender, toKind=to_kind, to=to, toName=to_name, channel=channel,
+                        text=text, mode=note_mode, decisionRequestId=record_id, synthetic=False, at=now(), **extra)
+            self.store.put("notification", note, site)
+            self.reality.mirror.put("notification", note, site)
+            notifications.append(note["id"])
+        record = dict(id=record_id, siteId=site, issueId=issue["id"], question=question[:500], options=choices, askedBy=actor, sender=sender, routedTo=[manager] +
+                      (["owner"] if mode == "sent" else []), manager=manager, ownerMode=mode, ownerReason=reason, ownerPhone=mask_phone(owner),
+                      providerRef=provider_ref, conversationId=conversation["id"], notificationIds=notifications, status="awaiting_answer", answer=None,
+                      answeredAt=None, at=now(), answerUrl=f"/api/decision-requests/{record_id}/answer")
+        self.store.put("decision_request", record, site)
+        self.reality.emit_change(site, "notice", record_id, f"Decision requested on {issue.get('assetTag') or issue['id']}: {question[:200]} "
+                                 f"(to {display_name(manager)}; owner {mode}).", issue.get("assetTag"),
+                                 extra=dict(decisionRequestId=record_id, issueId=issue["id"], mode=mode))
+        return record
+
+    def answer_decision(self, request_id: str, answer: str, actor: str) -> dict:
+        record = self.store.get("decision_request", request_id)
+        if not record:
+            raise RealityError("Decision request not found.", "NOT_FOUND", "Use the id returned by POST /api/issues/{id}/decide.", 404)
+        if record.get("answer"):
+            raise RealityError("This question was already answered.", "INVALID_REQUEST", "Ask a new question.", 409)
+        if record["options"] and answer.strip().casefold() not in {o.casefold() for o in record["options"]}:
+            raise RealityError("Answer with one of the offered options.", "INVALID_REQUEST", "Options: " + ", ".join(record["options"]) + ".")
+        record.update(answer=answer.strip()[:120], answeredAt=now(), answeredBy=actor, status="answered")
+        self.store.put("decision_request", record, record["siteId"])
+        if record.get("conversationId"):
+            self.service.conversations.answer(record["conversationId"], record["manager"], f"Decision: {record['answer']} (decided by {display_name(actor)}).")
+        self.reality.emit_change(record["siteId"], "owner_decision", record["id"], f"Decided '{record['answer']}': {record['question'][:200]}",
+                                 extra=dict(decisionRequestId=record["id"], issueId=record["issueId"]))
+        self.service.memory.write(record["manager"], f"Decision '{record['answer']}' on {record['issueId']}: {record['question'][:200]}", "decision",
+                                  dict(issueId=record["issueId"]), record["siteId"])
+        return record
+
     def notices(self, site_id: str) -> list[dict]:
         self.service.require_property(site_id)
         return sorted(self.store.all("notice", site_id), key=lambda n: n["at"], reverse=True)
@@ -444,7 +535,7 @@ class PeopleService:
 
     def email_gates(self, sender: str, recipient: str) -> list[str]:
         missing = []
-        if not flag("STEWARD_ALLOW_EXTERNAL_MESSAGES"):
+        if not external_messages_allowed():
             missing.append("STEWARD_ALLOW_EXTERNAL_MESSAGES is not true")
         if not flag("STEWARD_ALLOW_AGENT_EMAIL"):
             missing.append("STEWARD_ALLOW_AGENT_EMAIL is not true")
@@ -497,7 +588,7 @@ class PeopleService:
                       mode="dry_run", reason="; ".join(missing) if missing else None, providerMessageId=None, a2aTaskId=task["id"] if task else None,
                       transport=task["transport"] if task else "email-only", a2aSkipped=None if task else why_not,
                       scenarioId=scenario_id, runId=run_id, synthetic=bool(document.get("synthetic")), at=now())
-        if not missing:
+        if not missing and external_messages_allowed() and flag("STEWARD_ALLOW_AGENT_EMAIL"):  # re-checked at send time
             try:
                 key = agent_key(sender) or clean_env("INKBOX_API_KEY")
                 with self._inkbox_client(key) as client:

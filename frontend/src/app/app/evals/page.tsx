@@ -1,4 +1,5 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import EvalsPage from "@/components/dash3/evals-page";
 
-/* The phase-2 section route; the dashboard is one page now. */
-export default function Page() { redirect("/app#evals"); }
+export const metadata: Metadata = { title: "Evals" };
+export default function Page() { return <EvalsPage />; }

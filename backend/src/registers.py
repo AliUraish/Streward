@@ -7,11 +7,19 @@ Each site keeps its own register, plausible for what its scan shows:
   earlier shared register, so references, task cards and geometry checks keep working.
 - `bristol-pumps`: a 1907 dock pump house under restoration (two steam pumping engines, electric drainage pumps,
   the pump sump, a steam receiver pressure vessel, valves, gauges, the dock-side egress door and the visitor walkway).
+- `tomioka-mill` (contract 5 §3): a section of the 1872 Silk Reeling Mill (six preserved automatic reeling machine
+  rows, four king-post roof trusses, the east brick wall that is National Treasure fabric, humidity/temperature and
+  seismic sensors, extinguishers, an indoor hydrant, two visitor emergency exits, the visitor walkway, the electrical
+  panel, a conservation CCTV camera and a mobile dehumidifier). Its sensors keep kind `sensor` with a `specKind`
+  (`sensor:humidity`, `sensor:seismic`) that selects their attribute table in specs.py.
 
 `position` is the register layout in metres on the room frame (+x east, -z north, y up) and drives the reality
 layer's geometry checks, task cards and clearance queries. `pin` is a 3-D point in the scan's world coordinates
 for the PlayCanvas viewer. Seeded pins are **estimated**: a scaled copy of the register layout scattered within a
 few metres of the scan origin, marked `pinSource: "estimated"` until an operator places them on the capture.
+Tomioka's capture is far from its origin, so its frame adds an offset: the layout is centred about 2.5 m beyond the
+initial camera target along the initial view (viewer frame, the scan rotated 180 degrees about Z), inside the occupied
+volume read from the capture's LOD octree (dense leaves around x -38..-28, z -51..-39, the floor near y -2.6).
 """
 from __future__ import annotations
 
@@ -20,12 +28,15 @@ import hashlib
 ROOMS = {
     "myer-plant": {"width": 13, "depth": 12, "height": 4.6},
     "bristol-pumps": {"width": 17, "depth": 13, "height": 7.5},
+    "tomioka-mill": {"width": 22, "depth": 14, "height": 9},
 }
 
-# Estimated-pin projection: register metres → scan metres around the origin (scale, y offset, jitter).
+# Estimated-pin projection: register metres → scan metres around the origin (scale, y offset, jitter); x/z offsets
+# move the frame for captures whose occupied volume is far from the origin (Tomioka).
 PIN_FRAME = {
     "myer-plant": dict(scale=0.34, y_scale=0.42, y_offset=-0.9, jitter=0.12),
     "bristol-pumps": dict(scale=0.30, y_scale=0.36, y_offset=0.4, jitter=0.12),
+    "tomioka-mill": dict(scale=0.34, y_scale=0.62, y_offset=-2.6, x_offset=-34.9, z_offset=-46.2, jitter=0.12),
 }
 
 
@@ -137,9 +148,70 @@ BRISTOL = [
        "High-level ventilation louvre and extract fan in the north gable."),
 ]
 
-REGISTERS: dict[str, list[dict]] = {"myer-plant": MYER, "bristol-pumps": BRISTOL}
-assert all(len(items) == 24 for items in REGISTERS.values())
-assert all(len({c["tag"] for c in items}) == 24 and len({c["id"] for c in items}) == 24 for items in REGISTERS.values())
+def _s(cid, tag, name, spec_kind, system, subsystem, status, position, description):
+    """A Tomioka sensor: kind `sensor` (as the contract's register table says) with its own attribute table."""
+    return dict(_c(cid, tag, name, "sensor", system, subsystem, status, position, description), specKind=spec_kind)
+
+
+TOMIOKA = [
+    _c("machine-01", "RM-101", "Automatic silk reeling machine, row 1", "machine", "Heritage machinery", "Silk reeling", "verified", (-7.5, 0.8, -1.0),
+       "Preserved automatic silk reeling machine line, row 1 of 6, kept in place in the Silk Reeling Mill and run only for conservation checks."),
+    _c("machine-02", "RM-102", "Automatic silk reeling machine, row 2", "machine", "Heritage machinery", "Silk reeling", "verified", (-4.5, 0.8, -1.0),
+       "Preserved automatic silk reeling machine line, row 2 of 6; reeling basins and traverse gear under dust covers."),
+    _c("machine-03", "RM-103", "Automatic silk reeling machine, row 3", "machine", "Heritage machinery", "Silk reeling", "pending", (-1.5, 0.8, -1.0),
+       "Preserved automatic silk reeling machine line, row 3 of 6; the conservator's monthly check covers its drive belts."),
+    _c("machine-04", "RM-104", "Automatic silk reeling machine, row 4", "machine", "Heritage machinery", "Silk reeling", "verified", (1.5, 0.8, -1.0),
+       "Preserved automatic silk reeling machine line, row 4 of 6, nearest the visitor walkway viewing point."),
+    _c("machine-05", "RM-105", "Automatic silk reeling machine, row 5", "machine", "Heritage machinery", "Silk reeling", "pending", (4.5, 0.8, -1.0),
+       "Preserved automatic silk reeling machine line, row 5 of 6; cast-iron frames and bobbin racks."),
+    _c("machine-06", "RM-106", "Automatic silk reeling machine, row 6", "machine", "Heritage machinery", "Silk reeling", "verified", (7.5, 0.8, -1.0),
+       "Preserved automatic silk reeling machine line, row 6 of 6, beside the east brick wall."),
+    _c("truss-01", "TR-201", "Wooden king-post roof truss, bay 1", "structure", "Structure", "Roof", "verified", (-8.25, 7.5, 0.0),
+       "King-post timber roof truss over bay 1 of the open hall; mould risk to the timber above 65 % relative humidity."),
+    _c("truss-02", "TR-202", "Wooden king-post roof truss, bay 2", "structure", "Structure", "Roof", "pending", (-2.75, 7.5, 0.0),
+       "King-post timber roof truss over bay 2; spans the hall without intermediate columns."),
+    _c("truss-03", "TR-203", "Wooden king-post roof truss, bay 3", "structure", "Structure", "Roof", "verified", (2.75, 7.5, 0.0),
+       "King-post timber roof truss over bay 3; its tie beam carries the lighting runs."),
+    _c("truss-04", "TR-204", "Wooden king-post roof truss, bay 4", "structure", "Structure", "Roof", "pending", (8.25, 7.5, 0.0),
+       "King-post timber roof truss over bay 4, nearest the east brick wall."),
+    _c("wall-01", "BW-251", "Brick wall, east elevation (National Treasure fabric)", "structure", "Structure", "National Treasure fabric", "verified", (11.0, 2.0, 0.0),
+       "Original brick infill in the timber frame of the east elevation; National Treasure fabric, never drilled or fixed into without permission to alter its current state."),
+    _s("sensor-01", "HS-301", "Humidity and temperature sensor, north", "sensor:humidity", "Conservation", "Environmental monitoring", "verified", (0.0, 2.2, -6.2),
+       "Relative-humidity and temperature sensor on a free-standing post by the north windows; preservation band 40-65 % RH."),
+    _s("sensor-02", "HS-302", "Humidity and temperature sensor, centre", "sensor:humidity", "Conservation", "Environmental monitoring", "verified", (0.0, 2.2, 0.8),
+       "Relative-humidity and temperature sensor on a free-standing post in the centre aisle between the machine rows."),
+    _s("sensor-03", "HS-303", "Humidity and temperature sensor, south", "sensor:humidity", "Conservation", "Environmental monitoring", "pending", (0.0, 2.2, 6.2),
+       "Relative-humidity and temperature sensor on a free-standing post by the visitor walkway on the south side."),
+    _s("sensor-04", "VS-401", "Seismic and vibration sensor", "sensor:seismic", "Conservation", "Structural monitoring", "verified", (-10.4, 0.1, 4.0),
+       "Triaxial accelerometer on the floor slab at the west end; reports ground acceleration in gal after earthquakes and heavy traffic."),
+    _c("fire-01", "FE-501", "Portable fire extinguisher, west end", "fire", "Fire protection", "Portable equipment", "verified", (-10.6, 0.5, -5.5),
+       "Portable powder extinguisher on a floor stand at the west end, clear of the timber frame."),
+    _c("fire-02", "FE-502", "Portable fire extinguisher, east end", "fire", "Fire protection", "Portable equipment", "verified", (10.6, 0.5, -5.5),
+       "Portable powder extinguisher on a floor stand at the east end beside the electrical access route."),
+    _c("fire-03", "FE-503", "Portable fire extinguisher, visitor walkway", "fire", "Fire protection", "Portable equipment", "pending", (0.0, 0.5, 6.8),
+       "Portable powder extinguisher at the middle of the visitor walkway, inside the barrier."),
+    _c("hydrant-01", "FH-601", "Indoor fire hydrant", "hydrant", "Fire protection", "Indoor hydrant", "pending", (10.6, 1.0, 3.0),
+       "Indoor fire hydrant cabinet with hose by the east wall; free-standing, not fixed into the brick."),
+    _c("door-01", "D-701", "Visitor emergency exit, west", "door", "Architectural", "Access and egress", "verified", (-11.0, 0.0, 5.8),
+       "Outward-opening visitor emergency exit at the west end of the walkway."),
+    _c("door-02", "D-702", "Visitor emergency exit, east", "door", "Architectural", "Access and egress", "verified", (11.0, 0.0, 5.8),
+       "Outward-opening visitor emergency exit at the east end of the walkway."),
+    _c("walkway-01", "W-801", "Visitor walkway and barrier", "walkway", "Architectural", "Visitor route", "verified", (0.0, 0.2, 4.8),
+       "Raised timber visitor walkway along the south side with a rope barrier that keeps visitors off the machine rows."),
+    _c("panel-01", "EP-901", "Electrical distribution panel", "panel", "Electrical", "Power distribution", "verified", (-10.7, 1.2, -2.5),
+       "Modern distribution panel for lighting, sensors and the dehumidifiers, in a free-standing steel cabinet off the historic fabric."),
+    _c("camera-01", "CC-1001", "Conservation CCTV camera", "camera", "Security", "Conservation CCTV", "pending", (-10.8, 4.5, -6.8),
+       "Camera on a free-standing mast at the north-west corner watching the machine rows for visitor safety and conservation."),
+    _c("dehumidifier-01", "DH-1101", "Mobile dehumidifier", "dehumidifier", "Conservation", "Climate control", "pending", (-3.0, 0.0, -5.2),
+       "Wheeled compressor dehumidifier staged by the north windows for humid spells; started by the conservator."),
+]
+
+REGISTERS: dict[str, list[dict]] = {"myer-plant": MYER, "bristol-pumps": BRISTOL, "tomioka-mill": TOMIOKA}
+# Contract 5 §3 heads its table "24" but lists 25 tags (RM x6, TR x4, BW, HS x3, VS, FE x3, FH, D x2, W, EP, CC, DH);
+# every listed tag is registered, so Tomioka has 25 assets (see DEVIATIONS.md).
+REGISTER_SIZES = {"myer-plant": 24, "bristol-pumps": 24, "tomioka-mill": 25}
+assert all(len(items) == REGISTER_SIZES[site] for site, items in REGISTERS.items())
+assert all(len({c["tag"] for c in items}) == len(items) and len({c["id"] for c in items}) == len(items) for items in REGISTERS.values())
 
 
 def room_for(site_id: str) -> dict:
@@ -153,8 +225,9 @@ def estimated_pin(site_id: str, component: dict) -> dict:
     x, y, z = (float(v) for v in component["position"])
     digest = hashlib.sha256(f"{site_id}:{component['tag']}:pin".encode()).digest()
     jitter = [(digest[i] / 255 - 0.5) * 2 * frame["jitter"] for i in range(3)]
-    return dict(x=round(x * frame["scale"] + jitter[0], 3), y=round(y * frame["y_scale"] + frame["y_offset"] + jitter[1], 3),
-                z=round(z * frame["scale"] + jitter[2], 3))
+    return dict(x=round(x * frame["scale"] + frame.get("x_offset", 0.0) + jitter[0], 3),
+                y=round(y * frame["y_scale"] + frame["y_offset"] + jitter[1], 3),
+                z=round(z * frame["scale"] + frame.get("z_offset", 0.0) + jitter[2], 3))
 
 
 def register_for(site_id: str) -> list[dict]:

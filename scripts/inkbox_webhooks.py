@@ -16,7 +16,10 @@ from inkbox_setup import client, load_env, set_env  # noqa: E402
 
 EVENTS = ["text.received", "message.received", "imessage.received", "call.ended",
           "a2a.task.created", "a2a.task.message", "a2a.task.canceled", "a2a.sent_task.updated"]
-AGENTS = ["INKBOX_IDENTITY_RUNNER", "INKBOX_IDENTITY_ATLAS", "INKBOX_IDENTITY_WARDEN_HARBOR_WORKS"]
+AGENTS = ["INKBOX_IDENTITY_DISPATCH", "INKBOX_IDENTITY_DIRECTOR",
+          "INKBOX_IDENTITY_MYER_MANAGER", "INKBOX_IDENTITY_MYER_ENGINEER", "INKBOX_IDENTITY_MYER_COMPLIANCE", "INKBOX_IDENTITY_MYER_TECHNICIAN",
+          "INKBOX_IDENTITY_BRISTOL_MANAGER", "INKBOX_IDENTITY_BRISTOL_ENGINEER", "INKBOX_IDENTITY_BRISTOL_COMPLIANCE", "INKBOX_IDENTITY_BRISTOL_TECHNICIAN",
+          "INKBOX_IDENTITY_TOMIOKA_MANAGER", "INKBOX_IDENTITY_TOMIOKA_ENGINEER", "INKBOX_IDENTITY_TOMIOKA_COMPLIANCE", "INKBOX_IDENTITY_TOMIOKA_TECHNICIAN"]
 
 
 def main() -> int:
@@ -32,18 +35,21 @@ def main() -> int:
                 print(f"{var}: empty, skipped")
                 continue
             ident = ib.get_identity(handle)
-            existing = [s for s in ib.webhooks.subscriptions.list(agent_identity_id=ident.id) if getattr(s, "url", None) == url]
-            if existing:
-                print(f"{handle}: subscription already present ({existing[0].id})")
+            # Inkbox allows one subscription per URL and event set across the org, so each identity gets its own URL tag.
+            agent_url = f"{url}?agent={handle}"
+            subs = list(ib.webhooks.subscriptions.list(agent_identity_id=ident.id))
+            if any(getattr(s_, "url", None) in (url, agent_url) for s_ in subs):
+                print(f"{handle}: subscription already present")
                 continue
-            created = ib.webhooks.subscriptions.create(url=url, event_types=EVENTS, agent_identity_id=ident.id)
+            try:
+                created = ib.webhooks.subscriptions.create(url=agent_url, event_types=EVENTS, agent_identity_id=ident.id)
+            except Exception as e:  # noqa: BLE001
+                print(f"{handle}: create failed: {type(e).__name__}: {str(e)[:160]}")
+                continue
             key = getattr(created, "signing_key", None)
-            print(f"{handle}: subscribed {created.id} -> {url}" + (" (signing key saved)" if key else " (identity already had a signing key)"))
+            print(f"{handle}: subscribed {created.id}" + (" (signing key saved)" if key else " (identity already had a signing key)"))
             if key:
                 set_env(f"INKBOX_WEBHOOK_SIGNING_KEY_{var.removeprefix('INKBOX_IDENTITY_')}", key)
-                if not env.get("INKBOX_WEBHOOK_SIGNING_KEY"):
-                    set_env("INKBOX_WEBHOOK_SIGNING_KEY", key)
-                    env["INKBOX_WEBHOOK_SIGNING_KEY"] = key
     return 0
 
 

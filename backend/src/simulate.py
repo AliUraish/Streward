@@ -16,10 +16,11 @@ from .agents import DIRECTOR as ATLAS, engineer_id as warden_id
 from .env import env
 from .reality import utcnow
 from .sites import DEMO_SITE, SITE_BY_ID, SITE_IDS
-from .specs import SPECS, spec_for
+from .specs import SPECS, spec_for, spec_kind, specs_of
 from .store import now
 
 SENSOR_INTERVAL_SECONDS = 20
+SCENARIO_HOLD_SECONDS = 1800  # a scenario sample or a verified reading is not overwritten by the feed for 30 minutes
 EVENT_INTERVAL_SECONDS = 120
 EVENT_KINDS = ("out_of_range", "patrol_identity", "a2a_status", "expired_escalation")
 
@@ -87,8 +88,7 @@ class Simulator:
         for site in SITE_IDS:
             for component in self.reality.components(site):
                 if component["kind"] == "sensor":
-                    self.reality.sensor_reading(site, component, moment, simulated=True)
-                    written += 1
+                    written += len(self.reality.sensor_readings(site, component, moment, simulated=True, hold_seconds=SCENARIO_HOLD_SECONDS))
         self._count("sensorReadings", written)
         return written
 
@@ -101,13 +101,14 @@ class Simulator:
         kind = kind or EVENT_KINDS[(self._tick // max(len(sites), 1)) % len(EVENT_KINDS)]
         components = self.reality.components(site)
         if kind == "out_of_range":
-            sensor = next(c for c in components if c["kind"] == "sensor")
-            fact, _ = self.reality.sensor_reading(site, sensor, value=round(40 + 1.5 + (self._tick % 5) * 0.7, 1), simulated=True)
-            detail = f"{sensor['tag']} drifted to {fact['value']} °C (spec 5–40); listed as an out_of_range issue."
+            sensor = next(c for c in components if c["kind"] == "sensor" and "temperature_c" in specs_of(c))
+            spec = specs_of(sensor)["temperature_c"]
+            fact, _ = self.reality.sensor_reading(site, sensor, value=round(spec["max"] + 1.5 + (self._tick % 5) * 0.7, 1), simulated=True)
+            detail = f"{sensor['tag']} drifted to {fact['value']} °C (spec {spec['min']:g}–{spec['max']:g}); listed as an out_of_range issue."
             ref = fact["id"]
         elif kind == "patrol_identity":
             index = self._tick % len(components)
-            component = next((c for c in components[index:] + components[:index] if "serial" in SPECS.get(c["kind"], {})), components[0])
+            component = next((c for c in components[index:] + components[:index] if "serial" in specs_of(c)), components[0])
             from .reality import identity_serial, iso
             import hashlib
             digest = hashlib.sha256(f"sim-patrol:{site}:{component['tag']}:{now()}".encode()).hexdigest()
@@ -128,13 +129,18 @@ class Simulator:
             detail = f"Simulated Atlas → Warden status task {task['id']} completed."
             ref = task["id"]
         else:
-            valve = next(c for c in components if c["kind"] == "valve")
-            spec = spec_for(valve["kind"], "position")
-            existing = self.reality.open_work_item_for(site, valve["tag"], "position")
+            # A valve position where the site has valves; at the mill (no valves) the first asset with a state attribute (RM-101.status).
+            valve = next((c for c in components if c["kind"] == "valve"), None)
+            attribute = "position"
+            if valve is None:
+                valve = next(c for c in components if any(v.get("enum") and v["attributeClass"] in ("reading", "condition") for v in specs_of(c).values()))
+                attribute = next(a for a, v in specs_of(valve).items() if v.get("enum") and v["attributeClass"] in ("reading", "condition"))
+            spec = spec_for(spec_kind(valve), attribute)
+            existing = self.reality.open_work_item_for(site, valve["tag"], attribute)
             if existing and existing.get("simulated"):
                 item = existing
             else:
-                item = self.reality.create_work_item(site, valve, "position", spec, "simulation", 0, simulated=True, deadline_seconds=60)
+                item = self.reality.create_work_item(site, valve, attribute, spec, "simulation", 0, simulated=True, deadline_seconds=60)
                 item = self.reality.work_item(item["id"])
                 self.reality.record_dispatch(item, "local", "", self.reality.task_card(item), None, None, "simulated card; nobody was contacted")
                 item = self.reality.work_item(item["id"])

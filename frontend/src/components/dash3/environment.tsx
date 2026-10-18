@@ -3,14 +3,19 @@
 /* /app/[site]/environment, the agent eye: the PlayCanvas scan in eye mode (the camera moves when agents drive it),
    the operating agent and its last action, the eye's frame strip, pins with hover cards and the asset drawer, the
    operator's pin placement, the viewer following focus_view commands, the capture strip and the valve inspections. */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api3 } from "@/lib/api-3";
 import { useEyeFeed, useIssues3, useObligations, useScene, useViewerCommands, useVision } from "@/lib/hooks-3";
-import { agentName, site3 } from "@/lib/sites-3";
+import { agentName, roleOf, site3 } from "@/lib/sites-3";
 import type { Asset3, EyeFrame, Issue3, PinSeverity, SiteId3, ValveResult, ViewerCommand } from "@/lib/types-3";
 import AssetDrawer from "./asset-drawer";
+import MissionHud from "./mission";
+import { useHudEvents } from "@/lib/live-3";
 import ViewerSlot, { type ViewerFocus, type ViewerPin } from "./viewer-slot";
-import { Btn, OperatorTag, PageHead, Reveal, State, SynthTag, ago, errorText, fx, useToast, words } from "./ui3";
+import { Btn, JaText, OperatorTag, PageHead, Reveal, State, SynthTag, ago, errorText, fx, useToast, words } from "./ui3";
+import type { WalkLabel } from "@/lib/api-7";
+import { useLabels, usePatrols } from "@/lib/hooks-7";
+import { LabelDetail, WalkthroughBar, assessmentOf, followPose, isRunning } from "./walkthrough";
 
 export const tagOf = (a: Asset3) => a.tag ?? a.assetTag ?? "";
 export const pinOf = (a: Asset3): [number, number, number] | null => !a.pin ? null : Array.isArray(a.pin) ? a.pin : [a.pin.x, a.pin.y, a.pin.z];
@@ -20,7 +25,13 @@ export const valveWord: Record<ValveResult["status"], string> = { fixed: "fixed"
 
 export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
   const site = site3(siteId);
-  const eye = useEyeFeed(siteId);
+  /* Contract 7: the latest walkthrough (every 3 s) and the label it left on each asset (every 5 s). While one runs,
+     the eye feed is read faster and the view follows the walking agent's camera unless the operator turns that off. */
+  const patrols = usePatrols(siteId);
+  const labels = useLabels(siteId);
+  const walking = isRunning(patrols.data?.[0]);
+  const [followWalk, setFollowWalk] = useState(true);
+  const eye = useEyeFeed(siteId, walking ? 1_500 : 3_000);
   const scene = useScene(siteId);
   const issues = useIssues3(siteId);
   const vision = useVision(siteId);
@@ -31,16 +42,41 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
   const [editMode, setEditMode] = useState(false);
   const [pending, setPending] = useState<[number, number, number] | null>(null);
   const [lastMove, setLastMove] = useState<string>("");
+  /* Mission view: the scan fills the screen, the team's work floats over it as HUD panels. ?mission=1 opens it. */
+  const [mission, setMission] = useState(false);
+  const [hudHidden, setHudHidden] = useState(false);
+  const [tick, setTick] = useState(() => Date.now());
+  const hostRef = useRef<HTMLDivElement>(null);
+  const closeMission = useCallback(() => { setMission(false); if (typeof document !== "undefined" && document.fullscreenElement) document.exitFullscreen().catch(() => {}); }, []);
+  const openMission = () => { setMission(true); setHudHidden(false); hostRef.current?.requestFullscreen?.().catch(() => { /* a fixed full-window view is the fallback */ }); };
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("mission")) setMission(true); }, []);
+  useEffect(() => {
+    if (!mission) return;
+    const id = window.setInterval(() => setTick(Date.now()), 1000);
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") closeMission(); if (e.key === "h" && !(e.target instanceof HTMLInputElement)) setHudHidden(v => !v); };
+    const fs = () => { if (!document.fullscreenElement) setMission(false); };
+    const prev = document.documentElement.style.overflow; document.documentElement.style.overflow = "hidden";
+    window.addEventListener("keydown", key); document.addEventListener("fullscreenchange", fs);
+    return () => { window.clearInterval(id); window.removeEventListener("keydown", key); document.removeEventListener("fullscreenchange", fs); document.documentElement.style.overflow = prev; };
+  }, [mission, closeMission]);
 
   const assets = useMemo(() => scene.data?.assets ?? [], [scene.data]);
   const openIssues = useMemo(() => (issues.data ?? []).filter(isOpenIssue), [issues.data]);
+  const labelOf = useMemo(() => new Map<string, WalkLabel>((labels.data ?? []).map(l => [l.assetTag, l])), [labels.data]);
   const pins: ViewerPin[] = useMemo(() => assets.flatMap(a => {
     const p = pinOf(a); if (!p) return [];
     const tag = tagOf(a);
     const mine = openIssues.filter(i => i.assetTag === tag);
     const severity = mine.reduce<PinSeverity>((m, i) => RANK[i.severity] > RANK[m] ? i.severity : m, "none");
-    return [{ assetTag: tag, position: p, severity, label: `${tag} ${a.name}`, estimated: a.pinSource !== "placed", issueIds: mine.map(i => i.id) }];
-  }), [assets, openIssues]);
+    const l = labelOf.get(tag);
+    return [{ assetTag: tag, position: p, severity, label: `${tag} ${a.name}`, estimated: a.pinSource !== "placed", issueIds: mine.map(i => i.id), ...(l ? { assessment: assessmentOf(l) } : {}) }];
+  }), [assets, openIssues, labelOf]);
+  /* A label on an asset the register has no pin for is drawn where the walkthrough looked (its world point). */
+  const shownPins: ViewerPin[] = useMemo(() => {
+    const have = new Set(pins.map(p => p.assetTag));
+    const extra = (labels.data ?? []).filter(l => l.world && !have.has(l.assetTag)).map(l => ({ assetTag: l.assetTag, position: l.world!, severity: "none" as PinSeverity, label: `${l.assetTag}${l.assetName ? ` ${l.assetName}` : ""}`, estimated: true, issueIds: [], assessment: assessmentOf(l) }));
+    return extra.length ? [...pins, ...extra] : pins;
+  }, [pins, labels.data]);
   const unpinned = assets.length - pins.length;
   const estimated = pins.filter(p => p.estimated).length;
 
@@ -49,7 +85,10 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
   /* ?asset=<tag> (from the factory overview's issue list) opens that asset. */
   useEffect(() => { const tag = new URLSearchParams(window.location.search).get("asset"); if (tag) openAsset(tag); }, [openAsset]);
   const frames = useMemo(() => [...(eye.data?.frames ?? [])].sort((a, b) => b.at.localeCompare(a.at)), [eye.data]);
+  /* Realtime, when the bridge has a channel: reload what an event touches instead of waiting for the next poll. */
+  useHudEvents(siteId, { eye_frame: () => eye.reload(), issue_change: () => issues.reload() });
   const lastFrame = frames[0] ?? null;
+  const follow = useMemo(() => (followWalk ? followPose(frames, patrols.data?.[0]) : null), [followWalk, frames, patrols.data]);
 
   /* The viewer follows backend viewer commands (MCP focus_view, agents). */
   const onCommand = useCallback((c: ViewerCommand) => {
@@ -61,22 +100,28 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
   }, [issues.data, toast]);
   const viewerFeed = useViewerCommands(siteId, onCommand);
 
-  const renderCard = useCallback((tag: string) => <AssetCard asset={assets.find(a => tagOf(a) === tag)} tag={tag} issues={openIssues.filter(i => i.assetTag === tag)} valve={vision.data?.results.find(v => v.assetTag === tag)} />, [assets, openIssues, vision.data]);
+  const renderCard = useCallback((tag: string) => <AssetCard asset={assets.find(a => tagOf(a) === tag)} tag={tag} issues={openIssues.filter(i => i.assetTag === tag)} valve={vision.data?.results.find(v => v.assetTag === tag)} label={labelOf.get(tag)} />, [assets, openIssues, vision.data, labelOf]);
 
   const drawerAsset = drawer ? assets.find(a => tagOf(a) === drawer) : undefined;
   return <div className="page3">
-    <PageHead id="environment" title="Environment" sub={`${site.name}: the scan is the agents' eye. Humans watch it; the Site Engineer, the Plant Manager and the Operations Director drive it, and each move returns a frame.`} />
-    <Reveal className="eye-now"><OperatingAgent frame={lastFrame} readiness={eye.readiness} retry={eye.reload} /></Reveal>
+    <PageHead id="environment" title="Environment" sub={`${site.name}: the scan is the agents' eye. Humans watch it; the ${roleOf(siteId, "engineer").title}, the ${roleOf(siteId, "manager").title} and the Operations Director drive it, and each move returns a frame.`} />
+    <Reveal className="eye-now"><OperatingAgent frame={lastFrame} readiness={eye.readiness} retry={eye.reload} /><WalkthroughBar siteId={siteId} patrols={patrols} labels={labels} follow={followWalk} onFollow={setFollowWalk} /></Reveal>
 
     <div className="fac3">
-      <Reveal className="viewer3">
-        <div className={`vw-box ${editMode ? "editing" : ""}`}>
-          <ViewerSlot key={siteId} siteId={siteId} pins={pins} focus={focus} editMode={editMode} eye={{ siteId, rendererId: `dashboard-${siteId}`, showOverlay: true }}
-            onPinClick={openAsset} onPlacePin={p => setPending(p)} renderCard={renderCard} className="fill" />
+      <Reveal className={`viewer3 ${mission ? "mission-on" : ""}`}>
+        <div className={`mission-host ${mission ? "on" : ""}`} ref={hostRef} role={mission ? "dialog" : undefined} aria-modal={mission ? true : undefined} aria-label={mission ? `Mission view, ${site.name}` : undefined}>
+          <div className={`vw-box ${editMode ? "editing" : ""}`}>
+            <ViewerSlot key={siteId} siteId={siteId} pins={shownPins} focus={focus} follow={follow} editMode={mission ? false : editMode} eye={{ siteId, rendererId: `dashboard-${siteId}`, showOverlay: true }}
+              fill={mission} safeArea={mission ? (hudHidden ? { top: 48 } : { top: 100, left: 392, right: 344, bottom: 56 }) : undefined} onFrame={() => eye.reload()}
+              onPinClick={mission ? tag => focusOn(tag) : openAsset} onPlacePin={p => setPending(p)} renderCard={renderCard} className="fill" />
+          </div>
+          {mission ? <MissionHud siteId={siteId} frames={frames} issues={issues.data ?? []} hidden={hudHidden} now={tick} renderers={eye.data?.renderers ? eye.data.renderers.filter(r => !r.stale).length : undefined} onFocus={tag => focusOn(tag)} onHide={() => setHudHidden(v => !v)} onExit={closeMission} /> : null}
+          {mission && !hudHidden ? <WalkthroughBar hud siteId={siteId} patrols={patrols} labels={labels} follow={followWalk} onFollow={setFollowWalk} /> : null}
         </div>
         <div className="viewer-meta">
           <span>{scene.readiness === "ready" ? `${pins.length} pins${estimated ? `, ${estimated} estimated (hollow)` : ""}${unpinned > 0 ? `, ${unpinned} assets without a pin` : ""}` : scene.readiness === "loading" ? "Loading pins" : <>Pins not available yet <button type="button" className="retry" onClick={scene.reload}>Retry</button></>}</span>
           <span>{viewerFeed.readiness === "ready" ? (lastMove || "Following viewer commands") : viewerFeed.readiness === "loading" ? "Connecting to viewer commands" : <>Viewer commands not available yet <button type="button" className="retry" onClick={viewerFeed.retry}>Retry</button></>}</span>
+          <Btn small arrow onClick={openMission}>Mission view</Btn>
         </div>
       </Reveal>
 
@@ -99,18 +144,18 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
       </div>
     </div>
 
-    <p className="credit3 wide">{site.name}: “{site.sceneTitle}”, captured by {site.author}, hosted on SuperSplat. <a className="lnk" href={site.sceneUrl} target="_blank" rel="noreferrer">superspl.at/scene/{site.splatId}</a></p>
+    <p className="credit3 wide">{site.name}: <JaText text={site.credit} />. {site.scanNote} Scene rendered from a third-party capture hosted on SuperSplat; shown here as the site environment. <a className="lnk" href={site.sceneUrl} target="_blank" rel="noreferrer">superspl.at/scene/{site.splatId}</a></p>
 
     <EyeStrip frames={frames} readiness={eye.readiness} retry={eye.reload} />
     <CaptureStrip siteId={siteId} results={vision.data?.results ?? []} />
 
-    <Reveal className="p3 valves3">
+    {site.valves || (vision.data?.results.length ?? 0) > 0 ? <Reveal className="p3 valves3">
       <div className="p-head"><h3>Valve inspection</h3><span className="meta">{vision.data?.model ?? (vision.data?.results[0]?.model ?? "V-JEPA 2")}{vision.data?.ranAt ? `, ${new Date(vision.data.ranAt).toLocaleString()}` : ""}</span></div>
       <p className="note3">An embedding anomaly score: distance from the site&apos;s other valves, not a trained defect classifier. Explanations come from Claude only for valves that are not fixed or uncertain.</p>
       <State remote={vision} what="the valve inspection" isEmpty={v => v.results.length === 0} empty="No valve inspection results for this site yet.">
         {v => <ValveTable results={v.results} onOpen={openAsset} />}
       </State>
-    </Reveal>
+    </Reveal> : null}
 
     {drawer ? <AssetDrawer siteId={siteId} tag={drawer} asset={drawerAsset} issues={(issues.data ?? []).filter(i => i.assetTag === drawer)} obligations={obligations} valve={vision.data?.results.find(v => v.assetTag === drawer) ?? null} onClose={() => setDrawer(null)} onFocus={a => focusOn(drawer, a)} /> : null}
   </div>;
@@ -139,23 +184,24 @@ export function actionText(f: EyeFrame): string {
 /* The frames the agent eye returned, newest first. */
 function EyeStrip({ frames, readiness, retry }: { frames: EyeFrame[]; readiness: string; retry: () => void }) {
   return <Reveal as="section" className="p3 eyestrip3" aria-labelledby="eye-h">
-    <div className="p-head"><h2 id="eye-h">What the agent eye saw</h2><span className="meta">{frames.length ? `${frames.length} frames` : ""}</span></div>
+    <div className="p-head"><h2 id="eye-h">What the agent eye saw</h2><span className="meta">{frames.length ? `${frames.length} frame${frames.length === 1 ? "" : "s"}` : ""}</span></div>
     {readiness !== "ready" ? <p className="st3 empty">{readiness === "loading" ? "Loading the eye feed." : <>The eye feed is not available yet. <button type="button" className="retry" onClick={retry}>Retry</button></>}</p>
       : !frames.length ? <p className="st3 empty">No frames yet.</p>
       : <ol className="eye-frames">{frames.slice(0, 8).map(f => <li key={f.id}>
         <img src={f.frameUrl} alt={`${agentName(f.actor)} ${actionText(f)}: frame rendered from the hosted capture`} loading="lazy" />
-        <span className="cap"><strong>{agentName(f.actor)}</strong> {actionText(f)}<small>{ago(f.at)}{f.visiblePins.length ? `, ${f.visiblePins.filter(p => !p.occluded).length} tags in view` : ""}</small></span>
+        <span className="cap"><strong>{agentName(f.actor)}</strong> {actionText(f)}<SynthTag rec={f as unknown as { synthetic?: boolean }} /><small>{ago(f.at)}{f.visiblePins.length ? `, ${f.visiblePins.filter(p => !p.occluded).length} tags in view` : ""}</small></span>
       </li>)}</ol>}
   </Reveal>;
 }
 
-function AssetCard({ asset, tag, issues, valve }: { asset?: Asset3; tag: string; issues: Issue3[]; valve?: ValveResult }) {
+function AssetCard({ asset, tag, issues, valve, label }: { asset?: Asset3; tag: string; issues: Issue3[]; valve?: ValveResult; label?: WalkLabel }) {
   return <div className="card3">
     <span className="c-tag">{tag}</span>
     <span className="c-name">{asset?.name ?? "Unknown asset"}{asset?.kind ? `, ${words(asset.kind)}` : ""}</span>
     {issues.length ? <span className="c-issue"><span className={`sig ${issues.some(i => i.severity === "high") ? "bad" : "warn"}`} aria-hidden="true" />{issues[0].summary}{issues.length > 1 ? ` (+${issues.length - 1})` : ""}</span> : <span className="c-ok"><span className="sig ok" aria-hidden="true" />No open issues</span>}
     {valve ? <span className="c-valve">Valve inspection: {valveWord[valve.status]}</span> : null}
     <span className="c-pin">{asset?.pinSource === "placed" ? "Pin placed" : "Pin estimated, not yet placed"}</span>
+    {label ? <LabelDetail label={label} /> : null}
   </div>;
 }
 
@@ -197,13 +243,14 @@ function CaptureStrip({ siteId, results }: { siteId: SiteId3; results: ValveResu
   const fromVision = results.flatMap(r => (r.frames ?? []).slice(0, 1).map(f => ({ src: api3.frameUrl(siteId, r.assetTag, f), label: r.assetTag })));
   const usable = fromVision.filter(f => !broken.has(f.src));
   const frames = usable.length ? usable.slice(0, 7) : site.frames.map((src, i) => ({ src, label: `view ${i + 1}` }));
+  const caption = frames.length ? "frames rendered from the hosted capture" : "the hosted capture's thumbnail; no frames rendered from it yet";
   return <Reveal as="div" className="cap3">
     <figure>
-      <div className="cap-strip">
+      <div className={`cap-strip ${frames.length ? "" : "only-thumb"}`}>
         <div className="frame thumb"><img src={site.thumbnailUrl} alt={`${site.name}, capture thumbnail`} loading="lazy" /><span>thumbnail</span></div>
         {frames.map(f => <div className="frame" key={f.src}><img src={f.src} alt={`${site.name}, ${f.label}, rendered from the hosted capture`} loading="lazy" onError={() => setBroken(b => new Set(b).add(f.src))} /><span>{f.label}</span></div>)}
       </div>
-      <figcaption>frames rendered from the hosted capture</figcaption>
+      <figcaption>{caption}</figcaption>
     </figure>
   </Reveal>;
 }

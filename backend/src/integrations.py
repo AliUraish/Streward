@@ -130,7 +130,7 @@ def integration_status(property_id: str | None = None) -> list[dict]:
              detail=(("Identities configured: " + ", ".join(h for h in (os.getenv("INKBOX_IDENTITY_DIRECTOR", ""), identity_handle, os.getenv("INKBOX_IDENTITY_DISPATCH", "")) if h)
                       + (". External SMS/email enabled to allowlisted recipients only." if capabilities["inkbox"]["sendEmail"] else ". External sends disabled (STEWARD_ALLOW_EXTERNAL_MESSAGES)."))
                      if inkbox_ready else
-                     "Credential present; set INKBOX_IDENTITY_<SUFFIX> for the director and both site teams, and INKBOX_IDENTITY_DISPATCH." if inkbox else
+                     "Credential present; set INKBOX_IDENTITY_<SUFFIX> for the director and every site team, and INKBOX_IDENTITY_DISPATCH." if inkbox else
                      "Add account credentials and configure an identity. Local agent identities are active; no external inbox is provisioned.")),
         dict(id="stripe", name="Stripe", description="Payment provider for explicitly authorized economic actions",
              status="not_configured", detail="Test credential present. Explicit sandbox Checkout route available; connection not yet verified. Default workflow only stores proposals." if stripe_key.startswith("sk_test_") else

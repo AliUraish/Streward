@@ -21,7 +21,8 @@ const num = (v: string | undefined, fallback: number, min: number, max: number) 
  * `/capture?site=<id>&asset=<tag>&frames=16&defect=<none|leak|corrosion|missing-handwheel>`
  * Optional: `pos=x,y,z` (used when the backend has no 3-D pin), `arc` (degrees, 360 = full orbit),
  * `radius` (m), `elev` (degrees), `fov`, `size` (px), `radiusDefect` (m), `smart=0` (skip the
- * line-of-sight probe that centres the arc on the clearest side of the pin).
+ * line-of-sight probe that centres the arc on the clearest side of the pin), `label=0` (keep the
+ * defect label out of the pixels; window.__frames then holds {dataUrl, synthetic, defect, index}).
  * Renders the frames headlessly and exposes `window.__frames` (JPEG data URLs) and `window.__done`.
  */
 export default async function CapturePage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -39,6 +40,7 @@ export default async function CapturePage({ searchParams }: { searchParams: Prom
     size: Math.round(num(one(sp, 'size'), 256, 64, 1024)),
     defectRadius: num(one(sp, 'radiusDefect'), 0.25, 0.05, 1),
     smart: one(sp, 'smart') !== '0',
+    label: one(sp, 'label') !== '0',
   };
   return <CaptureClient {...params} />;
 }

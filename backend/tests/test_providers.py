@@ -88,7 +88,7 @@ def test_inkbox_never_sends_without_explicit_enable_and_allowlist(monkeypatch):
             assert handle == "myer-plant-bot"
             return Identity()
 
-    monkeypatch.setenv("INKBOX_IDENTITY_WARDEN_MYER_PLANT", "myer-plant-bot")
+    monkeypatch.setenv("INKBOX_IDENTITY_MYER_TECHNICIAN", "myer-plant-bot")  # contract 4: the site's Field Technician emails
     monkeypatch.setattr(adapter, "client", lambda: FakeClient())
     assert adapter.status("myer-plant")["email"] == "custom@approved.example"  # Trust actual assigned address.
     assert adapter.send("myer-plant", ["owner@example.com"], "Update", "Fixture")["status"] == "queued"
@@ -136,7 +136,7 @@ def test_supermemory_uses_server_derived_namespace_and_source_linked_async_write
 
 
 def test_capabilities_reflect_credentials_property_scope_and_explicit_action_gates(monkeypatch):
-    keys = ["INKBOX_API_KEY", "INKBOX_IDENTITY", "INKBOX_IDENTITY_WARDEN_MYER_PLANT", "INKBOX_IDENTITY_WARDEN_HARBOR_WORKS", "INKBOX_IDENTITY_WARDEN_BRISTOL_PUMPS",
+    keys = ["INKBOX_API_KEY", "INKBOX_IDENTITY", "INKBOX_IDENTITY_MYER_TECHNICIAN", "INKBOX_IDENTITY_BRISTOL_TECHNICIAN", "INKBOX_IDENTITY_WARDEN_MYER_PLANT",
             "INKBOX_ALLOWED_RECIPIENTS", "STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_IDENTITY_PROVISION", "STRIPE_SECRET_KEY",
             "SUPERMEMORY_API_KEY", "INSFORGE_BASE_URL", "INSFORGE_ANON_KEY"]
     for key in keys:
@@ -148,9 +148,11 @@ def test_capabilities_reflect_credentials_property_scope_and_explicit_action_gat
     assert capabilities()["inkbox"] == {"identity": False, "inbox": False, "sendEmail": False, "createIdentity": False}
     assert capabilities()["stripe"]["testCheckout"] is False
     monkeypatch.setenv("INKBOX_API_KEY", "fixture")
-    monkeypatch.setenv("INKBOX_IDENTITY_WARDEN_MYER_PLANT", "myer-plant-bot")
+    monkeypatch.setenv("INKBOX_IDENTITY_WARDEN_MYER_PLANT", "steward-warden-myer")  # retired: never read
+    assert capabilities()["inkbox"]["identity"] is False
+    monkeypatch.setenv("INKBOX_IDENTITY_MYER_TECHNICIAN", "myer-plant-bot")
     assert capabilities()["inkbox"]["identity"] is True
-    assert capabilities("harbor-works")["inkbox"]["inbox"] is False
+    assert capabilities("bristol-pumps")["inkbox"]["inbox"] is False
     monkeypatch.setenv("STEWARD_ALLOW_EXTERNAL_MESSAGES", "true")
     assert capabilities()["inkbox"]["sendEmail"] is False
     monkeypatch.setenv("INKBOX_ALLOWED_RECIPIENTS", "owner@example.com")

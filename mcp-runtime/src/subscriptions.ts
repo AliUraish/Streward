@@ -98,6 +98,13 @@ export class SubscriptionHub {
     for (const [session, uris] of this.legacy) if (uris.has(uri)) this.streams.get(session)?.write(frame);
   }
 
+  /** Write one notification to every open legacy session stream (e.g. notifications/tools/list_changed); returns how many. */
+  broadcast(method: string, params?: Record<string, unknown>): number {
+    const frame = `event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', method, ...(params ? { params } : {}) })}\n\n`;
+    for (const stream of this.streams.values()) stream.write(frame);
+    return this.streams.size;
+  }
+
   private addModern(uris: string[]) { for (const uri of uris) this.modern.set(uri, (this.modern.get(uri) ?? 0) + 1); for (const uri of uris) this.sync(this.siteOf(uri)!); }
   private dropModern(uris: string[]) {
     for (const uri of uris) { const next = (this.modern.get(uri) ?? 1) - 1; if (next > 0) this.modern.set(uri, next); else this.modern.delete(uri); }

@@ -1,6 +1,12 @@
 """Attribute specifications per component kind: class, unit, numeric range or enum, and TTL by class.
 
 The table mirrors REALITY-CONTRACT.md exactly. It is the only place plausibility ranges live.
+
+Contract 5 (Tomioka Silk Mill) adds `machine`, `structure`, `hydrant`, `camera` and `dehumidifier`. Its sensors keep
+the register kind `sensor` (icons, filters and the PINS stream key on it) and carry a `specKind` that selects their
+own table: `sensor:humidity` (humidity_pct 40-65 % for preservation plus temperature_c 5-30 °C) and `sensor:seismic`
+(seismic_gal 0-80). Every lookup goes through `spec_kind(component)`, so the existing `sensor` table (temperature_c
+5-40 °C) and every other existing kind are unchanged.
 """
 from __future__ import annotations
 
@@ -38,13 +44,33 @@ SPECS: dict[str, dict[str, dict]] = {
     "sump": {"level_pct": _reading("%", 0, 85)},
     "vessel": {"pressure_bar": _reading("bar", 0, 7), "inspection_certificate": _plain("document"), "serial": _plain("identity")},
     "walkway": {"clear": _enum("condition", "yes", "no")},
+    # Contract 5 (Tomioka Silk Mill): preserved reeling machines, the National Treasure fabric, conservation sensors.
+    "machine": {"vibration_mms": _reading("mm/s", 0, 4.5), "status": _enum("condition", "running", "stopped", "fault"), "serial": _plain("identity")},
+    "structure": {"crack_width_mm": _reading("mm", 0, 0.3), "condition": _enum("condition", "sound", "watch", "defect")},
+    "sensor:humidity": {"humidity_pct": _reading("%", 40, 65), "temperature_c": _reading("°C", 5, 30), "serial": _plain("identity")},
+    "sensor:seismic": {"seismic_gal": _reading("gal", 0, 80), "serial": _plain("identity")},
+    "hydrant": {"pressure_ok": _enum("condition", "yes", "no")},
+    "camera": {"working": _enum("condition", "yes", "no"), "serial": _plain("identity")},
+    "dehumidifier": {"running": _enum("condition", "yes", "no"), "serial": _plain("identity")},
 }
 
 # Footprint radius on the x/z plane used by the clearance query (metres). Doors and ceiling luminaires
 # are openings/overhead and get no footprint so a path to the door is not reported as blocked by the door.
 FOOTPRINT_RADIUS_M: dict[str, float] = {"tank": 1.0, "exchanger": 0.9, "panel": 0.5, "pump": 0.6, "duct": 0.8, "door": 0.0, "light": 0.0,
-                                        "sump": 1.2, "vessel": 0.8, "walkway": 0.0}
+                                        "sump": 1.2, "vessel": 0.8, "walkway": 0.0,
+                                        # Contract 5: roof trusses are overhead and the wall is the room boundary; the CCTV camera is mast-mounted.
+                                        "machine": 1.0, "structure": 0.0, "hydrant": 0.3, "camera": 0.0, "dehumidifier": 0.5}
 DEFAULT_FOOTPRINT_RADIUS_M = 0.6
+
+
+def spec_kind(component: dict) -> str:
+    """The attribute table a component uses: its `specKind` when the register sets one (Tomioka's humidity and seismic
+    sensors), else its `kind`."""
+    return component.get("specKind") or component["kind"]
+
+
+def specs_of(component: dict) -> dict[str, dict]:
+    return SPECS.get(spec_kind(component), {})
 
 
 def supported_attributes(kind: str) -> list[str]:

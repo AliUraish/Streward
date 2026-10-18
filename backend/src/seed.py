@@ -16,6 +16,8 @@ from .store import Store, now
 ROOT = Path(__file__).resolve().parents[2]
 PROPERTIES = [(site["id"], site["name"]) for site in SITES]
 REGISTER_VERSION = "3"
+SITES_VERSION = "5"  # contract 5: the third site (tomioka-mill) is seeded into existing databases by add_new_sites
+HERITAGE_SYSTEMS = ("Heritage machinery", "Structure", "Conservation")
 CHECKS = [
     ("ID", "Equipment identification", "Asset tag must be present and unique in the project scene register."),
     ("LOC", "Model location", "The registered component origin must lie inside the plant-room model bounds."),
@@ -69,17 +71,23 @@ def seed_documents(store: Store, site: dict, components: list[dict], inserted_at
     property_id, name = site["id"], site["name"]
     room = room_for(property_id)
     documents = []
+    # The heritage mill (contract 5) has no "Mechanical" plant; its register groups machinery, structure and conservation.
+    heritage = any(c["system"] in HERITAGE_SYSTEMS for c in components)
+    primary = ("Mechanical",) + (HERITAGE_SYSTEMS if heritage else ())
+    area = site.get("area") or "plant room"
     for suffix, title, category, sections in [
         ("spec", "Mechanical & Electrical Project Requirements", "Project specifications", [
             (f"{code} - {check_title}", [description, "", "Applies to the following registered project assets:"] +
              [f"{component['tag']}  |  {component['name']}" for component in components])
             for code, check_title, description in CHECKS
         ]),
-        ("register", "Plant Room Asset Register", "Equipment schedules", [
-            ("Mechanical systems", [f"Site ID: {property_id}", f"Plant room: {room['width']} m x {room['depth']} m x {room['height']} m.", ""] +
-             [f"{c['tag']} - {c['name']}" for c in components if c["system"] == "Mechanical"]),
-            ("Electrical and access systems", [f"Site ID: {property_id}", ""] +
-             [f"{c['tag']} - {c['name']}" for c in components if c["system"] != "Mechanical"]),
+        ("register", "Site Asset Register" if heritage else "Plant Room Asset Register", "Equipment schedules", [
+            ("Machinery, structure and conservation" if heritage else "Mechanical systems",
+             [f"Site ID: {property_id}", (f"{area[:1].upper()}{area[1:]} (register section): " if heritage else "Plant room: ")
+              + f"{room['width']} m x {room['depth']} m x {room['height']} m.", ""] +
+             [f"{c['tag']} - {c['name']}" for c in components if c["system"] in primary]),
+            ("Fire, electrical, security and access" if heritage else "Electrical and access systems", [f"Site ID: {property_id}", ""] +
+             [f"{c['tag']} - {c['name']}" for c in components if c["system"] not in primary]),
         ]),
         ("observations", "Baseline Commissioning Observations", "Inspection records", [
             ("Synthetic baseline - equipment observations", [
@@ -150,44 +158,69 @@ def seed_component(store: Store, property_id: str, component: dict, documents: l
                 _text=json.dumps(payload), _propertyId=property_id))
 
 
+def _insert(store: Store, kind: str, body: dict, property_id: str = "") -> None:
+    if not store.get(kind, body["id"], property_id):
+        store.put(kind, body, property_id)
+
+
+def seed_site(store: Store, site: dict) -> None:
+    """One site's workspace (property, seed PDFs, register, checks, baseline evidence, memory, welcome, legacy agent);
+    insert-if-missing, so it is safe on a database that already has part of it."""
+    property_id, name = site["id"], site["name"]
+    inserted_at = now()
+    components = register_for(property_id)
+    _insert(store, "property", property_record(site, len(components), inserted_at))
+    documents = seed_documents(store, site, components, inserted_at)
+    for component in components:
+        seed_component(store, property_id, component, documents, inserted_at)
+    _insert(store, "memory", dict(id=f"{property_id}-initial-memory", propertyId=property_id,
+        content=f"{name} is an original demonstration site. Baseline observations are synthetic. "
+                "Use exact asset tags and site IDs when checking evidence; a matching filename alone is insufficient.",
+        source="Local project initialization", createdAt=inserted_at), property_id)
+    _insert(store, "chat", dict(id=f"{property_id}-welcome", role="assistant", createdAt=inserted_at,
+        content=f"I'm {name}'s site agent. I can inspect the project register, trace requirements to source pages, "
+                "check uploaded evidence, remember findings and prepare a report. Local checks are deterministic; "
+                "model-backed synthesis activates when a model provider is configured. What would you like to inspect?",
+        sources=[]), property_id)
+    if not store.events(property_id):
+        store.event(property_id, f"agent-{property_id}", "project.created", "Site workspace initialized",
+                    f"{len(components)} original register assets and {len(components) * len(CHECKS)} project checks loaded with clearly labeled synthetic baseline evidence.")
+    _insert(store, "agent", dict(id=f"agent-{property_id}", name=f"Warden · {name}",
+        role=f"{name} site agent", status="idle", identity=f"local://steward/agents/{property_id}",
+        lastAction="Project context loaded. Awaiting an inspection or instruction.",
+        tools=["inspect_component", "search_requirements", "search_documents", "assess_evidence", "recall_memory", "save_memory", "export_report"]))
+
+
 def seed(store: Store):
     if store.meta("seed_version") == "1":
         return
-
-    def insert(kind, body, property_id=""):
-        if not store.get(kind, body["id"], property_id):
-            store.put(kind, body, property_id)
-
     for site in SITES:
-        property_id, name = site["id"], site["name"]
-        inserted_at = now()
-        components = register_for(property_id)
-        insert("property", property_record(site, len(components), inserted_at))
-        documents = seed_documents(store, site, components, inserted_at)
-        for component in components:
-            seed_component(store, property_id, component, documents, inserted_at)
-        insert("memory", dict(id=f"{property_id}-initial-memory", propertyId=property_id,
-            content=f"{name} is an original demonstration site. Baseline observations are synthetic. "
-                    "Use exact asset tags and site IDs when checking evidence; a matching filename alone is insufficient.",
-            source="Local project initialization", createdAt=inserted_at), property_id)
-        insert("chat", dict(id=f"{property_id}-welcome", role="assistant", createdAt=inserted_at,
-            content=f"I'm {name}'s site agent. I can inspect the project register, trace requirements to source pages, "
-                    "check uploaded evidence, remember findings and prepare a report. Local checks are deterministic; "
-                    "model-backed synthesis activates when a model provider is configured. What would you like to inspect?",
-            sources=[]), property_id)
-        if not store.events(property_id):
-            store.event(property_id, f"agent-{property_id}", "project.created", "Site workspace initialized",
-                        "24 original register assets and 96 project checks loaded with clearly labeled synthetic baseline evidence.")
-    insert("agent", dict(id="portfolio", name="Atlas", role="Portfolio coordinator", status="idle",
+        seed_site(store, site)
+    _insert(store, "agent", dict(id="portfolio", name="Atlas", role="Portfolio coordinator", status="idle",
         identity="local://steward/agents/portfolio", lastAction="Ready to compare site readiness and coordinate inspection jobs.",
         tools=["list_properties", "get_portfolio", "run_inspection", "get_job", "export_report"]))
-    for property_id, name in PROPERTIES:
-        insert("agent", dict(id=f"agent-{property_id}", name=f"Warden · {name}",
-            role=f"{name} site agent", status="idle", identity=f"local://steward/agents/{property_id}",
-            lastAction="Project context loaded. Awaiting an inspection or instruction.",
-            tools=["inspect_component", "search_requirements", "search_documents", "assess_evidence", "recall_memory", "save_memory", "export_report"]))
     store.meta("seed_version", "1")
     store.meta("steward_register_version", REGISTER_VERSION)
+    store.meta("steward_sites_version", SITES_VERSION)
+
+
+def add_new_sites(store: Store) -> dict:
+    """Contract 5: seed a site that joined the registry after the database was created (tomioka-mill), once
+    (meta `steward_sites_version`), after a SQLite backup `pre-third-site-<stamp>`. Existing sites are untouched;
+    seeding is insert-if-missing, so a re-run finds nothing to add and only re-sets the version marker."""
+    if store.meta("steward_sites_version") == SITES_VERSION:
+        return {}
+    present = {p["id"] for p in store.all("property")}
+    missing = [site for site in SITES if site["id"] not in present]
+    if not missing:
+        store.meta("steward_sites_version", SITES_VERSION)
+        return {}
+    from .sites import _backup
+    backup = _backup(store, "pre-third-site") if present else None
+    for site in missing:
+        seed_site(store, site)
+    store.meta("steward_sites_version", SITES_VERSION)
+    return dict(added=[site["id"] for site in missing], backup=backup.name if backup else None)
 
 
 ARCHIVE_ON_REGISTER_CHANGE = ("component", "requirement", "evidence")
@@ -238,7 +271,11 @@ def sync_registers(store: Store) -> dict:
                 mission.update(state="failed", phase="done", failure="Site register replaced (contract 3); the mission's assets are no longer registered.", updatedAt=moment)
                 store.put("mission", mission, property_id)
                 counts["missions"] += 1
-        documents = seed_documents(store, site, register, moment, overwrite=True)
+        changed = any(component_id not in wanted for component_id in existing) or any(
+            component_id not in existing or (existing[component_id].get("tag"), existing[component_id].get("name")) != (template["tag"], template["name"])
+            for component_id, template in wanted.items())
+        # Seed PDFs list the register, so they are regenerated only when the register's tags or names changed.
+        documents = seed_documents(store, site, register, moment, overwrite=changed)
         for component_id, template in wanted.items():
             current = store.get("component", component_id, property_id)
             if current:

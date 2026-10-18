@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { SplatEngine, hasWebGL2, type MoveDirection, type Projection } from './engine';
-import { EyeClient, describeCommand, type EyeCommand, type EyeFramePost, type EyeStatus } from './eye';
+import { SplatEngine, hasWebGL2, type LodStats, type MoveDirection, type Projection } from './engine';
+import { EyeClient, describeCommand, parseViewPose, type EyeCommand, type EyeFramePost, type EyeMark, type EyeStatus } from './eye';
+import { DEFECT_RADIUS, parseDefect, type DefectKind } from './defects';
 import { SPLAT_SITES } from './sites';
 import type { SplatPin, SplatViewerProps, Vec3Tuple } from './types';
 import styles from './viewer.module.css';
@@ -52,7 +53,8 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
   const eyeClient = useRef<EyeClient | null>(null);
 
   const [phase, setPhase] = useState<Phase>('init');
-  const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+  const [progress, setProgress] = useState<{ loaded: number; total: number; unit: 'bytes' | 'files' }>({ loaded: 0, total: 0, unit: 'bytes' });
+  const [stream, setStream] = useState<LodStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -63,11 +65,15 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
   const [eyeHud, setEyeHud] = useState<EyeHud | null>(null);
   const [eyeMark, setEyeMark] = useState<{ position: Vec3Tuple; note: string | null } | null>(null);
   const eye = props.eye;
+  const fill = !!props.fill;
+  const safe = props.safeArea;
+  const st = safe?.top ?? 0, sr = safe?.right ?? 0, sb = safe?.bottom ?? 0, sl = safe?.left ?? 0;
+  const poseEmit = useRef<{ key: string; at: number; timer: number | null }>({ key: '', at: 0, timer: null });
   const eyeOverlay = !!eye?.showOverlay;
 
   // latest props for engine callbacks
-  const live = useRef({ pins, editMode, rayDistance, picked, hovered, props, reducedMotion, eyeMark });
-  live.current = { pins, editMode, rayDistance, picked, hovered, props, reducedMotion, eyeMark };
+  const live = useRef({ pins, editMode, rayDistance, picked, hovered, props, reducedMotion, eyeMark, pulseTag: null as string | null });
+  live.current = { pins, editMode, rayDistance, picked, hovered, props, reducedMotion, eyeMark, pulseTag: pulse?.tag ?? null };
 
   // ---- overlay layout (runs on camera change, imperatively) ------------------------------------
 
@@ -89,7 +95,8 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       const hidden = occluded.current.get(pin.assetTag) === true;
       // fade with distance: full within 4 m, down to 35% at 20 m
       const fade = Math.max(0.35, Math.min(1, 1 - (pr.distance - 4) / 16));
-      const opacity = hidden ? (pin.estimated ? 0.22 : 0) : fade;
+      const target = pin.assetTag === live.current.pulseTag || pin.assetTag === hov;
+      const opacity = hidden ? (target ? 0.6 : pin.estimated ? 0.22 : 0) : fade;
       el.style.visibility = opacity > 0 ? 'visible' : 'hidden';
       el.style.opacity = String(opacity);
       el.style.transform = `translate3d(${pr.x.toFixed(1)}px, ${pr.y.toFixed(1)}px, 0)`;
@@ -132,6 +139,28 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       markEl.style.visibility = pr.visible ? 'visible' : 'hidden';
       markEl.style.transform = `translate3d(${pr.x.toFixed(1)}px, ${pr.y.toFixed(1)}px, 0)`;
     }
+    // camera pose for the HUD, at most ten times a second (leading and trailing)
+    const onPose = live.current.props.onCameraChange;
+    if (onPose) {
+      const emit = poseEmit.current;
+      const info = engine.cameraInfo();
+      const key = `${info.position.join(',')}|${info.target.join(',')}|${w}x${h}`;
+      if (key !== emit.key) {
+        const fire = () => {
+          const e = engineRef.current;
+          if (!e) return;
+          const cur = e.cameraInfo();
+          emit.key = `${cur.position.join(',')}|${cur.target.join(',')}|${e.width}x${e.height}`;
+          emit.at = performance.now();
+          emit.timer = null;
+          const pp = e.principalPoint();
+          live.current.props.onCameraChange?.({ ...cur, principal: { x: Math.round(pp.x), y: Math.round(pp.y) } });
+        };
+        const wait = 100 - (performance.now() - emit.at);
+        if (wait <= 0) fire();
+        else if (emit.timer === null) emit.timer = window.setTimeout(fire, wait);
+      }
+    }
   }, []);
 
   // ---- engine lifecycle ------------------------------------------------------------------------
@@ -145,7 +174,8 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
     let engine: SplatEngine | null = null;
     setPhase('loading');
     setError(null);
-    setProgress({ loaded: 0, total: 0 });
+    setProgress({ loaded: 0, total: 0, unit: 'bytes' });
+    setStream(null);
     occluded.current.clear();
 
     const onClick = (x: number, y: number) => {
@@ -166,8 +196,12 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       interactive: true,
       keyTarget: root,
       preferWebGPU: new URLSearchParams(window.location.search).get('splatRenderer') === 'webgpu',
+      maxPixelRatio: live.current.props.fill ? 2 : 1.5,
       reducedMotion: live.current.reducedMotion,
-      onProgress: (loaded, total) => { if (!cancelled) setProgress({ loaded, total }); },
+      // a headless eye streams a smaller set: its frames are 640x400 and every move waits for the stream
+      splatBudget: live.current.props.eye?.instant ? site.lod?.headlessBudget : undefined,
+      onProgress: (loaded, total, unit) => { if (!cancelled) setProgress({ loaded, total, unit }); },
+      onStream: (lod) => { if (!cancelled) setStream(lod); },
       onLoaded: () => { if (!cancelled) setPhase('preparing'); },
       onFirstFrame: () => {
         if (cancelled) return;
@@ -208,6 +242,21 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId, attempt]);
 
+  // fill mode renders at the device pixel ratio capped at 2 (1.5 otherwise)
+  useEffect(() => {
+    const e = engineRef.current;
+    if (!e || phase !== 'ready') return;
+    e.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio || 1, fill ? 2 : 1.5)));
+  }, [fill, phase]);
+
+  // HUD insets: shift the projection so targets sit between the panels
+  useEffect(() => {
+    const e = engineRef.current;
+    if (!e) return;
+    e.setSafeArea({ top: st, right: sr, bottom: sb, left: sl });
+    layout();
+  }, [st, sr, sb, sl, phase, layout]);
+
   // reduced motion can change while mounted
   useEffect(() => { engineRef.current?.setReducedMotion(reducedMotion); }, [reducedMotion]);
 
@@ -237,19 +286,36 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
     const assetTag = typeof p.assetTag === 'string' ? p.assetTag : null;
     let posted = 0;
     let lastError: string | null = null;
+    // orbit may carry a labelled synthetic defect (vision tests); it is removed when the command ends
+    const defect: DefectKind = cmd.action === 'orbit' ? parseDefect(typeof p.defect === 'string' ? p.defect : null) : 'none';
+    const keepLabel = !(p.label === false || p.label === 0 || p.label === '0' || p.label === 'false');
+    const burnLabel = defect !== 'none' && keepLabel ? `synthetic defect: ${defect}` : null;
 
-    const findPin = () => {
+    const pinOrNull = (): Vec3Tuple | null => {
       if (cmd.pin) return cmd.pin;
       const want = (assetTag ?? '').toLowerCase();
-      const pin = pinsNow.find((x) => x.assetTag.toLowerCase() === want);
-      if (!pin) throw new Error(assetTag ? `no pin for ${assetTag} on ${cfg.siteId}` : 'assetTag is required');
-      return pin.position;
+      return pinsNow.find((x) => x.assetTag.toLowerCase() === want)?.position ?? null;
     };
+    const findPin = () => {
+      const pin = pinOrNull();
+      if (!pin) throw new Error(assetTag ? `no pin for ${assetTag} on ${cfg.siteId}` : 'assetTag is required');
+      return pin;
+    };
+    // go_to and orbit never start from the current view: an exact viewPose when the command has one,
+    // otherwise a pose from the pin and the site's fixed approach direction (same command, same frames)
+    const viewPose = cmd.action === 'go_to' || cmd.action === 'orbit' ? parseViewPose(p.viewPose) : null;
+    const startPose: EyeFramePost['startPose'] = cmd.action === 'go_to' || cmd.action === 'orbit' ? (viewPose ? 'viewPose' : 'approach') : undefined;
 
     const post = async (index: number, count: number, extra: Partial<EyeFramePost> = {}, draw?: (ctx: CanvasRenderingContext2D) => void) => {
-      await engine.settle({ timeoutMs: 20000, frames: 2 });
-      const shot = await engine.captureJpeg({ width: fw, height: fh, quality: 0.85, draw: draw ? (ctx) => draw(ctx) : undefined });
+      const s0 = performance.now();
+      // two rendered frames after the camera settles; the second one is the frame we keep
+      await engine.settle({ timeoutMs: 20000, frames: 1 });
+      const s1 = performance.now();
+      const shot = await engine.captureJpeg({ width: fw, height: fh, quality: 0.85, label: burnLabel, draw: draw ? (ctx) => draw(ctx) : undefined });
+      const s2 = performance.now();
       const visiblePins = await engine.visiblePins(pinsNow, shot.crop);
+      const s3 = performance.now();
+      const timings = { moveMs: Math.round(s0 - t0), settleMs: Math.round(s1 - s0), captureMs: Math.round(s2 - s1), pinsMs: Math.round(s3 - s2) };
       const frame: EyeFramePost = {
         commandId: cmd.id,
         rendererId: cfg.rendererId,
@@ -265,11 +331,19 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
         visiblePins,
         assetTag,
         renderMs: Math.round(performance.now() - t0),
+        timings,
+        ...(startPose ? { startPose } : {}),
+        synthetic: defect !== 'none',
+        defect,
+        labelled: !!burnLabel,
         at: new Date().toISOString(),
         ...extra,
       };
-      await client.postFrame(frame);
+      const res = await client.postFrame(frame);
       posted++;
+      const { jpegBase64: _jpeg, ...meta } = frame;
+      void _jpeg;
+      live.current.props.onFrame?.({ ...meta, dataUrl: shot.dataUrl, actorName, posted: res.ok, frameId: res.frameId, frameUrl: res.frameUrl });
     };
 
     try {
@@ -288,14 +362,25 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
           await engine.turnBy(clamp(num(p.yawDeg, 0), -180, 180), clamp(num(p.pitchDeg, 0), -85, 85));
           await post(0, 1);
           break;
-        case 'go_to':
-          await engine.frame(findPin(), clamp(num(p.distance, 1.8), 0.4, 8));
+        case 'go_to': {
+          engine.setFov(viewPose?.fov ?? engine.baseFov);
+          if (viewPose) {
+            await engine.lookFrom(viewPose.position, viewPose.target);
+          } else {
+            const a = engine.approachPose(findPin(), clamp(num(p.distance, 1.8), 0.4, 8));
+            await engine.lookFrom(a.position, a.target);
+          }
           await post(0, 1);
           break;
+        }
         case 'orbit': {
-          const pin = findPin();
+          // around the pin (or the viewPose target when the asset has no pin), starting at the viewPose position
+          const pin = viewPose ? pinOrNull() ?? viewPose.target : findPin();
           const n = Math.round(clamp(num(p.frames, 8), 4, 16));
-          await engine.frame(pin, clamp(num(p.distance, 1.8), 0.4, 8));
+          if (defect !== 'none') engine.setDefect(defect, pin, clamp(num(p.defectRadius, DEFECT_RADIUS), 0.05, 1));
+          engine.setFov(viewPose?.fov ?? engine.baseFov);
+          const from = viewPose ? viewPose.position : engine.approachPose(pin, clamp(num(p.distance, 1.8), 0.4, 8)).position;
+          await engine.lookFrom(from, pin);
           const start = engine.rig.current.yaw;
           for (let k = 0; k < n; k++) {
             if (k > 0) await engine.orbitTo(pin, start + (k * 360) / n);
@@ -307,13 +392,15 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
         case 'mark': {
           const x = clamp(num(p.x, 0.5), 0, 1), y = clamp(num(p.y, 0.5), 0, 1);
           const note = typeof p.note === 'string' ? p.note : null;
-          await engine.settle({ timeoutMs: 20000, frames: 1 });
+          if (!engine.rig.settled) await engine.settle({ timeoutMs: 20000, frames: 1 });
           const crop = engine.frameCrop(fw, fh);
           const px = crop.sx + x * crop.sw, py = crop.sy + y * crop.sh;
           const hit = await engine.pick(px, py);
           const world = hit ?? engine.rayPoint(px, py, 3);
           setEyeMark({ position: world, note });
-          await post(0, 1, { mark: { x, y, world: world.map((v) => +v.toFixed(4)) as Vec3Tuple, hit: !!hit, note } }, (ctx) => {
+          const record: EyeMark = { x, y, world: world.map((v) => +v.toFixed(4)) as Vec3Tuple, hit: !!hit, note };
+          // `mark` for the backends that read it, `annotation` (same record) for the newer ones
+          await post(0, 1, { mark: record, annotation: { ...record } }, (ctx) => {
             const cx = x * fw, cy = y * fh;
             ctx.lineWidth = 4; ctx.strokeStyle = '#000';
             ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.stroke();
@@ -331,6 +418,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       // complete the command anyway: the current view plus the reason it failed
       if (posted === 0) { try { await post(0, 1, { error: lastError }); } catch { /* engine gone */ } }
     } finally {
+      if (defect !== 'none') engine.setDefect('none', [0, 0, 0], 0);
       engine.rig.locked = false;
       const ms = Math.round(performance.now() - t0);
       setEyeHud({ actor: actorName, label, busy: false, error: lastError, ms });
@@ -372,7 +460,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
     const timer = window.setInterval(() => {
       const engine = engineRef.current;
       if (!engine || busy || document.hidden) return;
-      if (engine.idleMs < 400 || engine.rig.animating) return;
+      if (engine.idleMs < 400 || engine.rig.animating || engine.rig.locked) return;
       const pose = engine.rig.current;
       const key = [pose.yaw, pose.pitch, pose.distance, ...pose.target].map((n) => n.toFixed(3)).join(',') + `|${live.current.pins.length}|${engine.width}x${engine.height}`;
       if (key === lastKey) return;
@@ -411,8 +499,9 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       const fps = engine.stats.fps;
       if (busy && fps !== null && fps < 22) slow++;
       else slow = 0;
-      if (slow >= 3 && engine.stats.pixelRatio > 0.75) {
-        engine.setPixelRatio(Math.max(0.75, +(engine.stats.pixelRatio - 0.25).toFixed(2)));
+      const floor = live.current.props.fill ? 1 : 0.75;
+      if (slow >= 3 && engine.stats.pixelRatio > floor) {
+        engine.setPixelRatio(Math.max(floor, +(engine.stats.pixelRatio - 0.25).toFixed(2)));
         slow = 0;
       }
     }, 1000);
@@ -450,8 +539,21 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, runFocus]);
 
+  // follow an agent's camera (humans watching a walkthrough); an eye command running here already owns the camera
+  const followNonce = props.follow?.nonce;
+  useEffect(() => {
+    const f = live.current.props.follow;
+    const engine = engineRef.current;
+    if (!f || !engine || phase !== 'ready' || engine.rig.locked) return;
+    if (typeof f.fov === 'number' && Number.isFinite(f.fov)) engine.setFov(f.fov);
+    void engine.lookFrom(f.position, f.target);
+  }, [followNonce, phase]);
+
   useEffect(() => {
     if (!pulse) return;
+    // restart the ring animation when the same dot is pulsed again
+    const el = dotEls.current.get(pulse.tag);
+    if (el && el.dataset.pulse === 'true') { el.dataset.pulse = 'false'; void el.offsetWidth; el.dataset.pulse = 'true'; }
     const t = window.setTimeout(() => setPulse((p) => (p && p.key === pulse.key ? null : p)), 3800);
     return () => window.clearTimeout(t);
   }, [pulse]);
@@ -483,12 +585,14 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
 
   const hoveredPin = hovered ? pins.find((p) => p.assetTag === hovered) : undefined;
   const pct = progress.total > 0 ? Math.min(1, progress.loaded / progress.total) : 0;
+  const chunkProgress = progress.unit === 'files' && progress.total > 0;
   const showPoster = phase !== 'ready';
+  const streaming = phase === 'ready' && !!site.lod && !!stream && stream.refining && !stream.complete && stream.pendingFiles > 0;
 
   return (
     <div
       ref={rootRef}
-      className={[styles.root, editMode ? styles.editing : '', className ?? ''].filter(Boolean).join(' ')}
+      className={[styles.root, fill ? styles.fill : '', editMode ? styles.editing : '', className ?? ''].filter(Boolean).join(' ')}
       tabIndex={0}
       role="application"
       aria-label={`${site.name} 3D scan. Drag to orbit, right-drag to pan, scroll to zoom, W A S D to fly.`}
@@ -503,24 +607,31 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       <div className={styles.dots} aria-hidden={phase !== 'ready'}>
         {phase === 'ready' && pins.map((pin) => (
           <button
-            key={pulse?.tag === pin.assetTag ? `${pin.assetTag}:${pulse.key}` : pin.assetTag}
+            key={pin.assetTag}
             type="button"
-            ref={(el) => { if (el) dotEls.current.set(pin.assetTag, el); else dotEls.current.delete(pin.assetTag); }}
+            ref={(el) => {
+              if (!el) return;
+              dotEls.current.set(pin.assetTag, el);
+              return () => { if (dotEls.current.get(pin.assetTag) === el) dotEls.current.delete(pin.assetTag); };
+            }}
             className={styles.dot}
             style={{ visibility: 'hidden' }}
             data-severity={pin.severity ?? 'none'}
             data-estimated={pin.estimated ? 'true' : 'false'}
             data-active={hovered === pin.assetTag ? 'true' : 'false'}
             data-pulse={pulse?.tag === pin.assetTag ? 'true' : 'false'}
+            data-verdict={pin.assessment?.verdict ?? 'none'}
             data-tag={pin.assetTag}
-            aria-label={`${pin.label}${pin.estimated ? ', estimated position' : ''}`}
+            aria-label={`${pin.label}${pin.estimated ? ', estimated position' : ''}${pin.assessment ? `. ${pin.assessment.description ?? pin.assessment.text}` : ''}`}
             onPointerEnter={() => showCard(pin.assetTag)}
             onPointerLeave={hideCard}
             onFocus={() => showCard(pin.assetTag)}
             onBlur={hideCard}
             onClick={(e) => { e.stopPropagation(); clickPin(pin); }}
           >
-            {eyeOverlay && <span className={styles.tag}>{pin.assetTag}</span>}
+            {pin.assessment
+              ? <span className={styles.verdict} data-verdict={pin.assessment.verdict}>{eyeOverlay && <b>{pin.assetTag}</b>}{pin.assessment.text}</span>
+              : eyeOverlay && <span className={styles.tag}>{pin.assetTag}</span>}
           </button>
         ))}
         {editMode && picked && <div ref={markerRef} className={styles.marker} />}
@@ -553,11 +664,14 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
               {eyeMark.note && <span className={styles.tag}>{eyeMark.note}</span>}
             </div>
           )}
-          <div className={styles.eyeHud} role="status" aria-live="polite">
-            <div className={styles.eyeChip} data-eye-status={eyeStatus?.status ?? 'connecting'}>
-              {eyeStatus?.status === 'offline' ? 'Eye offline · retrying every 5 s'
-                : eyeStatus?.status === 'online' ? `Agent eye · ${eye.rendererId}` : 'Agent eye · connecting'}
-            </div>
+          <div className={styles.eyeHud} role="status" aria-live="polite" style={safe ? { top: 12 + st, left: 12 + sl } : undefined}>
+            {/* without the overlay only the offline state is shown, so a host HUD can own the rest */}
+            {(eyeOverlay || eyeStatus?.status === 'offline') && (
+              <div className={styles.eyeChip} data-eye-status={eyeStatus?.status ?? 'connecting'}>
+                {eyeStatus?.status === 'offline' ? 'Eye offline · retrying every 5 s'
+                  : eyeStatus?.status === 'online' ? `Agent eye · ${eye.rendererId}` : 'Agent eye · connecting'}
+              </div>
+            )}
             {eyeOverlay && eyeHud && (
               <div className={styles.eyeAction} data-busy={eyeHud.busy ? 'true' : 'false'}>
                 <strong>{eyeHud.actor}</strong> {eyeHud.label}
@@ -569,7 +683,7 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       )}
 
       {editMode && phase === 'ready' && (
-        <div className={styles.editPanel}>
+        <div className={styles.editPanel} style={{ top: 12 + st + (eye ? 84 : 0), left: 12 + sl }}>
           <div className={styles.editTitle}>Place pins · operator tool</div>
           <div className={styles.overlayText}>Click the scan to pick the point under the cursor.</div>
           {picked ? (
@@ -588,15 +702,17 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
       {(phase === 'loading' || phase === 'preparing' || phase === 'init') && (
         <div className={styles.overlay} role="status" aria-live="polite">
           <div className={styles.overlayInner}>
-            <div className={styles.overlayTitle}>{phase === 'preparing' ? 'Preparing the scan' : `Loading ${site.name}`}</div>
+            <div className={styles.overlayTitle}>{phase === 'preparing' ? (site.lod ? 'Streaming the scan' : 'Preparing the scan') : `Loading ${site.name}`}</div>
             <div className={styles.track}>
-              {phase === 'preparing' || progress.total === 0
-                ? <div className={`${styles.fill} ${styles.indeterminate}`} />
-                : <div className={styles.fill} style={{ transform: `scaleX(${pct})` }} />}
+              {(phase === 'preparing' && !chunkProgress) || progress.total === 0
+                ? <div className={`${styles.trackFill} ${styles.indeterminate}`} />
+                : <div className={styles.trackFill} style={{ transform: `scaleX(${pct})` }} />}
             </div>
             <div className={styles.numbers}>
               {phase === 'preparing'
-                ? `${(site.gaussians / 1e6).toFixed(2)} M gaussians`
+                ? site.lod
+                  ? `Coarsest level first${chunkProgress ? ` · ${progress.loaded} of ${progress.total} chunk files` : ''} · ${(site.gaussians / 1e6).toFixed(2)} M gaussians in ${site.lod.levels} levels`
+                  : `${(site.gaussians / 1e6).toFixed(2)} M gaussians`
                 : progress.total > 0 ? `${Math.round(pct * 100)}% · ${mb(progress.loaded)} of ${mb(progress.total)}` : 'Connecting'}
             </div>
           </div>
@@ -615,11 +731,17 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
         </div>
       )}
 
-      <div className={styles.credit}>
+      {streaming && stream && (
+        <div className={styles.streamChip} role="status" aria-live="polite" style={safe ? { top: 12 + st, right: 12 + sr } : undefined}>
+          Streaming detail · {stream.pendingFiles} chunk file{stream.pendingFiles === 1 ? '' : 's'} to go
+        </div>
+      )}
+
+      <div className={styles.credit} style={safe ? { left: 12 + sl, bottom: 12 + sb } : undefined}>
         Scan <a href={site.sceneUrl} target="_blank" rel="noreferrer">{site.sceneTitle}</a> by {site.author} on SuperSplat
       </div>
-      {phase === 'ready' && (
-        <div className={styles.tools}>
+      {phase === 'ready' && !fill && (
+        <div className={styles.tools} style={safe ? { right: 12 + sr, bottom: 12 + sb } : undefined}>
           <span className={styles.hint}>Drag to orbit · right-drag to pan · scroll to zoom · WASD to fly · double-click to pivot</span>
           <button type="button" className={styles.button} onClick={() => engineRef.current?.reset()}>Reset view</button>
         </div>

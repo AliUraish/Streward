@@ -1,18 +1,19 @@
-"""The agent roster (contract 4 §1): the owner's agent, an operations director and one four-agent team per factory,
-plus the authority table enforced on every mutating endpoint and on agent-to-agent messages.
+"""The agent roster (contract 4 §1, contract 5 §2): the owner's agent, an operations director and one four-agent team
+per site, plus the authority table enforced on every mutating endpoint and on agent-to-agent messages.
 
 | level | id | display name | scope |
 | 1 | operator | Owner's agent | the customer's own agent over MCP, all sites |
-| 2 | director | Operations Director | both factories |
-| 3 | <site>-manager | Plant Manager · <Site> | own site |
-| 4 | <site>-engineer | Site Engineer · <Site> | own site |
+| 2 | director | Operations Director | all three sites |
+| 3 | <site>-manager | Plant Manager · <Site> (Site Manager · Tomioka) | own site |
+| 4 | <site>-engineer | Site Engineer · <Site> (Conservation Engineer · Tomioka) | own site |
 | 4 | <site>-compliance | Compliance Officer · <Site> | own site |
 | 5 | <site>-technician | Field Technician · <Site> | own site |
 
-`<site>` is `myer` (myer-plant) or `bristol` (bristol-pumps). Identities and identity-scoped keys come from
-`INKBOX_IDENTITY_<SUFFIX>` / `INKBOX_AGENT_KEY_<SUFFIX>` (suffix `DIRECTOR`, `MYER_MANAGER`, ...). The single phone
-number is the shared "Steward Dispatch Line" (`INKBOX_IDENTITY_DISPATCH`, `STEWARD_DISPATCH_PHONE_NUMBER`): both
-field technicians reach people by SMS or call through it, and every agent emails from its own identity.
+`<site>` is `myer` (myer-plant), `bristol` (bristol-pumps) or `tomioka` (tomioka-mill). Identities and identity-scoped
+keys come from `INKBOX_IDENTITY_<SUFFIX>` / `INKBOX_AGENT_KEY_<SUFFIX>` (suffix `DIRECTOR`, `MYER_MANAGER`, ...,
+`TOMIOKA_TECHNICIAN`). The single phone number is the shared "Steward Dispatch Line" (`INKBOX_IDENTITY_DISPATCH`,
+`STEWARD_DISPATCH_PHONE_NUMBER`): every field technician reaches people by SMS or call through it, and every agent
+emails from its own identity.
 
 Cross-site messages are allowed only manager to manager, compliance to compliance, and anyone to or from the
 director (`message_allowed`). `authorize()` is the single gate for actions; it raises `AUTHORITY_DENIED` naming who
@@ -26,19 +27,21 @@ from .sites import SITE_BY_ID, SITE_IDS
 
 OPERATOR, DIRECTOR, OWNER, DISPATCH = "operator", "director", "owner", "dispatch"
 ROLES = ("manager", "engineer", "compliance", "technician")
-TEAM_PREFIX = {"myer-plant": "myer", "bristol-pumps": "bristol"}
+TEAM_PREFIX = {"myer-plant": "myer", "bristol-pumps": "bristol", "tomioka-mill": "tomioka"}
 PREFIX_SITE = {prefix: site for site, prefix in TEAM_PREFIX.items()}
-SHORT_SITE = {"myer-plant": "Myer", "bristol-pumps": "Bristol"}
+SHORT_SITE = {"myer-plant": "Myer", "bristol-pumps": "Bristol", "tomioka-mill": "Tomioka"}
 LEVELS = {OPERATOR: 1, DIRECTOR: 2, "manager": 3, "engineer": 4, "compliance": 4, "technician": 5, DISPATCH: 5}
 ROLE_TITLES = {"manager": "Plant Manager", "engineer": "Site Engineer", "compliance": "Compliance Officer", "technician": "Field Technician"}
+# Contract 5 §2: the mill's manager and engineer have their own titles; authority is the same as the other sites' roles.
+SITE_ROLE_TITLES = {"tomioka-mill": {"manager": "Site Manager", "engineer": "Conservation Engineer"}}
 ROLE_LINES = {
     OPERATOR: "the customer's own agent over MCP, all sites",
-    DIRECTOR: "both factories: delegates to managers, reads eval metrics and telemetry, reconfigures agents, approves cross-site maintenance, escalates to the owner",
+    DIRECTOR: "all three sites: delegates to managers, reads eval metrics and telemetry, reconfigures agents, approves cross-site maintenance, escalates to the owner",
     "manager": "own site: convenes calls, assigns crew, approves work orders within budget, schedules maintenance, talks to the other site's manager",
     "engineer": "own site: drives the agent eye, runs valve inspections, resolves, attests and verifies, opens issues",
     "compliance": "own site: obligations, regulations, documents, notices; emails documents to any agent; talks to the other site's compliance officer",
     "technician": "own site: contacts people through the dispatch line and email, collects evidence; cannot attest or write facts",
-    DISPATCH: "the shared phone number both field technicians use for SMS and calls",
+    DISPATCH: "the shared phone number every field technician uses for SMS and calls",
 }
 SCOPED_KINDS = ROLES
 # The Owner's agent keeps the direct reality verbs (resolve/attest/escalate/owner-decision) for the single-agent path
@@ -48,9 +51,10 @@ AUTHORITY: dict[str, list[str]] = {
                "simulation", "evals", "start_scenario", "start_fix", "assign_issue", "place_pin", "viewer", "eye", "configure_agent",
                "ingest_vision", "wait"],
     DIRECTOR: ["read", "resolve", "delegate", "cross_site_check", "declare_readiness", "ask_owner", "read_metrics", "reconfigure",
-               "configure_agent", "approve_maintenance", "approve_cross_site_maintenance", "convene_call", "call_agent", "eye", "viewer", "wait"],
+               "configure_agent", "approve_maintenance", "approve_cross_site_maintenance", "convene_call", "call_agent", "eye", "ingest_vision",
+               "viewer", "wait"],
     "manager": ["read", "resolve", "delegate", "convene_call", "call_agent", "assign_issue", "approve_work_order", "schedule_maintenance",
-                "approve_maintenance", "eye", "viewer", "wait"],
+                "approve_maintenance", "eye", "ingest_vision", "viewer", "wait"],
     "engineer": ["read", "resolve", "attest", "verify", "escalate", "delegate_field", "subscribe", "review_document", "raise_issue", "eye",
                  "ingest_vision", "viewer", "wait"],
     "compliance": ["read", "write_compliance", "send_document", "request_document", "raise_issue", "viewer", "wait"],
@@ -157,7 +161,7 @@ def display_name(agent_id: str) -> str:
         return "the owner"
     site, role = _split(agent_id)
     if role:
-        return f"{ROLE_TITLES[role]} · {SHORT_SITE.get(site, site)}"
+        return f"{SITE_ROLE_TITLES.get(site, {}).get(role, ROLE_TITLES[role])} · {SHORT_SITE.get(site, site)}"
     return agent_id
 
 
@@ -219,10 +223,10 @@ def parse_actor(header_value: str | None) -> str:
     actor = (header_value or OPERATOR).strip().casefold()
     if actor in OLD_AGENT_IDS:
         raise RealityError(f"Agent id '{actor}' was retired in contract 4.", "AUTHORITY_DENIED",
-                           "Use operator, director or <myer|bristol>-<manager|engineer|compliance|technician>.", 403)
+                           "Use operator, director or <myer|bristol|tomioka>-<manager|engineer|compliance|technician>.", 403)
     if not is_known(actor):
         raise RealityError(f"Unknown actor '{actor[:40]}'.", "AUTHORITY_DENIED",
-                           "Send X-Steward-Actor as operator, director or <myer|bristol>-<manager|engineer|compliance|technician>.", 403)
+                           "Send X-Steward-Actor as operator, director or <myer|bristol|tomioka>-<manager|engineer|compliance|technician>.", 403)
     return actor
 
 

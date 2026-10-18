@@ -16,6 +16,11 @@ export const WORLD_W = 17, WORLD_H = 6.2, WORLD_CY = 0.15;
 export const PIPE_Y = 1.0, PIPE_R = 0.09, VOLUTE_Y = -0.9, VOLUTE_R = 0.5, EDGE_X = -8.5;
 export const GAUGE: V2 = [X.p101 - 1.55, 0.3];
 
+/* Agent control sits in the open space between the pump skids and the vessel. These are data links, not gas pipes. */
+export const AGENT_ANCHOR: V2 = [1.8, -0.95];
+export const AGENT_REQUEST: V2[] = [[1.15, -0.24], [1.15, 0.35], [0.6, 0.35], [0.6, PIPE_Y]];
+export const AGENT_REPLY: V2[] = [[2.65, PIPE_Y], [2.65, 0.1], [2.45, 0.1], [2.45, -0.24]];
+
 /* Paths the dots travel (2D). */
 export const ASK: V2[] = [[EDGE_X, PIPE_Y], [X.p101, PIPE_Y], [X.p101, VOLUTE_Y + VOLUTE_R]];
 export const DISPATCH: V2[] = [[EDGE_X, PIPE_Y], [X.p102, PIPE_Y], [X.p102, VOLUTE_Y + VOLUTE_R]];

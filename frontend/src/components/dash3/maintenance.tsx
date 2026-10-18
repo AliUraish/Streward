@@ -1,16 +1,23 @@
 "use client";
 
-/* /app/[site]/maintenance: the schedule, including the windows the two factories share (contract 4 section 7), and
-   the obligations falling due, as one agenda by date. */
+/* /app/[site]/maintenance: the schedule, including the windows a site shares with another (contract 4 section 7: Myer
+   and Bristol's examiner visit; contract 5 section 5: Tomioka and Bristol's heritage-safe sensor installation), and the
+   obligations falling due, as one agenda by date. */
 import Link from "next/link";
 import { useMemo } from "react";
 import { useMaintenance, useObligations } from "@/lib/hooks-3";
-import { site3 } from "@/lib/sites-3";
+import { roleOf, site3, siteList } from "@/lib/sites-3";
 import type { MaintenanceWindow, Obligation, SiteId3 } from "@/lib/types-3";
 import { PageHead, Reveal, State, SynthTag, ago, day } from "./ui3";
 
 type Row = { at: string; kind: "window"; w: MaintenanceWindow } | { at: string; kind: "due"; o: Obligation };
 const statusWord: Record<string, string> = { proposed: "proposed", approved: "approved by the Operations Director", done: "done" };
+/* What proposes a shared window at each site, for the empty state. */
+const SHARED_SCENARIO: Record<SiteId3, string> = {
+  "myer-plant": "Myer shares examiner visits with Bristol; a window appears here once the managers propose one.",
+  "bristol-pumps": "Bristol shares examiner visits with Myer and heritage-safe sensor work with Tomioka; a window appears here once the managers propose one.",
+  "tomioka-mill": "Tomioka shares heritage-safe sensor work with Bristol; a window appears here once the managers propose one.",
+};
 
 export default function MaintenancePage({ siteId }: { siteId: SiteId3 }) {
   const site = site3(siteId);
@@ -24,18 +31,19 @@ export default function MaintenancePage({ siteId }: { siteId: SiteId3 }) {
     return out.sort((a, b) => a.at.localeCompare(b.at));
   }, [windows.data, obligations.data]);
   const shared = (windows.data ?? []).filter(w => w.siteIds.length > 1);
+  const withOthers = (w: MaintenanceWindow) => siteList(w.siteIds.filter(id => id !== siteId));
   const months = useMemo(() => {
     const m = new Map<string, Row[]>();
     for (const r of rows) { const d = new Date(r.at); const k = Number.isNaN(d.getTime()) ? "Undated" : d.toLocaleDateString([], { month: "long", year: "numeric" }); m.set(k, [...(m.get(k) ?? []), r]); }
     return [...m.entries()];
   }, [rows]);
   return <div className="page3">
-    <PageHead id="maintenance" title="Maintenance" sub={`${site.name}: maintenance windows the Plant Manager schedules, the ones shared with the other factory, and the obligations falling due in the next 60 days.`} />
+    <PageHead id="maintenance" title="Maintenance" sub={`${site.name}: maintenance windows the ${roleOf(siteId, "manager").title} schedules, the ones shared with other sites, and the obligations falling due in the next 60 days.`} />
     <Reveal as="section" className="p3 shared3" aria-labelledby="shared-h">
-      <div className="p-head"><h2 id="shared-h">Shared with the other factory</h2><span className="meta">{windows.data ? `${shared.length} window${shared.length === 1 ? "" : "s"}` : ""}</span></div>
-      <State remote={windows} what="maintenance windows" isEmpty={() => shared.length === 0} empty="No shared windows yet. The shared examiner visit scenario proposes one.">
+      <div className="p-head"><h2 id="shared-h">Shared with other sites</h2><span className="meta">{windows.data ? `${shared.length} window${shared.length === 1 ? "" : "s"}` : ""}</span></div>
+      <State remote={windows} what="maintenance windows" isEmpty={() => shared.length === 0} empty={`No shared windows yet. ${SHARED_SCENARIO[siteId]}`}>
         {() => <ul className="rows3 plain">{shared.map(w => <li key={w.id}>
-          <span className="r1"><span className={`sig ${w.status === "approved" || w.status === "done" ? "ok" : "warn"}`} aria-hidden="true" /><strong>{w.title ?? w.scope}</strong><span className="tg">both factories</span><SynthTag rec={w} /></span>
+          <span className="r1"><span className={`sig ${w.status === "approved" || w.status === "done" ? "ok" : "warn"}`} aria-hidden="true" /><strong>{w.title ?? w.scope}</strong><span className="tg">with {withOthers(w)}</span><SynthTag rec={w} /></span>
           <span className="r2">{day(w.date)}, {statusWord[w.status] ?? w.status}{w.examiner ? `; examiner ${w.examiner}` : ""}</span>
           {w.title && w.scope ? <span className="r3">{w.scope}</span> : null}
           {w.conversationId ? <Link className="lnk r3" href={`/app/conversations?id=${encodeURIComponent(w.conversationId)}`}>Read the call that agreed it</Link> : null}
@@ -47,7 +55,7 @@ export default function MaintenancePage({ siteId }: { siteId: SiteId3 }) {
       {windows.readiness !== "ready" && obligations.readiness !== "ready" ? <State remote={windows} what="the schedule">{() => null}</State>
         : rows.length === 0 ? <p className="st3 empty">Nothing scheduled in the next 60 days.</p>
         : <div className="agenda">{months.map(([m, list]) => <div key={m} className="month"><h3>{m}</h3><ol className="rows3 plain">{list.map(r => r.kind === "window"
-          ? <li key={`w-${r.w.id}`}><span className="r1"><span className={`sig ${r.w.status === "approved" || r.w.status === "done" ? "ok" : "warn"}`} aria-hidden="true" /><strong>{day(r.at)}</strong><span className="sev">maintenance window{r.w.siteIds.length > 1 ? ", both factories" : ""}</span><SynthTag rec={r.w} /></span><span className="r2">{r.w.scope}</span><span className="r3">{statusWord[r.w.status] ?? r.w.status}{r.w.examiner ? `; examiner ${r.w.examiner}` : ""}</span></li>
+          ? <li key={`w-${r.w.id}`}><span className="r1"><span className={`sig ${r.w.status === "approved" || r.w.status === "done" ? "ok" : "warn"}`} aria-hidden="true" /><strong>{day(r.at)}</strong><span className="sev">maintenance window{r.w.siteIds.length > 1 ? `, shared with ${withOthers(r.w)}` : ""}</span><SynthTag rec={r.w} /></span><span className="r2">{r.w.scope}</span><span className="r3">{statusWord[r.w.status] ?? r.w.status}{r.w.examiner ? `; examiner ${r.w.examiner}` : ""}</span></li>
           : <li key={`o-${r.o.id}`}><span className="r1"><span className={`sig ${r.o.status === "ok" ? "off" : r.o.status === "due_soon" ? "warn" : "bad"}`} aria-hidden="true" /><strong>{day(r.at)}</strong><span className="sev">obligation due, {ago(r.at)}</span><SynthTag rec={r.o} /></span><span className="r2">{r.o.title}{r.o.assetTag ? `, ${r.o.assetTag}` : ""}</span><span className="r3">{r.o.frequency}</span></li>)}</ol></div>)}</div>}
     </Reveal>
   </div>;

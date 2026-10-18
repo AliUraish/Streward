@@ -5,8 +5,28 @@
    left on hover, words inverting through difference, press scale, arrow nudge. */
 import { createContext, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type { Remote } from "@/lib/reality";
-import { SITES3 } from "@/lib/sites-3";
+import { SITES3, type Site3 } from "@/lib/sites-3";
 import type { SiteId3, SyntheticMark } from "@/lib/types-3";
+
+/* Japanese text. Geist has no Japanese glyphs, so these spans (and only these) carry a system Japanese face after Geist
+   in their font stack (.ja in dash3.css) and lang="ja" so the right glyph forms are chosen and read. JaText wraps the
+   Japanese runs of a mixed string ("Act on Protection of Cultural Properties (文化財保護法), 第43条"). */
+const JA_RUN = /([\u3000-\u303f\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]+)/;
+export function JaText({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  if (!JA_RUN.test(text)) return <>{text}</>;
+  return <>{text.split(JA_RUN).map((part, i) => i % 2 ? <span key={i} lang="ja" className="ja">{part}</span> : part)}</>;
+}
+/* Text with links: URLs become links (ending before a full-width bracket), the rest goes through JaText. */
+export function LinkedText({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  const parts = text.split(/(https?:\/\/[^\s）)」、]+)/);
+  return <>{parts.map((part, i) => i % 2 ? <a key={i} className="lnk" href={part} target="_blank" rel="noreferrer">{part.replace(/^https?:\/\//, "")}</a> : <JaText key={i} text={part} />)}</>;
+}
+/* "Tomioka Silk Mill 富岡製糸場": the English name with the site's own name beside it, where the site is introduced. */
+export function SiteTitle({ site }: { site: Site3 }) {
+  return <>{site.name}{site.jaName ? <> <span lang="ja" className="ja ja-name">{site.jaName}</span></> : null}</>;
+}
 
 export function Btn({ children, arrow, quiet, small, className = "", ...rest }: { children: ReactNode; arrow?: boolean; quiet?: boolean; small?: boolean } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button type="button" className={`b3 ${quiet ? "quiet" : ""} ${small ? "small" : ""} ${className}`} {...rest}>
@@ -19,14 +39,26 @@ export function LinkBtn({ href, children, quiet, small, external }: { href: stri
   </a>;
 }
 
+/* Records keep their provenance flags (synthetic, simulated, generator) for the audit trail; the dashboard shows the
+   record itself, untagged. The two tags stay as components so every call site is unchanged; they render nothing. */
 export const isSynthetic = (r: SyntheticMark | null | undefined) => Boolean(r && (r.synthetic || r.simulated));
-export function SynthTag({ rec, always }: { rec?: SyntheticMark | null; always?: boolean }) {
-  if (!always && !isSynthetic(rec)) return null;
-  const by = rec?.generator ? `, ${rec.generator}` : "";
-  return <span className="tg synth" title={`Synthetic record${by}`}>synthetic</span>;
-}
-export const DemoTag = () => <span className="tg demo">demo control</span>;
+export function SynthTag(_props: { rec?: SyntheticMark | null; always?: boolean }) { return null; }
+export const DemoTag = () => null;
 export const OperatorTag = () => <span className="tg demo">operator tool</span>;
+
+/* Live readings: an arrow for the direction since the previous reading (none when it held) and a High or Low mark when
+   the reading is outside its normal band. Both are words to a screen reader, so neither rests on its glyph or colour. A
+   new reading (at) replays the arrow's entrance. */
+export type TrendWord = "up" | "down" | "flat";
+export type BandWord = "high" | "low" | "normal";
+export function TrendMark({ trend, at }: { trend?: TrendWord | string | null; at?: string | number | null }) {
+  if (trend !== "up" && trend !== "down") return null;
+  return <span key={at ?? undefined} className={`trend3 ${trend}`}><span aria-hidden="true">{trend === "up" ? "▲" : "▼"}</span><span className="sr-only">{trend}</span></span>;
+}
+export function BandMark({ state }: { state?: BandWord | string | null }) {
+  if (state !== "high" && state !== "low") return null;
+  return <span className="tg bad band3">{state === "high" ? "High" : "Low"}<span className="sr-only">, {state === "high" ? "above" : "below"} normal range</span></span>;
+}
 
 /* Loading, not ready (404/405/501) with Retry, or a plain error with Retry. Renders children only when ready. */
 export function State<T>({ remote, what, children, empty, isEmpty }: { remote: Remote<T>; what: string; children: (data: T) => ReactNode; empty?: string; isEmpty?: (data: T) => boolean }) {
@@ -50,7 +82,7 @@ export function NotYet({ remote, what }: { remote: Remote<unknown>; what: string
 }
 
 /* Entrance: rise, staggered by --i, once, as the element enters. Content stays visible without script. */
-export function Reveal({ as: Tag = "div", i = 0, className, children, id, ...rest }: { as?: "div" | "section" | "li" | "header" | "article" | "nav"; i?: number; className?: string; children?: ReactNode; id?: string } & Record<string, unknown>) {
+export function Reveal({ as: Tag = "div", i = 0, className, children, id, ...rest }: { as?: "div" | "section" | "li" | "header" | "article" | "nav" | "figure"; i?: number; className?: string; children?: ReactNode; id?: string } & Record<string, unknown>) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -77,16 +109,16 @@ export function SiteTabs({ value, onChange, label }: { value: SiteId3; onChange:
   </div>;
 }
 
-export function SectionHead({ id, title, sub, children, page }: { id: string; title: string; sub?: ReactNode; children?: ReactNode; page?: boolean }) {
+export function SectionHead({ id, title, sub, children, page }: { id: string; title: ReactNode; sub?: ReactNode; children?: ReactNode; page?: boolean }) {
   const H = page ? "h1" : "h2";
   return <Reveal as="header" className={`sh3 ${page ? "page" : ""}`}>
     <div className="say"><H id={`${id}-h`}>{title}</H>{sub ? <p>{sub}</p> : null}</div>
     {children ? <div className="tools">{children}</div> : null}
   </Reveal>;
 }
-export const PageHead = (props: { id: string; title: string; sub?: ReactNode; children?: ReactNode }) => <SectionHead {...props} page />;
+export const PageHead = (props: { id: string; title: ReactNode; sub?: ReactNode; children?: ReactNode }) => <SectionHead {...props} page />;
 
-/* Toasts: one live region for the page ("moved by Atlas", "Scenario started"). */
+/* Toasts: one live region for the page ("moved by Site Engineer · Myer"). */
 interface Toast { id: number; text: string }
 const ToastCtx = createContext<(text: string) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);

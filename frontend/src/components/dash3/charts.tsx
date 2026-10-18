@@ -6,7 +6,7 @@
    readers. Text stays in the ink tokens; the marks carry identity by tone and dash, never by colour alone. */
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
-export interface LineSeries { id: string; label: string; points: [string, number][] }
+export interface LineSeries { id: string; label: string; short?: string; points: [string, number][] }
 const STROKES = [
   { stroke: "#ffffff", dash: "" }, { stroke: "#a1a1a1", dash: "" }, { stroke: "#ffffff", dash: "6 4" }, { stroke: "#a1a1a1", dash: "6 4" }, { stroke: "#6b6b6b", dash: "" },
 ];
@@ -37,7 +37,7 @@ export function LineChart({ title, unit, series, spec, height = 220, yDomain, di
   const [hover, setHover] = useState<number | null>(null);
   const tableId = useId();
   const parsed = useMemo(() => series.map(s => ({ ...s, pts: s.points.map(([t, v]) => [new Date(t).getTime(), v] as [number, number]).filter(([t, v]) => Number.isFinite(t) && Number.isFinite(v)).sort((a, b) => a[0] - b[0]) })).filter(s => s.pts.length), [series]);
-  const M = { l: 48, r: parsed.length > 1 ? 104 : 64, t: 12, b: 28 };
+  const M = { l: 48, r: parsed.length > 1 ? 112 : 64, t: 12, b: 28 };
   const W = Math.max(280, width), H = height, pw = W - M.l - M.r, ph = H - M.t - M.b;
   const all = parsed.flatMap(s => s.pts);
   const t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0]));
@@ -72,7 +72,10 @@ export function LineChart({ title, unit, series, spec, height = 220, yDomain, di
     if (e.key === "Escape") setHover(null);
   }
   const span = t1 - t0;
-  const tickCount = W < 480 ? 3 : 5;
+  /* Direct labels at the line ends, pushed apart so close values never overlap. */
+  const endLabels = parsed.map((s, i) => { const last = s.pts[s.pts.length - 1]; return { id: s.id, i, x: x(last[0]) + 8, y: y(last[1]) + 4, text: `${parsed.length > 1 ? `${s.short ?? s.label} ` : ""}${fmtN(last[1], digits)}` }; })
+    .sort((a, b) => a.y - b.y).reduce<{ id: string; i: number; x: number; y: number; text: string }[]>((acc, l) => { const prev = acc[acc.length - 1]; acc.push(prev && l.y - prev.y < 15 ? { ...l, y: prev.y + 15 } : l); return acc; }, []);
+  const tickCount = W < 640 ? 3 : 5;
   const xticks = Array.from({ length: tickCount }, (_, i) => t0 + (span * i) / (tickCount - 1));
   const yticks = niceTicks(lo, hi, 4).filter(v => v >= lo && v <= hi);
   const stats = parsed.map(s => { const v = s.pts.map(p => p[1]); return { label: s.label, latest: v[v.length - 1], min: Math.min(...v), max: Math.max(...v) }; });
@@ -86,14 +89,14 @@ export function LineChart({ title, unit, series, spec, height = 220, yDomain, di
         {yticks.map(v => <text key={v} className="tick" x={M.l - 8} y={y(v) + 4} textAnchor="end">{fmtN(v)}</text>)}
         {xticks.map((t, i) => <text key={t} className="tick" x={x(t)} y={H - 8} textAnchor={i === 0 ? "start" : i === xticks.length - 1 ? "end" : "middle"}>{timeLabel(t, span)}</text>)}
         {paths.map((p, i) => <g key={parsed[i].id}><path d={p.d} className="line" stroke={STROKES[i % STROKES.length].stroke} strokeDasharray={STROKES[i % STROKES.length].dash} />{p.bad ? <path d={p.bad} className="line out" /> : null}</g>)}
-        {parsed.map((s, i) => { const last = s.pts[s.pts.length - 1]; return <text key={s.id} className={`end ${i ? "" : "strong"}`} x={x(last[0]) + 8} y={y(last[1]) + 4 + (parsed.length > 1 ? (i - (parsed.length - 1) / 2) * 2 : 0)}>{parsed.length > 1 ? `${s.label} ` : ""}{fmtN(last[1], digits)}</text>; })}
+        {endLabels.map(l => <text key={l.id} className={`end ${l.i ? "" : "strong"}`} x={l.x} y={l.y}>{l.text}</text>)}
         {ht !== null ? <g className="hover">
           <rect x={readX - 1} y={M.t} width={2} height={ph} className="cursor" />
           {parsed.map((s, i) => { const p = near(s, ht); return <rect key={s.id} x={x(p[0]) - 4} y={y(p[1]) - 4} width={8} height={8} className={`mark ${out(p[1]) ? "out" : ""}`} fill={STROKES[i % STROKES.length].stroke} />; })}
         </g> : null}
       </svg>
       {ht !== null ? <div className="readout3" style={{ left: `${(readX / W) * 100}%`, transform: `translateX(${readX > W * 0.66 ? "-100%" : "8px"})` }} aria-live="polite">
-        <span className="t">{new Date(ht).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
+        <span className="t">{new Date(ht).toLocaleString([], span < 3_600_000 ? { hour: "2-digit", minute: "2-digit", second: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
         {parsed.map(s => { const p = near(s, ht); return <span key={s.id} className={out(p[1]) ? "bad" : ""}>{parsed.length > 1 ? `${s.label}: ` : ""}{fmtN(p[1], digits)}{unit ? ` ${unit}` : ""}</span>; })}
       </div> : null}
     </div>
@@ -142,7 +145,8 @@ export function ColumnChart({ points, title, unit }: { points: [string, number][
   const tableId = useId();
   if (!points.length) return <div className="chart-empty">No values yet.</div>;
   const max = Math.max(...points.map(p => p[1]), 0) || 1;
-  const label = (t: string) => { const d = new Date(t); return Number.isNaN(d.getTime()) ? t : d.toLocaleDateString([], { weekday: "short", day: "numeric" }); };
+  /* A date without a time ("2026-10-16") is that calendar day, not UTC midnight shown as the day before. */
+  const label = (t: string) => { const d = /^\d{4}-\d{2}-\d{2}$/.test(t) ? new Date(`${t}T12:00:00`) : new Date(t); return Number.isNaN(d.getTime()) ? t : d.toLocaleDateString([], { weekday: "short", day: "numeric" }); };
   return <figure className="cc3">
     <div className="cols" role="img" aria-label={`${title}: ${points.map(p => `${label(p[0])} ${fmtN(p[1])}`).join(", ")}`} aria-describedby={tableId}>
       {points.map((p, i) => <div key={p[0]} className={`col ${hover !== null && hover !== i ? "dim" : ""}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} title={`${label(p[0])}: ${fmtN(p[1])}${unit ? ` ${unit}` : ""}`}>

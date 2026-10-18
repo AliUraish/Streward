@@ -7,6 +7,10 @@ import { MCPClient } from '@mcp-use/client';
 import { Client, StreamableHTTPClientTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { createStewardServer, GUIDE_URI } from '../src/server.js';
 import { loadConfig, type PropertyId, type RuntimeConfig } from '../src/config.js';
+import { HARNESS_HEADER, HARNESS_HEADER_VALUE } from '../src/harness.js';
+
+/** The eval harness's header: with harnessTools on, only requests that carry it see list_scenarios and start_scenario. */
+const HARNESS = { [HARNESS_HEADER]: HARNESS_HEADER_VALUE };
 
 function data(result: CallToolResult): Record<string, unknown> {
   const text = result.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
@@ -18,7 +22,7 @@ async function closeHttp(server: Server) { server.closeAllConnections(); await n
 async function stubBackend() {
   const scene = JSON.parse(await readFile(new URL('../../shared/scene.json', import.meta.url), 'utf8')) as { components: unknown[] };
   const timestamp = '2026-10-17T12:00:00Z';
-  const names: Record<PropertyId, string> = { 'myer-plant': 'Myer Plant Room', 'bristol-pumps': 'Bristol Dock Pump House' };
+  const names: Record<PropertyId, string> = { 'myer-plant': 'Myer Plant Room', 'bristol-pumps': 'Bristol Dock Pump House', 'tomioka-mill': 'Tomioka Silk Mill' };
   // Pre-addendum field names (address, jurisdiction, phase): the lenient PropertySchema must accept both spellings.
   const property = (id: PropertyId) => ({ id, name: names[id], address: 'Local test property', jurisdiction: 'Local demonstration', phase: 'Inspection', readiness: 0, componentCount: scene.components.length, openIssues: 0, updatedAt: timestamp });
   const properties = (['myer-plant', 'bristol-pumps'] as const).map(property);
@@ -58,16 +62,26 @@ async function stubBackend() {
 }
 
 function config(backendUrl: string, patch: Partial<RuntimeConfig> = {}): RuntimeConfig {
-  return { backendUrl, port: 0, host: '127.0.0.1', allowedProperties: ['myer-plant', 'bristol-pumps'], actor: 'operator', requestTimeoutMs: 1000, remoteBackend: false, hosted: false, ...patch };
+  return { backendUrl, port: 0, host: '127.0.0.1', allowedProperties: ['myer-plant', 'bristol-pumps'], actor: 'operator', requestTimeoutMs: 1000, remoteBackend: false, hosted: false, harnessTools: true, ...patch };
 }
 
 test('configuration rejects external backends and invalid property scope', () => {
   assert.equal(loadConfig({}).backendUrl, 'http://127.0.0.1:8001');
   assert.deepEqual(loadConfig({ STEWARD_MCP_PROPERTY_IDS: 'myer-plant' }).allowedProperties, ['myer-plant']);
-  assert.deepEqual(loadConfig({}).allowedProperties, ['myer-plant', 'bristol-pumps']);
+  assert.deepEqual(loadConfig({}).allowedProperties, ['myer-plant', 'bristol-pumps', 'tomioka-mill']);
+  assert.deepEqual(loadConfig({ STEWARD_MCP_PROPERTY_IDS: 'tomioka-mill' }).allowedProperties, ['tomioka-mill']);
+  assert.deepEqual(loadConfig({ STEWARD_MCP_PROPERTY_IDS: 'myer-plant,bristol-pumps' }).allowedProperties, ['myer-plant', 'bristol-pumps'], 'an older two-site list stays valid');
   assert.equal(loadConfig({}).actor, 'operator');
-  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'warden:myer-plant' }).actor, 'warden:myer-plant');
-  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'counsel' }).actor, 'counsel');
+  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'myer-engineer' }).actor, 'myer-engineer');
+  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'bristol-compliance' }).actor, 'bristol-compliance');
+  for (const id of ['tomioka-manager', 'tomioka-engineer', 'tomioka-compliance', 'tomioka-technician']) assert.equal(loadConfig({ STEWARD_MCP_ACTOR: id }).actor, id);
+  assert.throws(() => loadConfig({ STEWARD_MCP_ACTOR: 'tomioka-director' }), /STEWARD_MCP_ACTOR/);
+  assert.throws(() => loadConfig({ STEWARD_MCP_ACTOR: 'warden:tomioka-mill' }), /STEWARD_MCP_ACTOR/, 'contract 3 had no Tomioka warden');
+  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'director' }).actor, 'director');
+  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'atlas' }).actor, 'director', 'contract-3 atlas maps to the director');
+  assert.equal(loadConfig({ STEWARD_MCP_ACTOR: 'warden:bristol-pumps' }).actor, 'bristol-engineer');
+  assert.throws(() => loadConfig({ STEWARD_MCP_ACTOR: 'counsel' }), /per site: .*tomioka-compliance/, 'counsel is split by site and must be named');
+  assert.throws(() => loadConfig({ STEWARD_MCP_ACTOR: 'myer-director' }), /STEWARD_MCP_ACTOR/);
   // An older deploy script still lists harbor-works: it is dropped with a warning, not fatal; alone it leaves nothing valid.
   assert.deepEqual(loadConfig({ STEWARD_MCP_PROPERTY_IDS: 'harbor-works,myer-plant,bristol-pumps' }).allowedProperties, ['myer-plant', 'bristol-pumps']);
   assert.throws(() => loadConfig({ STEWARD_MCP_PROPERTY_IDS: 'harbor-works' }), /subset/);
@@ -88,18 +102,19 @@ test('real mcp-use and official clients interoperate, preserve scope, reject bad
   const server = createStewardServer(config(upstream.url, { allowedProperties: ['myer-plant'] }));
   const listener = await server.listen(0, { host: '127.0.0.1' });
   const official = new Client({ name: 'steward-official-test', version: '0.1.0' }, { capabilities: {} });
-  const mcpUse = new MCPClient({ mcpServers: { steward: { url: listener.url, oauth: false, detectMixedAuth: false } } });
+  const mcpUse = new MCPClient({ mcpServers: { steward: { url: listener.url, headers: HARNESS, oauth: false, detectMixedAuth: false } } });
   try {
-    await official.connect(new StreamableHTTPClientTransport(new URL(listener.url)));
+    await official.connect(new StreamableHTTPClientTransport(new URL(listener.url), { requestInit: { headers: HARNESS } }));
     const connection = await mcpUse.connect('steward');
     const [officialTools, useTools] = await Promise.all([official.listTools(), connection.listTools()]);
-    assert.equal(officialTools.tools.length, 54);
+    assert.equal(officialTools.tools.length, 73, '70 tools plus Tool Forge: request_tool, list_forged_tools, call_forged_tool (the eval harness sees list_scenarios and start_scenario; everyone else 71)');
     assert.deepEqual(officialTools.tools.map(tool => tool.name).sort(), useTools.map(tool => tool.name).sort());
     for (const tool of officialTools.tools) {
       assert(tool.description && tool.description.length > 40);
       assert(tool.inputSchema && tool.outputSchema);
-      const mutating = ['run_inspection', 'patrol', 'resolve', 'attest', 'subscribe', 'escalate', 'start_mission', 'focus_view', 'inspect_valves', 'request_document', 'start_scenario', 'assign_issue', 'decide', 'reconfigure_agent'];
-      const leavesSystem = ['resolve', 'escalate', 'start_mission', 'request_document', 'start_scenario', 'decide'];
+      const mutating = ['run_inspection', 'patrol', 'resolve', 'attest', 'subscribe', 'escalate', 'start_mission', 'focus_view', 'inspect_valves', 'request_document', 'start_scenario', 'assign_issue', 'decide', 'reconfigure_agent',
+        'eye_move', 'eye_turn', 'eye_go_to', 'eye_orbit', 'eye_mark', 'request_fix', 'propose_maintenance_window', 'request_tool', 'call_forged_tool'];
+      const leavesSystem = ['resolve', 'escalate', 'start_mission', 'request_document', 'start_scenario', 'decide', 'request_fix'];
       assert.equal(tool.annotations?.openWorldHint, leavesSystem.includes(tool.name), tool.name);
       assert.equal(tool.annotations?.readOnlyHint, !mutating.includes(tool.name), tool.name);
     }

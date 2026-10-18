@@ -14,7 +14,7 @@ try {
   if (config.hosted) console.log(`Hosted mode: PORT=${process.env.PORT}, host ${config.host}, browser Origin validation off (gateway-fronted).`);
   if (!config.remoteBackend && config.host === '127.0.0.1') console.log('Local only. No tunnel, cloud deployment or model calls from this process. resolve with budget > 0 and escalate may dispatch a human through the backend.');
   let stopping = false;
-  const stop = async () => { if (stopping) return; stopping = true; await analytics.close(); await server.close(); process.exit(0); };
+  const stop = async () => { if (stopping) return; stopping = true; server.stewardHub.stop(); server.stewardForge.stop(); await analytics.close(); await server.close(); process.exit(0); };
   process.once('SIGINT', () => { void stop(); });
   process.once('SIGTERM', () => { void stop(); });
 } catch (error) {

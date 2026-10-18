@@ -1,12 +1,32 @@
-"""Regulations (contract 4 §5): real government sources cached locally with attribution, explained in our words.
+"""Regulations (contract 4 §5): real government sources cached locally with attribution, explained in our own words.
 
-The REGULATIONS stream downloads the official PDFs into `backend/data/regulations/` and writes
-`backend/seed/regulations/regulations.json`; this module only reads them (never writes there). A record is
-`{id, jurisdiction: ENG-UK | VIC-AU, instrument, provision, title, officialUrl, pdfPath, licence, retrievedAt, summary,
-appliesTo}`; `summary` is our wording, never a long quotation. Sites map to jurisdictions (`bristol-pumps` → England,
-`myer-plant` → Victoria). Obligations carry citation hints `{jurisdiction, instrument, provision, keywords}` that are
-resolved to regulation ids at read time, so they keep working whatever ids the source file uses; compliance issues
-cite their obligation's regulations, or a per-kind hint. This is a demo rule pack, not legal advice.
+The REGULATIONS stream owns `backend/seed/regulations/` (`regulations.json`, `obligations-suggested.json`, README) and
+the cached PDFs in `backend/data/regulations/`; this module only reads them. A record is `{id, jurisdiction:
+ENG-UK | VIC-AU | JP, instrument, provision, title, officialUrl, pdfPath (relative to backend/data), licence, retrievedAt,
+summary, appliesTo (scenario ids and issue kinds)}` plus `siteIds`, `sourceType`, `pdfUrl`, `version`, `licenceUrl`,
+`servePdf`, `pageHint` (1-based physical page, usable as `#page=N`) and `synthetic: false`.
+
+Serving rule: `GET /api/regulations/{id}/file` streams the cached PDF only when `servePdf` is true (the three UK
+Open Government Licence files), with the attribution "Contains public sector information licensed under the Open
+Government Licence v3.0."; when `servePdf` is false (Victorian legislation, the VBA practice note: personal use or
+no copying) it answers 302 to the record's `pdfUrl` and never streams the local copy.
+
+Obligations carry `regulationIds`; compliance issues cite their obligation's regulations, or the records whose
+`appliesTo` names the issue's kind (or scenario) at the issue's site. Ids that are not (yet) in the file are tolerated:
+the obligation view lists them as `unresolvedRegulationIds` with `regulationPending: true` (contract 5: the Japanese
+records for Tomioka arrive from the regulations stream). A served PDF carries its record's own attribution (`attribution`,
+the OGL line for the UK files, else the `Attribution: ...` sentence of the record's licence text, which is how the JP
+records end: the e-Gov 出典 line plus "Source: e-Gov Law Search (Digital Agency, Japan), PDL1.0."); header values are
+kept ASCII and the full text is also sent percent-encoded.
+
+Binding and comparison records: a record with `binding: false` (the regulations stream's US-CA records) is a
+comparison, never law for any of our sites; `comparisonFor` (mirrored in `siteIds`) names the sites it is compared
+with. A record without `binding` is binding. `GET /api/regulations?siteId=` lists binding records; `include=comparison`
+adds the comparison records. Issues and obligations cite only binding records in `regulationIds` (the reason something
+is a breach) and expose `comparisonRegulationIds` for the comparison records about the same problem (matching
+`appliesTo`, or a comparison record's `comparesTo` / `equivalentOf` / `comparableTo` ids).
+
+Demo rule pack, not legal advice.
 """
 from __future__ import annotations
 
@@ -16,79 +36,92 @@ from pathlib import Path
 
 from .env import env
 from .errors import RealityError
+from .sites import SITE_JURISDICTION
 
 BACKEND = Path(__file__).resolve().parents[1]
-ROOT = BACKEND.parent
 DEFAULT_FILE = BACKEND / "seed" / "regulations" / "regulations.json"
-SITE_JURISDICTION = {"myer-plant": "VIC-AU", "bristol-pumps": "ENG-UK"}
+SUGGESTED_FILE = BACKEND / "seed" / "regulations" / "obligations-suggested.json"
+PDF_ROOT = BACKEND / "data"
+OGL_ATTRIBUTION = "Contains public sector information licensed under the Open Government Licence v3.0."
 DISCLAIMER = "Demo rule pack: our own plain-language summaries with links to the official text. Not legal advice."
-OHS = "Occupational Health and Safety Regulations 2017"
-BLD = "Building Regulations 2018"
-PSSR = "Pressure Systems Safety Regulations 2000"
-WHSW = "Workplace (Health, Safety and Welfare) Regulations 1992"
-HSWA = "Health and Safety at Work etc. Act 1974"
-KIND_HINTS = {
-    "overpressure": {"VIC-AU": [dict(instrument=OHS, provision="Part 5.1", keywords=["pressure equipment", "plant"])],
-                     "ENG-UK": [dict(instrument=PSSR, provision="regulation 7", keywords=["safe operating limits"])]},
-    "sump_overflow": {"ENG-UK": [dict(instrument=WHSW, provision="regulation 12", keywords=["floors", "traffic routes"])],
-                      "VIC-AU": [dict(instrument=OHS, provision="Part 5.1", keywords=["plant"])]},
-    "walkway_closure": {"ENG-UK": [dict(instrument=WHSW, provision="regulation 12", keywords=["floors", "traffic routes"])]},
-    "certificate_expired": {"ENG-UK": [dict(instrument=PSSR, provision="regulation 9", keywords=["examination"])],
-                            "VIC-AU": [dict(instrument=OHS, provision="Part 5.1", keywords=["pressure equipment"])]},
-    "inspection_overdue": {"VIC-AU": [dict(instrument=BLD, provision="Part 15", keywords=["essential safety measures", "fire extinguishers"])],
-                           "ENG-UK": [dict(instrument=HSWA, provision="section 2", keywords=["general duties"])]},
-    "valve_not_fixed": {"VIC-AU": [dict(instrument=OHS, provision="Part 5.1", keywords=["plant", "maintenance"])],
-                        "ENG-UK": [dict(instrument=PSSR, provision="regulation 12", keywords=["maintenance"])]},
-    "valve_uncertain": {"VIC-AU": [dict(instrument=OHS, provision="Part 5.1", keywords=["plant"])],
-                        "ENG-UK": [dict(instrument=PSSR, provision="regulation 12", keywords=["maintenance"])]},
-}
+COMPARISON_NOTE = "Comparison only: not binding at this site and never the reason an issue is a breach."
+LINK_FIELDS = ("comparesTo", "equivalentOf", "comparableTo", "comparisonOf")
+_ATTRIBUTION_RE = re.compile(r"Attribution:\s*(.+?)(?:\s+The summaries\b.*)?$", re.S)
 
 
-def _norm(text: str) -> str:
-    return re.sub(r"[^a-z0-9 ]+", " ", (text or "").casefold()).strip()
-
-
-def _tokens(text: str) -> set[str]:
-    return {t for t in _norm(text).split() if len(t) > 2 or t.isdigit()}
-
-
-def _numbers(text: str) -> set[str]:
-    return set(re.findall(r"\d+(?:\.\d+)?", text or ""))
+def is_binding(record: dict) -> bool:
+    """A record is binding unless it says `binding: false` (comparison records such as the US-CA set)."""
+    return record.get("binding") is not False
 
 
 class RegulationService:
     def __init__(self, service):
         self.service = service
-        self._cache: tuple[float, list[dict]] | None = None
+        self._cache: dict[str, tuple[float, object]] = {}
 
     @property
     def path(self) -> Path:
         return Path(env("STEWARD_REGULATIONS_FILE", "") or DEFAULT_FILE)
 
-    def records(self) -> list[dict]:
-        path = self.path
+    @property
+    def suggested_path(self) -> Path:
+        return Path(env("STEWARD_REGULATIONS_SUGGESTED_FILE", "") or (self.path.parent / SUGGESTED_FILE.name))
+
+    def _read(self, path: Path):
         if not path.is_file():
-            return []
+            return None
         mtime = path.stat().st_mtime
-        if self._cache and self._cache[0] == mtime:
-            return self._cache[1]
+        cached = self._cache.get(str(path))
+        if cached and cached[0] == mtime:
+            return cached[1]
         try:
             payload = json.loads(path.read_text())
         except (ValueError, OSError):
-            return []
+            return None
+        self._cache[str(path)] = (mtime, payload)
+        return payload
+
+    def records(self) -> list[dict]:
+        payload = self._read(self.path)
         items = payload.get("records") if isinstance(payload, dict) else payload
-        records = [r for r in (items or []) if isinstance(r, dict) and r.get("id") and r.get("jurisdiction")]
-        self._cache = (mtime, records)
-        return records
+        return [r for r in (items or []) if isinstance(r, dict) and r.get("id") and r.get("jurisdiction")]
+
+    def by_id(self) -> dict[str, dict]:
+        return {r["id"]: r for r in self.records()}
+
+    def suggested(self) -> list[dict]:
+        payload = self._read(self.suggested_path)
+        items = payload.get("records") if isinstance(payload, dict) else payload
+        return [r for r in (items or []) if isinstance(r, dict)]
+
+    def suggestion_for(self, obligation_id: str) -> dict | None:
+        """The REGULATIONS stream's suggested obligation that covers one of our seed obligations (why, closing evidence)."""
+        return next((s for s in self.suggested() if obligation_id in (s.get("relatedSeedObligationIds") or [])), None)
+
+    @staticmethod
+    def sites_of(record: dict) -> set[str]:
+        """Sites where a record is binding law (empty for comparison records)."""
+        if not is_binding(record):
+            return set()
+        sites = set(record.get("siteIds") or [])
+        if not sites:
+            sites = {site for site, jurisdiction in SITE_JURISDICTION.items() if jurisdiction == record.get("jurisdiction")}
+        return sites
+
+    @staticmethod
+    def comparison_sites_of(record: dict) -> set[str]:
+        """Sites a comparison record is compared with (`comparisonFor`, mirrored in `siteIds`)."""
+        if is_binding(record):
+            return set()
+        return set(record.get("comparisonFor") or record.get("siteIds") or [])
 
     def pdf_file(self, record: dict) -> Path | None:
         raw = str(record.get("pdfPath") or "")
         if not raw:
             return None
         candidate = Path(raw)
-        options = [candidate] if candidate.is_absolute() else [ROOT / candidate, BACKEND / candidate, self.path.parent / candidate,
-                                                              BACKEND / "data" / "regulations" / candidate.name]
-        allowed = [(BACKEND / "data" / "regulations").resolve(), (BACKEND / "seed" / "regulations").resolve(), self.path.parent.resolve()]
+        options = [candidate] if candidate.is_absolute() else [PDF_ROOT / candidate, self.path.parent / candidate, PDF_ROOT / "regulations" / candidate.name]
+        allowed = [(PDF_ROOT / "regulations").resolve(), self.path.parent.resolve()]
         for option in options:
             try:
                 resolved = option.resolve()
@@ -98,100 +131,126 @@ class RegulationService:
                 return resolved
         return None
 
-    def view(self, record: dict) -> dict:
-        return dict(id=record["id"], jurisdiction=record["jurisdiction"], instrument=record.get("instrument"), provision=record.get("provision"),
-                    title=record.get("title"), officialUrl=record.get("officialUrl"), licence=record.get("licence"), retrievedAt=record.get("retrievedAt"),
-                    summary=record.get("summary"), appliesTo=record.get("appliesTo"), fileUrl=f"/api/regulations/{record['id']}/file",
-                    cached=self.pdf_file(record) is not None, disclaimer=DISCLAIMER)
-
-    def list(self, site_id: str | None = None) -> list[dict]:
-        records = self.records()
-        if site_id:
-            self.service.require_property(site_id)
-            jurisdiction = SITE_JURISDICTION.get(site_id)
-            records = [r for r in records if r["jurisdiction"] == jurisdiction or site_id in self._applies_sites(r)]
-        return [self.view(r) for r in records]
+    def file_target(self, record: dict) -> tuple[str, Path | str]:
+        """('stream', path) when servePdf is true and the cached PDF exists; ('redirect', pdfUrl) otherwise."""
+        if record.get("servePdf") is True:
+            path = self.pdf_file(record)
+            if path:
+                return "stream", path
+        url = record.get("pdfUrl") or record.get("officialUrl")
+        if url:
+            return "redirect", url
+        raise RealityError("No PDF for this regulation.", "NOT_FOUND", "Open the official source page instead.", 404)
 
     @staticmethod
-    def _applies_sites(record: dict) -> set[str]:
-        applies = record.get("appliesTo")
-        if isinstance(applies, dict):
-            return set(applies.get("siteIds") or applies.get("sites") or [])
-        if isinstance(applies, list):
-            return {a for a in applies if isinstance(a, str) and a in SITE_JURISDICTION}
-        return set()
+    def attribution(record: dict) -> str:
+        """The attribution to show with a served copy: the record's own `attribution`; the OGL line for the UK files;
+        else the `Attribution: ...` sentence the record's licence text ends with (the JP records' e-Gov 出典 line and
+        PDL1.0 source line); else a generic source line."""
+        own = str(record.get("attribution") or "").strip()
+        if own:
+            return own
+        licence = str(record.get("licence") or "")
+        if record.get("jurisdiction") == "ENG-UK" or ("Open Government Licence" in licence and "Attribution:" not in licence):
+            return OGL_ATTRIBUTION
+        match = _ATTRIBUTION_RE.search(licence)
+        if match:
+            return " ".join(match.group(1).split())[:600]
+        return f"Source: {record.get('instrument') or record.get('id')}; {licence.strip()[:300] or 'see the official site for terms'}"
+
+    @staticmethod
+    def attribution_ascii(text: str) -> str:
+        """An HTTP-header-safe attribution: the English `Source: ...` sentence when there is one, else the ASCII part."""
+        if "Source:" in text:
+            text = text[text.index("Source:"):]
+        return " ".join(text.encode("ascii", "ignore").decode().split())[:500] or "See the official source for terms."
+
+    def view(self, record: dict) -> dict:
+        page = record.get("pageHint")
+        serve = record.get("servePdf") is True
+        file_url = f"/api/regulations/{record['id']}/file"
+        read_url = (file_url if serve else (record.get("pdfUrl") or record.get("officialUrl"))) or None
+        return dict(id=record["id"], jurisdiction=record["jurisdiction"], siteIds=sorted(self.sites_of(record)), sourceType=record.get("sourceType", "legislation"),
+                    instrument=record.get("instrument"), provision=record.get("provision"), title=record.get("title"), officialUrl=record.get("officialUrl"),
+                    pdfUrl=record.get("pdfUrl"), pageHint=page, readUrl=f"{read_url}#page={page}" if read_url and page else read_url,
+                    licence=record.get("licence"), licenceUrl=record.get("licenceUrl"), version=record.get("version"), retrievedAt=record.get("retrievedAt"),
+                    summary=record.get("summary"), appliesTo=record.get("appliesTo"), servePdf=serve, fileUrl=file_url,
+                    attribution=self.attribution(record) if serve else "Official copy at the source; the licence does not allow redistribution.",
+                    cached=self.pdf_file(record) is not None, synthetic=bool(record.get("synthetic", False)), disclaimer=DISCLAIMER,
+                    binding=is_binding(record), comparisonFor=sorted(self.comparison_sites_of(record)) or None,
+                    **({} if is_binding(record) else dict(comparisonNote=COMPARISON_NOTE)))
+
+    def list(self, site_id: str | None = None, include: str | None = None) -> list[dict]:
+        """Binding records (for one site when `site_id` is given); `include="comparison"` adds the comparison records."""
+        records = self.records()
+        with_comparison = "comparison" in {part.strip() for part in (include or "").split(",")}
+        if site_id:
+            self.service.require_property(site_id)
+            records = [r for r in records if site_id in self.sites_of(r) or (with_comparison and site_id in self.comparison_sites_of(r))]
+        else:
+            records = [r for r in records if is_binding(r) or with_comparison]
+        return [self.view(r) for r in records]
 
     def get(self, regulation_id: str) -> dict:
-        record = next((r for r in self.records() if r["id"] == regulation_id), None)
+        record = self.by_id().get(regulation_id)
         if not record:
             raise RealityError("Regulation not found.", "NOT_FOUND", "List regulations with GET /api/regulations?siteId=.", 404)
         return record
 
-    def attribution(self, record: dict) -> str:
-        text = f"Source: {record.get('instrument') or record.get('title')} ({record.get('officialUrl') or 'official source'}). " \
-               f"Licence: {record.get('licence') or 'see source'}. Retrieved {record.get('retrievedAt') or 'unknown'}."
-        return text.encode("latin-1", "replace").decode("latin-1")[:900]
-
     # ---- citations -------------------------------------------------------------------------------------
 
-    def resolve(self, hint: dict, jurisdiction: str | None = None) -> list[str]:
-        """Best-matching regulation ids for one citation hint (instrument + provision + keywords)."""
-        jurisdiction = hint.get("jurisdiction") or jurisdiction
-        candidates = [r for r in self.records() if not jurisdiction or r["jurisdiction"] == jurisdiction]
-        instrument = _tokens(hint.get("instrument", "")) - {"the", "and", "etc"}
-        numbers = _numbers(hint.get("provision", ""))
-        keywords = [k.casefold() for k in hint.get("keywords", [])]
-        scored = []
-        for record in candidates:
-            haystack_instrument = _tokens(f"{record.get('instrument', '')} {record.get('title', '')}")
-            if instrument and len(instrument & haystack_instrument) < max(2, len(instrument) // 2):
-                continue
-            score = 3
-            provision_numbers = _numbers(record.get("provision", ""))
-            if numbers and numbers & provision_numbers:
-                score += 4
-            text = _norm(" ".join(str(record.get(k, "")) for k in ("title", "provision", "summary")))
-            score += sum(1 for k in keywords if _norm(k) in text)
-            scored.append((score, record["id"]))
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        if not scored:
-            return []
-        best = scored[0][0]
-        return [rid for score, rid in scored if score == best][:2]
-
-    def resolve_many(self, hints: list[dict] | None, jurisdiction: str | None = None) -> list[str]:
-        ids: list[str] = []
-        for hint in hints or []:
-            for rid in self.resolve(hint, jurisdiction):
-                if rid not in ids:
-                    ids.append(rid)
-        return ids
-
     def for_obligation(self, obligation: dict) -> list[str]:
-        return self.resolve_many(obligation.get("cites"), SITE_JURISDICTION.get(obligation.get("siteId")))
+        """The obligation's cited ids that exist and are binding (a comparison id is never a reason)."""
+        known = self.by_id()
+        return [rid for rid in (obligation.get("regulationIds") or []) if rid in known and is_binding(known[rid])]
 
     def for_issue(self, issue: dict) -> list[str]:
         site = issue.get("siteId")
-        jurisdiction = SITE_JURISDICTION.get(site)
-        ids: list[str] = []
         if issue.get("obligationId"):
             obligation = self.service.store.get("obligation", issue["obligationId"], site)
-            if obligation:
-                ids = self.for_obligation(obligation)
-        if not ids:
-            hints = (KIND_HINTS.get(issue.get("kind") or "", {}) or {}).get(jurisdiction, [])
-            ids = self.resolve_many([dict(h, jurisdiction=jurisdiction) for h in hints], jurisdiction)
-        return ids
+            ids = self.for_obligation(obligation) if obligation else []
+            if ids:
+                return ids
+        keys = {issue.get("kind"), issue.get("scenarioId")} - {None}
+        return [r["id"] for r in self.records() if site in self.sites_of(r) and keys & set(r.get("appliesTo") or [])]
+
+    def comparisons(self, site: str | None, keys: set, binding_ids: list[str]) -> list[str]:
+        """Comparison records about the same problem at `site`: their `appliesTo` names the issue kind or scenario, or
+        they link to one of the binding ids. Shown beside the reason, never as it."""
+        cited = set(binding_ids)
+        out = []
+        for record in self.records():
+            if is_binding(record) or (site and site not in self.comparison_sites_of(record)):
+                continue
+            linked = {str(v) for field in LINK_FIELDS for v in (record.get(field) or [])}
+            if keys & set(record.get("appliesTo") or []) or linked & cited:
+                out.append(record["id"])
+        return out
+
+    def comparison_for_issue(self, issue: dict, binding_ids: list[str] | None = None) -> list[str]:
+        keys = {issue.get("kind"), issue.get("scenarioId")} - {None}
+        return self.comparisons(issue.get("siteId"), keys, binding_ids if binding_ids is not None else self.for_issue(issue))
+
+    def comparison_for_obligation(self, obligation: dict) -> list[str]:
+        known = self.by_id()
+        listed = [rid for rid in (obligation.get("regulationIds") or []) if rid in known and not is_binding(known[rid])]
+        suggestion = self.suggestion_for(obligation["id"]) or {}
+        keys = set(suggestion.get("issueKinds") or []) | ({suggestion["scenarioId"]} if suggestion.get("scenarioId") else set()) | (
+            {obligation["scenarioId"]} if obligation.get("scenarioId") else set())
+        found = self.comparisons(obligation.get("siteId"), keys, self.for_obligation(obligation))
+        return list(dict.fromkeys(listed + found))
 
     def why(self, regulation_ids: list[str]) -> list[dict]:
-        records = {r["id"]: r for r in self.records()}
+        """Why an issue is a problem: binding records only (a comparison id passed in is skipped)."""
+        known = self.by_id()
         out = []
         for rid in regulation_ids:
-            record = records.get(rid)
-            if record:
-                out.append(dict(regulationId=rid, instrument=record.get("instrument"), provision=record.get("provision"), title=record.get("title"),
-                                summary=record.get("summary"), officialUrl=record.get("officialUrl"), fileUrl=f"/api/regulations/{rid}/file",
-                                licence=record.get("licence")))
+            record = known.get(rid)
+            if record and is_binding(record):
+                view = self.view(record)
+                out.append(dict(regulationId=rid, instrument=view["instrument"], provision=view["provision"], title=view["title"], summary=view["summary"],
+                                officialUrl=view["officialUrl"], readUrl=view["readUrl"], fileUrl=view["fileUrl"], servePdf=view["servePdf"],
+                                licence=view["licence"], pageHint=view["pageHint"]))
         return out
 
     def reason_text(self, regulation_ids: list[str], fallback: str) -> str:
@@ -199,5 +258,4 @@ class RegulationService:
         if not why:
             return fallback
         first = why[0]
-        summary = (first.get("summary") or "").strip()
-        return f"{first.get('instrument')}, {first.get('provision')}: {summary[:260]}".strip()
+        return f"{first.get('instrument')}, {first.get('provision')}: {(first.get('summary') or '').strip()[:260]}".strip()

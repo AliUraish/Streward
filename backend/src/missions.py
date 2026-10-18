@@ -31,7 +31,7 @@ warden_id = engineer_id
 from .env import env
 from .errors import RealityError
 from .sites import SITE_BY_ID, SITE_IDS
-from .specs import SPECS, spec_for
+from .specs import SPECS, spec_for, spec_kind, specs_of
 from .store import now, uid
 
 RESTART_SET: dict[str, list[str]] = {"pump": ["commissioning_certificate", "pressure_bar"], "valve": ["position"], "panel": ["status"],
@@ -256,7 +256,7 @@ class MissionEngine:
                 continue
             record = self.reality.check_attestation(item["attestationId"])
             component = self.store.get("component", item["componentId"], site)
-            spec = spec_for(component["kind"], item["attribute"])
+            spec = spec_for(spec_kind(component), item["attribute"])
             valid = bool(record["valid"]) and record["verdict"] == "accepted" and in_spec(spec, record["value"])
             if item.get("ownerDecision"):
                 valid = valid or str(item["ownerDecision"]).casefold() == "proceed"
@@ -302,8 +302,12 @@ class MissionEngine:
         site = mission["siteId"]
         item, record, spec = out_of_range[0]
         unit = f" {record.get('unit')}" if record.get("unit") else ""
+        asked = self.store.get("component", item["componentId"], site) or {}
         for other in SITE_IDS:
             if other == site:
+                continue
+            # Only a site that registers the same kind of asset can compare a reading (the mill has no pumps or valves).
+            if asked.get("kind") and not any(c["kind"] == asked["kind"] for c in self.reality.components(other)):
                 continue
             text = self.phrase(ATLAS, f"Cross-site check: verify your {item['assetTag']} {item['attribute'].replace('_', ' ')} reading or serial; "
                                       f"{SITE_BY_ID[site]['name']} reads {record['value']}{unit} against spec {spec.get('min')}–{spec.get('max')}.")

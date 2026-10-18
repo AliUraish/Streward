@@ -4,9 +4,10 @@ import dynamic from 'next/dynamic';
 import type { SplatViewerProps } from './types';
 import styles from './viewer.module.css';
 
-export type { PinSeverity, SplatFocus, SplatPin, SplatSiteId, SplatViewerProps, Vec3Tuple } from './types';
-export { SPLAT_SITES, getSplatSite, type SplatSite } from './sites';
-export type { SplatEyeConfig, EyeAction, EyeFramePost } from './eye';
+export type { PinSeverity, SplatCameraPose, SplatFocus, SplatPin, SplatSafeArea, SplatSiteId, SplatViewerProps, Vec3Tuple } from './types';
+export { SPLAT_SITES, SPLAT_SITE_IDS, getSplatSite, isSplatSiteId, type SplatSite, type SplatLodSettings } from './sites';
+export type { SplatEyeConfig, SplatEyeFrameMeta, EyeAction, EyeFramePost, EyeMark, EyeViewPose } from './eye';
+export type { LodStats } from './engine';
 
 const SplatViewerImpl = dynamic(() => import('./viewer'), {
   ssr: false,

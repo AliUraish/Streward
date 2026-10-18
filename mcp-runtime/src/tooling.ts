@@ -39,7 +39,11 @@ export class WithContent<T> {
 /** Approximate vision tokens for one 640×400 frame (width × height / 750). */
 export const IMAGE_TOKENS = 341;
 
-export interface ToolExtras { title?: string; view?: { name: string; description?: string; csp?: Record<string, string[]>; prefersBorder?: boolean } }
+export interface ToolExtras {
+  title?: string; view?: { name: string; description?: string; csp?: Record<string, string[]>; prefersBorder?: boolean };
+  /** Name and site recorded in telemetry for this call when they differ from the tool's (call_forged_tool records the forged tool it ran). */
+  describeCall?: (input: Record<string, unknown>) => { name?: string; siteId?: string };
+}
 
 export type ToolFn = <I extends z.ZodType<Record<string, unknown>>, O extends z.ZodType<Record<string, unknown>>>(
   name: string, description: string, inputSchema: I, outputSchema: O,

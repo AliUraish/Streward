@@ -1,9 +1,10 @@
 """Maintenance windows (contract 4 §7): `{id, siteIds, date, scope, examiner, status: proposed | approved | done,
 conversationId, assetTags?, obligationId?, proposedBy?, approvedBy?, synthetic}`.
 
-Managers schedule maintenance for their own site; a window that spans both factories needs the Operations
+Managers schedule maintenance for their own site; a window that spans more than one site needs the Operations
 Director's approval (`approve_cross_site_maintenance`). Seeded windows come from the synthetic `maintenance`
-family (relative dates); the `x-maintenance` scenario creates the shared examiner window.
+family (relative dates); the `x-maintenance` scenario creates the shared examiner window (Myer and Bristol) and
+`x-heritage` the shared heritage-safe sensor installation window (Tomioka and Bristol).
 """
 from __future__ import annotations
 
@@ -24,7 +25,8 @@ class MaintenanceService:
         self.load()
 
     def load(self) -> None:
-        if self.store.meta("steward_maintenance_version") == "1":
+        # Version 2 (contract 5): re-run once, insert-if-missing, for the Tomioka windows.
+        if self.store.meta("steward_maintenance_version") == "2":
             return
         today = datetime.now(timezone.utc).date()
         for record in load_family("maintenance"):
@@ -37,7 +39,7 @@ class MaintenanceService:
                            examiner=record.get("examiner"), status=record.get("status", "proposed"), conversationId=None,
                            assetTags=record.get("assetTags", []), obligationId=record.get("obligationId"), proposedBy=None, approvedBy=None,
                            synthetic=True, generator=record["generator"], createdAt=now(), updatedAt=now()))
-        self.store.meta("steward_maintenance_version", "1")
+        self.store.meta("steward_maintenance_version", "2")
 
     def _put(self, window: dict) -> dict:
         window["updatedAt"] = now()
@@ -81,7 +83,7 @@ class MaintenanceService:
                 asset_tags: list[str] | None = None, obligation_id: str | None = None, scenario_id: str | None = None, synthetic: bool = True) -> dict:
         sites = list(dict.fromkeys(site_ids))
         if not sites:
-            raise RealityError("siteIds is required.", "INVALID_REQUEST", "Name one or both sites.")
+            raise RealityError("siteIds is required.", "INVALID_REQUEST", "Name one or more sites.")
         for site in sites:
             self.service.require_property(site)
         actor = self._authorize_schedule(actor, sites)
@@ -93,7 +95,7 @@ class MaintenanceService:
                       conversationId=conversation_id, assetTags=list(asset_tags or []), obligationId=obligation_id, proposedBy=actor, approvedBy=None,
                       scenarioId=scenario_id, synthetic=bool(synthetic), createdAt=now(), updatedAt=now())
         self._put(window)
-        self._change(window, f"{display_name(actor)} proposed maintenance on {window['date']}" + (" across both factories" if len(sites) > 1 else "") + f": {scope[:200]}")
+        self._change(window, f"{display_name(actor)} proposed maintenance on {window['date']}" + (f" across {len(sites)} sites" if len(sites) > 1 else "") + f": {scope[:200]}")
         return window
 
     def approve(self, window_id: str, actor: str, conversation_id: str | None = None) -> dict:

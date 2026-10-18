@@ -3,18 +3,20 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from .agents import ATLAS, OPERATOR, agent_infos, authorize, is_known, parse_actor
+from .agents import DIRECTOR, OPERATOR, agent_infos, authorize, is_known, parse_actor, team_id
 from .integrations import integration_status
 from .env import env, sanitize_environment
 from .errors import RealityError
@@ -24,6 +26,7 @@ from .service import PropertyService, public
 from .sites import DEMO_SITE, SITE_IDS, site_env_suffix
 from .store import now, uid
 from .transcripts import compact_args, transcript
+from .supa_routes import decorate_feed, install as install_supabase, signed_frame_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_ROOT / ".env")
@@ -129,6 +132,9 @@ class PinRequest(BaseModel):
     y: float | None = Field(default=None, allow_inf_nan=False)
     z: float | None = Field(default=None, allow_inf_nan=False)
     source: str = Field(default="placed", max_length=16)
+    # The camera pose that frames this asset ({position, target, fov?}); go_to and orbit start from it so every run
+    # renders the same view. Sent alone (no x/y/z) it updates only the pose; null clears it.
+    viewPose: dict | None = None
 
 
 class ViewerRequest(BaseModel):
@@ -164,6 +170,93 @@ class AssignRequest(BaseModel):
     crewMemberId: str = Field(min_length=1, max_length=80)
 
 
+class SummaryRequest(BaseModel):
+    summary: dict
+    summaryBy: str = Field(default="claude-opus-5-5", max_length=40)
+
+
+class RendererRequest(BaseModel):
+    rendererId: str = Field(min_length=1, max_length=80)
+    kind: str | None = Field(default=None, max_length=16)
+
+
+class FrameRequest(BaseModel):
+    commandId: str = Field(min_length=1, max_length=80)
+    jpegBase64: str = Field(min_length=8, max_length=6_000_000)
+    camera: dict | None = None
+    visiblePins: list | None = Field(default=None, max_length=200)
+    rendererId: str | None = Field(default=None, max_length=80)
+    index: int | None = Field(default=None, ge=0, le=64)
+    annotation: dict | None = None
+    # The renderer posts a mark's picked point as `mark: {x, y, world, hit, note}`; newer renderers also send it as
+    # `annotation`. Both are accepted (annotation wins when both are present).
+    mark: dict | None = None
+
+
+class AutoplayRequest(BaseModel):
+    enabled: bool
+
+
+class ActRequest(BaseModel):
+    action: str = Field(max_length=16)
+    params: dict | None = None
+
+
+class WalkthroughRequest(BaseModel):
+    """Contract 7 §1: POST /api/patrols."""
+    siteId: str = Field(min_length=3, max_length=31)
+    agentId: str | None = Field(default=None, max_length=40)
+    route: list[str] | None = Field(default=None, max_length=24)
+    paceSeconds: float | None = Field(default=None, ge=0, le=120, allow_inf_nan=False)
+
+
+class ToolRequestBody(BaseModel):
+    siteId: str = Field(min_length=3, max_length=31)
+    task: str = Field(default="", max_length=600)
+    agentId: str | None = Field(default=None, max_length=40)
+    requestedBy: str | None = Field(default=None, max_length=40)
+    draft: dict | None = None
+    generator: str | None = Field(default=None, max_length=40)
+    draftKey: str | None = Field(default=None, max_length=80)
+    requestId: str | None = Field(default=None, max_length=80)
+
+
+class ToolApproveBody(BaseModel):
+    approve: bool = True
+    reason: str = Field(default="", max_length=500)
+
+
+class ToolCallBody(BaseModel):
+    args: dict = Field(default_factory=dict)
+
+
+class ToolTestBody(BaseModel):
+    input: dict | None = None
+
+
+class ToolRetireBody(BaseModel):
+    reason: str = Field(default="", max_length=300)
+
+
+class MaintenanceRequest(BaseModel):
+    siteIds: list[str] = Field(min_length=1, max_length=3)
+    date: str = Field(min_length=10, max_length=10)
+    scope: str = Field(min_length=3, max_length=500)
+    examiner: str | None = Field(default=None, max_length=200)
+    assetTags: list[str] | None = Field(default=None, max_length=24)
+    obligationId: str | None = Field(default=None, max_length=80)
+
+
+class DecisionRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    options: list[str] = Field(default_factory=list, max_length=6)
+    actor: str | None = Field(default=None, max_length=40)
+
+
+class DecisionAnswer(BaseModel):
+    answer: str = Field(min_length=1, max_length=120)
+
+
 class TelemetryRequest(BaseModel):
     agentId: str = Field(min_length=3, max_length=40)
     tool: str = Field(min_length=1, max_length=80)
@@ -172,7 +265,7 @@ class TelemetryRequest(BaseModel):
     ok: bool = True
     siteId: str | None = Field(default=None, max_length=31)
     missionId: str | None = Field(default=None, max_length=80)
-    detail: str | None = Field(default=None, max_length=200)
+    detail: dict | str | None = None
 
 
 class AttestFields(BaseModel):
@@ -276,6 +369,24 @@ TOOLS = [
 ]
 
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+AUTH_EXEMPT_PATHS = ("/health", "/docs", "/openapi.json", "/api/integrations/stripe/webhook", "/api/inbound/inkbox")
+
+
+def arrived_from_outside(request: Request) -> bool:
+    """True when a proxy forwarded this request from a non-loopback host: the public Inkbox tunnel always sets
+    `x-forwarded-host` to its public name and drops client-supplied forwarded headers, while the local Next.js proxy sets
+    it to 127.0.0.1:3000. Direct local calls (the local MCP, scripts, tests) carry no forwarded host."""
+    raw = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+    if not raw:
+        return False
+    try:
+        host = (urlsplit("//" + raw).hostname or "").lower()
+    except ValueError:
+        return True
+    return not (host in LOOPBACK_HOSTS or host.endswith(".localhost"))
+
+
 def create_app(data_directory: Path | None = None, start_workers=True):
     @asynccontextmanager
     async def lifespan(app):
@@ -284,15 +395,17 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         yield
         app.state.service.close()
 
-    app = FastAPI(title="Steward local property workspace", version="0.1.0", lifespan=lifespan,
-                  description="Local property evidence workflows and agent-facing tools. Original synthetic demonstration data; no statutory certification.")
+    app = FastAPI(title="Steward API", version="0.1.0", lifespan=lifespan,
+                  description="Steward: the agent teams that run the sites, their evidence workflows and the tools agents use.")
     allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8001", "http://127.0.0.1:8001"]
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST", "PUT", "OPTIONS"],
                        allow_headers=["Content-Type", "Authorization", "MCP-Protocol-Version", "X-Steward-Actor", "X-Steward-Tool"])
 
     @app.middleware("http")
     async def tool_telemetry(request: Request, call_next):
-        """MCP calls that name their tool in X-Steward-Tool are appended to local telemetry with an estimated token count."""
+        """MCP calls that name their tool in X-Steward-Tool are appended to local telemetry with an estimated token count
+        and the call's latency."""
+        started = time.monotonic()
         response = await call_next(request)
         tool = (request.headers.get("x-steward-tool") or "").strip()[:80]
         if tool and request.url.path.startswith("/api/"):
@@ -301,7 +414,7 @@ def create_app(data_directory: Path | None = None, start_workers=True):
                 try:
                     size = int(response.headers.get("content-length") or 0)
                     request.app.state.service.telemetry.record(actor, "mcp", tool, tokens=size // 4 + 30, ok=response.status_code < 400,
-                                                               detail=f"{request.method} {request.url.path}"[:200])
+                                                               ms=int((time.monotonic() - started) * 1000), detail=f"{request.method} {request.url.path}"[:200])
                 except Exception:
                     pass
         return response
@@ -312,9 +425,19 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         if request.method not in ("GET", "HEAD", "OPTIONS") and origin and origin not in allowed_origins:
             return JSONResponse({"detail": "This local service accepts writes only from the local application."}, status_code=403)
         token = env("STEWARD_API_TOKEN")
-        if token and request.url.path not in ("/health", "/docs", "/openapi.json", "/api/integrations/stripe/webhook", "/api/inbound/inkbox"):
+        exempt = request.url.path in AUTH_EXEMPT_PATHS
+        if token and not exempt:
             if request.headers.get("authorization") != f"Bearer {token}":
                 return JSONResponse({"detail": "A local API token is required."}, status_code=401)
+        elif not exempt and arrived_from_outside(request) and env("STEWARD_ALLOW_REMOTE_UNAUTHENTICATED", "false").strip().lower() != "true":
+            # The public tunnel exposes this backend, and X-Steward-Actor picks the acting agent, so a caller from outside
+            # must prove it is the hosted MCP: the same STEWARD_BACKEND_TOKEN it sends as a bearer token.
+            expected = env("STEWARD_BACKEND_TOKEN") or ""
+            supplied = request.headers.get("authorization") or ""
+            if not expected or not hmac.compare_digest(supplied.encode(), f"Bearer {expected}".encode()):
+                return JSONResponse({"detail": "Requests through the public tunnel need the backend token.", "code": "AUTH_REQUIRED",
+                                     "recovery": "Send Authorization: Bearer <STEWARD_BACKEND_TOKEN> (the hosted MCP does this when the token is deployed)."},
+                                    status_code=401)
         return await call_next(request)
 
     @app.exception_handler(RealityError)
@@ -513,7 +636,7 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         except Exception:
             raise HTTPException(502, "Inkbox identity creation failed. No local identity is marked connected; check account quotas and handle availability.")
         svc.store.event(property_id, f"agent-{property_id}", "identity.created", "Inkbox identity created", f"Handle: {result['handle']}. No phone number requested.")
-        return {**result, "detail": f"Save the handle as INKBOX_IDENTITY_WARDEN_{site_env_suffix(property_id)} in backend/.env, then restart."}
+        return {**result, "detail": "Save the handle as INKBOX_IDENTITY_<SUFFIX> for the agent it belongs to in the root .env, then restart."}
 
     @app.get("/api/properties/{property_id}/inbox")
     async def inbox(property_id: str, request: Request):
@@ -643,7 +766,8 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         actor = authorize(request.headers.get("x-steward-actor"), action, site)
         if actor == OPERATOR and endpoint:
             svc = service(request)
-            svc.store.put("operator_call", dict(id=uid("opc"), endpoint=endpoint, args=compact_args(args or {}), siteId=site, at=now(),
+            compact = compact_args(args or {})
+            svc.store.put("operator_call", dict(id=uid("opc"), endpoint=endpoint, args=compact, siteId=site, at=now(),
                                                 workItemId=(args or {}).get("workItemId"), missionId=(args or {}).get("missionId")), "")
         return actor
 
@@ -785,6 +909,10 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     def eval_findings(request: Request, since: str = ""):
         return public(service(request).ops.findings(since or None))
 
+    @app.get("/api/evals/metrics")
+    def eval_metrics(request: Request):
+        return public(service(request).metrics.eval_metrics())
+
     @app.get("/api/evals/{run_id}")
     def get_eval(run_id: str, request: Request):
         return public(service(request).evals.run_record(run_id))
@@ -799,12 +927,13 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     def place_pin(property_id: str, asset_tag: str, body: PinRequest, request: Request):
         service(request).require_property(property_id)
         actor = actor_for(request, "place_pin", property_id, dict(assetTag=asset_tag, **body.model_dump()), "place_pin")
-        return public(service(request).viewer.set_pin(property_id, asset_tag, body.x, body.y, body.z, body.source, actor))
+        return public(service(request).viewer.set_pin(property_id, asset_tag, body.x, body.y, body.z, body.source, actor, view_pose=body.viewPose,
+                                                      view_pose_given="viewPose" in body.model_fields_set))
 
     @app.post("/api/properties/{property_id}/viewer", status_code=201)
     def viewer_command(property_id: str, body: ViewerRequest, request: Request):
         service(request).require_property(property_id)
-        actor = actor_for(request, "viewer", None, dict(siteId=property_id, **body.model_dump(exclude_none=True)), "focus_view")
+        actor = actor_for(request, "viewer", property_id, dict(siteId=property_id, **body.model_dump(exclude_none=True)), "focus_view")
         return public(service(request).viewer.post(property_id, body.action, body.assetTag, body.issueId, actor))
 
     @app.get("/api/properties/{property_id}/viewer")
@@ -835,7 +964,11 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     @app.post("/api/properties/{property_id}/obligations/{obligation_id}/request-document", status_code=201)
     def request_document(property_id: str, obligation_id: str, request: Request):
         service(request).require_property(property_id)
-        actor = parse_actor(request.headers.get("x-steward-actor") or "counsel")
+        # Header absent: the Owner's agent is asking the site's Compliance Officer to request it (contract 4: compliance owns documents).
+        header = request.headers.get("x-steward-actor")
+        actor = parse_actor(header) if header else team_id(property_id, "compliance")
+        if actor == OPERATOR:
+            actor = team_id(property_id, "compliance")
         return public(service(request).people.request_document(property_id, obligation_id, actor))
 
     @app.get("/api/properties/{property_id}/notices")
@@ -861,12 +994,77 @@ def create_app(data_directory: Path | None = None, start_workers=True):
 
     @app.get("/api/issues/{issue_id}")
     def issue(issue_id: str, request: Request):
-        return public(service(request).issues.get(issue_id))
+        """The issue page: what is wrong, why (regulation, provision, our summary, official PDF), who is responsible, fix status."""
+        svc = service(request)
+        record = svc.issues.get(issue_id)
+        regulation_ids = svc.regulations.for_issue(record)
+        comparison_ids = svc.regulations.comparison_for_issue(record, regulation_ids)
+        responsible = svc.people.who_is_responsible(record["siteId"], record["kind"]) if record.get("siteId") else None
+        workflows = svc.fixes.list(record.get("siteId"), record["id"]) if record.get("siteId") else []
+        return public(dict(record, regulationIds=regulation_ids, why=svc.regulations.why(regulation_ids), responsible=responsible,
+                           comparisonRegulationIds=comparison_ids,
+                           comparison=[dict(svc.regulations.view(svc.regulations.get(rid)), note="comparison only, not binding here")
+                                       for rid in comparison_ids],
+                           fix=dict(available=record.get("status", "open") == "open", latest=workflows[0] if workflows else None),
+                           disclaimer="Demo rule pack: our summaries, links to the official text; not legal advice."))
+
+    @app.post("/api/issues/{issue_id}/fix", status_code=202)
+    async def fix_issue(issue_id: str, request: Request):
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        speed = (payload or {}).get("speed") if isinstance(payload, dict) else None
+        if speed is not None and (not isinstance(speed, (int, float)) or isinstance(speed, bool)):
+            raise RealityError("speed must be a number.", "INVALID_REQUEST", "0 plays every step at once; 1 is the demo default.")
+        actor = actor_for(request, "start_fix", None, dict(issueId=issue_id, speed=speed), "fix_issue")
+        return public(await run_in_threadpool(service(request).fixes.start, issue_id, actor, speed))
+
+    @app.post("/api/issues/{issue_id}/decide", status_code=201)
+    @app.post("/api/issues/{issue_id}/decision-request", status_code=201)
+    def decide(issue_id: str, body: DecisionRequest, request: Request):
+        """The MCP `decide` fallback for clients without elicitation: the question goes to the site's Plant Manager (A2A
+        conversation + notification) and, in live mode only, to the owner by SMS through the dispatch line."""
+        svc = service(request)
+        issue = svc.issues.get(issue_id)
+        actor = parse_actor(body.actor or request.headers.get("x-steward-actor"))
+        if actor == OPERATOR:
+            svc.store.put("operator_call", dict(id=uid("opc"), endpoint="decide", args=compact_args(dict(issueId=issue_id, question=body.question)),
+                                                siteId=issue.get("siteId"), at=now()), "")
+        return public(svc.people.decide(issue, body.question, body.options, actor))
+
+    @app.post("/api/decision-requests/{request_id}/answer")
+    def answer_decision(request_id: str, body: DecisionAnswer, request: Request):
+        """Answered by the Owner's agent, the owner, or the site's Plant Manager the question was routed to."""
+        svc = service(request)
+        actor = parse_actor(request.headers.get("x-steward-actor"))
+        record = svc.store.get("decision_request", request_id)
+        if record and actor not in (OPERATOR, "owner") and actor != record.get("manager"):
+            raise RealityError(f"{actor} may not answer this decision.", "AUTHORITY_DENIED", "The Owner's agent, the owner or the site's Plant Manager answers it.", 403)
+        if actor == OPERATOR:
+            actor_for(request, "decide", None, dict(requestId=request_id, answer=body.answer), "decide_answer")
+        return public(svc.people.answer_decision(request_id, body.answer, actor))
+
+    @app.get("/api/fix-workflows")
+    def fix_workflows(request: Request, siteId: str = "", issueId: str = ""):
+        if siteId:
+            service(request).require_property(siteId)
+        return public(service(request).fixes.list(siteId or None, issueId or None))
+
+    @app.get("/api/fix-workflows/{workflow_id}")
+    def fix_workflow(workflow_id: str, request: Request):
+        return public(service(request).fixes.get(workflow_id))
+
+    @app.get("/api/notifications")
+    def notifications(request: Request, siteId: str = "", include: str = ""):
+        from .real_only import include_all, notification_origin  # seed notifications only with ?include=all
+        records = [dict(n, origin=notification_origin(n)) for n in service(request).fixes.notifications(siteId or None)]
+        return public(records if include_all(include) else [n for n in records if n["origin"] != "seed"])
 
     @app.post("/api/issues/{issue_id}/assign")
     def assign_issue(issue_id: str, body: AssignRequest, request: Request):
         record = service(request).issues.stored(issue_id)
-        actor = actor_for(request, "assign_issue", None, dict(issueId=issue_id, **body.model_dump()), "assign_issue")
+        actor = actor_for(request, "assign_issue", record.get("siteId"), dict(issueId=issue_id, **body.model_dump()), "assign_issue")
         return public(service(request).issues.assign(record["id"], body.crewMemberId, actor))
 
     @app.get("/api/scenarios")
@@ -890,6 +1088,15 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         actor = actor_for(request, "start_scenario", None, dict(scenarioId=scenario_id, **body.model_dump(exclude_none=True)), "start_scenario")
         return public(await run_in_threadpool(svc.scenarios.start, scenario_id, actor, body.speed, body.restart))
 
+    @app.get("/api/scenario-autoplay")
+    def scenario_autoplay(request: Request):
+        return public(service(request).autoplay.status())
+
+    @app.post("/api/scenario-autoplay")
+    def scenario_autoplay_set(body: AutoplayRequest, request: Request):
+        authorize(request.headers.get("x-steward-actor"), "start_scenario")
+        return public(service(request).autoplay.set_enabled(body.enabled))
+
     @app.get("/api/scenario-runs/{run_id}")
     def scenario_run(run_id: str, request: Request):
         return public(service(request).scenarios.run_record(run_id))
@@ -899,16 +1106,238 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         actor = actor_for(request, "start_scenario", None, dict(runId=run_id), "cancel_scenario")
         return public(service(request).scenarios.cancel(run_id, actor))
 
+    # Owner, Oct 18: real calls and texts only. Seed records (loaded from backend/seed, never happened here) are hidden
+    # by default; `?include=all` returns everything. Real Inkbox emails, SMS and calls are listed as `message` entries.
     @app.get("/api/board-meetings")
-    def board_meetings(request: Request, siteId: str = "", issueId: str = ""):
+    def board_meetings(request: Request, siteId: str = "", issueId: str = "", include: str = ""):
         svc = service(request)
         if issueId:
-            return public([svc.boards.get(issue_id=issueId)])
-        return public(svc.boards.list(siteId or None))
+            return public([svc.conversations.board_meeting(issue_id=issueId, include=include)])
+        return public(svc.conversations.board_meetings(siteId or None, include=include))
 
     @app.get("/api/board-meetings/{meeting_id}")
-    def board_meeting(meeting_id: str, request: Request):
-        return public(service(request).boards.get(meeting_id=meeting_id))
+    def board_meeting(meeting_id: str, request: Request, include: str = ""):
+        return public(service(request).conversations.board_meeting(meeting_id=meeting_id, include=include))
+
+    @app.get("/api/conversations")
+    def conversations(request: Request, siteId: str = "", agentId: str = "", kind: str = "", limit: int = Query(default=100, ge=1, le=500),
+                      include: str = "", origin: str = Query(default="", max_length=60)):
+        return public(service(request).conversations.list(siteId or None, agentId or None, kind or None, limit, include=include, origin=origin or None))
+
+    @app.get("/api/conversations/{conversation_id}")
+    def conversation(conversation_id: str, request: Request, include: str = ""):
+        return public(service(request).conversations.get(conversation_id, include=include))
+
+    @app.post("/api/conversations/{conversation_id}/summary")
+    def conversation_summary(conversation_id: str, body: SummaryRequest, request: Request):
+        actor_for(request, "read", None, dict(conversationId=conversation_id, summaryBy=body.summaryBy), "summarise_conversation")
+        return public(service(request).conversations.set_summary(conversation_id, body.summary, body.summaryBy))
+
+    # ---- agent eye --------------------------------------------------------------------------------------------
+
+    @app.post("/api/eye/{property_id}/renderers")
+    def eye_register(property_id: str, body: RendererRequest, request: Request):
+        return service(request).eye.register(property_id, body.rendererId, body.kind, request.headers.get("user-agent"))
+
+    @app.get("/api/eye/{property_id}/commands")
+    async def eye_commands(property_id: str, request: Request, rendererId: str = Query(min_length=1, max_length=80),
+                           since: int = Query(default=0, ge=0), timeout: float = Query(default=25, ge=0, le=25)):
+        service(request).require_property(property_id)
+        return public(await service(request).eye.poll_commands(property_id, rendererId, since, timeout))
+
+    @app.post("/api/eye/{property_id}/frames", status_code=201)
+    async def eye_frame(property_id: str, body: FrameRequest, request: Request):
+        service(request).require_property(property_id)
+        annotation = {**(body.mark or {}), **(body.annotation or {})} if (body.mark or body.annotation) else None
+        return public(await run_in_threadpool(service(request).eye.post_frame, property_id, body.commandId, body.jpegBase64, body.camera,
+                                              body.visiblePins, body.rendererId, body.index, annotation))
+
+    @app.get("/api/eye/frames/{frame_file}")
+    def eye_frame_file(frame_file: str, request: Request):
+        if not frame_file.endswith(".jpg"):
+            raise RealityError("Frame not found.", "NOT_FOUND", "Use a frame URL from the feed.", 404)
+        path = service(request).eye.frame_path(frame_file[:-4])
+        if signed := signed_frame_url(request, frame_file[:-4]):  # Supabase Storage copy, budget permitting
+            return RedirectResponse(signed, status_code=307, headers={"Cache-Control": "private, max-age=300"})
+        return FileResponse(path, media_type="image/jpeg", headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400"})
+
+    @app.post("/api/eye/{property_id}/act")
+    async def eye_act(property_id: str, body: ActRequest, request: Request):
+        actor = request.headers.get("x-steward-actor") or OPERATOR
+        if parse_actor(actor) == OPERATOR:
+            actor_for(request, "eye", property_id, dict(action=body.action, **(body.params or {})), f"eye_{body.action}")
+        return public(await service(request).eye.act(property_id, body.action, body.params or {}, actor))
+
+    @app.get("/api/eye/{property_id}/feed")
+    def eye_feed(property_id: str, request: Request, since: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=200),
+                 excludeSurvey: bool = False):
+        return public(decorate_feed(request, service(request).eye.feed(property_id, since, limit, exclude_survey=excludeSurvey)))
+
+    @app.get("/api/eye/{property_id}/annotations")
+    def eye_annotations(property_id: str, request: Request):
+        service(request).require_property(property_id)
+        return public(sorted(service(request).store.all("eye_annotation", property_id), key=lambda a: a["at"], reverse=True))
+
+    # ---- walkthroughs, labels and owner alerts (contract 7 §1-§2) ----------------------------------------------
+
+    @app.post("/api/patrols", status_code=202)
+    async def start_walkthrough(body: WalkthroughRequest, request: Request):
+        """The site's Engineer walks the scan with the agent eye and labels each asset (operator, director, the site's manager or engineer)."""
+        svc = service(request)
+        svc.require_property(body.siteId)
+        actor = actor_for(request, "eye", body.siteId, dict(siteId=body.siteId, agentId=body.agentId, route=body.route, paceSeconds=body.paceSeconds),
+                          "start_patrol")
+        return public(await run_in_threadpool(svc.patrols.start, body.siteId, actor, body.agentId, body.route, body.paceSeconds, "manual"))
+
+    @app.get("/api/patrols")
+    def walkthroughs(request: Request, siteId: str = "", limit: int = Query(default=20, ge=1, le=200)):
+        return public(service(request).patrols.list(siteId or None, limit))
+
+    @app.get("/api/patrols/{patrol_id}")
+    def walkthrough(patrol_id: str, request: Request):
+        return public(service(request).patrols.get(patrol_id))
+
+    @app.post("/api/patrols/{patrol_id}/cancel")
+    def cancel_walkthrough(patrol_id: str, request: Request):
+        svc = service(request)
+        record = svc.patrols.get(patrol_id)
+        actor = actor_for(request, "eye", record["siteId"], dict(patrolId=patrol_id), "cancel_patrol")
+        return public(svc.patrols.cancel(patrol_id, actor))
+
+    @app.get("/api/properties/{property_id}/labels")
+    def asset_labels(property_id: str, request: Request):
+        """The latest walkthrough label per asset: green "Looks good" or blue "Looks bad"."""
+        return public(service(request).patrols.labels(property_id))
+
+    @app.get("/api/owner-alerts")
+    def owner_alerts(request: Request, siteId: str = "", limit: int = Query(default=20, ge=1, le=200)):
+        return public(service(request).patrols.alerts.list(siteId or None, limit))
+
+    @app.get("/api/owner-alerts/{alert_id}")
+    def owner_alert(alert_id: str, request: Request):
+        return public(service(request).patrols.alerts.get(alert_id))
+
+    # ---- metrics, regulations, maintenance --------------------------------------------------------------------
+
+    @app.get("/api/properties/{property_id}/metrics")
+    def metrics(property_id: str, request: Request, series: str = "", step: int | None = Query(default=None, ge=5, le=86400),
+                from_: str = Query(default="", alias="from"), to: str = ""):
+        return public(service(request).metrics.series(property_id, series or None, from_ or None, to or None, step))
+
+    @app.get("/api/metrics/live")
+    def metrics_live(request: Request, siteId: str | None = Query(default=None, max_length=40)):
+        return public(service(request).metrics.live(siteId))
+
+    @app.get("/api/metrics/summary")
+    def metrics_summary(request: Request):
+        return public(service(request).metrics.summary())
+
+    @app.get("/api/regulations")
+    def regulations(request: Request, siteId: str = "", include: str = Query(default="", max_length=40)):
+        return public(service(request).regulations.list(siteId or None, include or None))
+
+    @app.get("/api/regulations/{regulation_id}")
+    def regulation(regulation_id: str, request: Request):
+        svc = service(request)
+        return public(svc.regulations.view(svc.regulations.get(regulation_id)))
+
+    @app.get("/api/regulations/{regulation_id}/file")
+    def regulation_file(regulation_id: str, request: Request):
+        """Sources whose terms allow it (servePdf) stream from the cache with their attribution (OGL for the UK files);
+        every other source redirects to its official PDF, so a personal-use-only copy is never redistributed."""
+        from urllib.parse import quote
+        svc = service(request)
+        record = svc.regulations.get(regulation_id)
+        mode, target = svc.regulations.file_target(record)
+        if mode == "redirect":
+            return RedirectResponse(str(target), status_code=302)
+        attribution = svc.regulations.attribution(record)
+        ascii_attribution = svc.regulations.attribution_ascii(attribution)
+        source = str(record.get("pdfUrl") or record.get("officialUrl") or "")[:300]
+        return FileResponse(target, media_type="application/pdf", filename=target.name, content_disposition_type="inline",
+                            headers={"X-Steward-Attribution": ascii_attribution, "X-Steward-Attribution-Encoded": quote(attribution[:500], safe=" ,.;:()/"),
+                                     "X-Steward-Source": quote(source, safe=":/?#[]@!$&'()*+,;=%-._~"), "X-Content-Type-Options": "nosniff"})
+
+    # ---- Tool Forge (contract 6) --------------------------------------------------------------------------------
+
+    def forge_actor(request: Request, endpoint: str, args: dict) -> str:
+        return actor_for(request, "read", None, args, endpoint)
+
+    @app.post("/api/tools/requests", status_code=201)
+    async def tool_request(body: ToolRequestBody, request: Request, response: Response):
+        if body.generator and body.generator not in ("claude-opus-5-5", "hand-seed"):
+            raise RealityError("generator must be claude-opus-5-5 or hand-seed.", "INVALID_REQUEST", "Label who drafted the tool.")
+        actor = forge_actor(request, "request_tool", dict(siteId=body.siteId, agentId=body.agentId, task=body.task, draftKey=body.draftKey, requestId=body.requestId))
+        result = await run_in_threadpool(service(request).forge.request, body.agentId, body.siteId, body.task, actor, body.requestedBy, body.draft,
+                                         body.generator, body.draftKey, body.requestId)
+        if result["tool"] is None:
+            response.status_code = 202
+        return public(result)
+
+    @app.get("/api/tools/requests")
+    def tool_requests(request: Request, siteId: str = ""):
+        if siteId:
+            service(request).require_property(siteId)
+        return public(service(request).forge.requests(siteId or None))
+
+    @app.get("/api/tools/catalog")
+    def tool_catalog(request: Request):
+        return service(request).forge.catalog()
+
+    @app.get("/api/tools")
+    def tools(request: Request, siteId: str = "", status: str = "", agentId: str = ""):
+        forge = service(request).forge
+        return public([forge.public(t) for t in forge.list(siteId or None, status or None, agentId or None)])
+
+    @app.get("/api/tools/{tool_id}")
+    def tool(tool_id: str, request: Request):
+        forge = service(request).forge
+        return public(forge.public(forge.get(tool_id)))
+
+    @app.post("/api/tools/{tool_id}/validate")
+    async def tool_validate(tool_id: str, request: Request):
+        actor = forge_actor(request, "validate_tool", dict(toolId=tool_id))
+        return public(await run_in_threadpool(service(request).forge.validate, tool_id, actor))
+
+    @app.post("/api/tools/{tool_id}/test")
+    async def tool_test(tool_id: str, request: Request, body: ToolTestBody | None = None):
+        actor = forge_actor(request, "test_tool", dict(toolId=tool_id))
+        return public(await run_in_threadpool(service(request).forge.test, tool_id, actor, (body.input if body else None)))
+
+    @app.post("/api/tools/{tool_id}/approve")
+    async def tool_approve(tool_id: str, body: ToolApproveBody, request: Request):
+        actor = forge_actor(request, "approve_tool", dict(toolId=tool_id, approve=body.approve, reason=body.reason))
+        return public(await run_in_threadpool(service(request).forge.approve, tool_id, actor, body.approve, body.reason))
+
+    @app.post("/api/tools/{tool_id}/publish")
+    async def tool_publish(tool_id: str, request: Request):
+        actor = forge_actor(request, "publish_tool", dict(toolId=tool_id))
+        return public(await run_in_threadpool(service(request).forge.publish, tool_id, actor))
+
+    @app.post("/api/tools/{tool_id}/call")
+    async def tool_call(tool_id: str, request: Request, body: ToolCallBody | None = None):
+        actor = forge_actor(request, "call_forged_tool", dict(toolId=tool_id, **((body.args if body else {}) or {})))
+        return public(await run_in_threadpool(service(request).forge.call, tool_id, (body.args if body else {}), actor))
+
+    @app.post("/api/tools/{tool_id}/retire")
+    async def tool_retire(tool_id: str, request: Request, body: ToolRetireBody | None = None):
+        actor = forge_actor(request, "retire_tool", dict(toolId=tool_id))
+        return public(await run_in_threadpool(service(request).forge.retire, tool_id, actor, (body.reason if body else "")))
+
+    @app.get("/api/maintenance")
+    def maintenance(request: Request, siteId: str = ""):
+        return public(service(request).maintenance.list(siteId or None))
+
+    @app.post("/api/maintenance", status_code=201)
+    def propose_maintenance(body: MaintenanceRequest, request: Request):
+        actor = parse_actor(request.headers.get("x-steward-actor"))
+        return public(service(request).maintenance.propose(body.siteIds, body.date, body.scope, body.examiner, actor,
+                                                           asset_tags=body.assetTags, obligation_id=body.obligationId, synthetic=False))
+
+    @app.post("/api/maintenance/{window_id}/approve")
+    def approve_maintenance(window_id: str, request: Request):
+        actor = parse_actor(request.headers.get("x-steward-actor"))
+        return public(service(request).maintenance.approve(window_id, actor))
 
     @app.post("/api/waits", status_code=201)
     def create_wait(body: WaitRequest, request: Request):
@@ -930,7 +1359,7 @@ def create_app(data_directory: Path | None = None, start_workers=True):
                 raise RealityError("Body must be the vision results JSON (or empty to read vision/results/<site>.json).", "INVALID_REQUEST",
                                    "POST the results file contents.")
         service(request).require_property(property_id)
-        actor = actor_for(request, "ingest_vision", None, dict(siteId=property_id), "ingest_vision")
+        actor = actor_for(request, "ingest_vision", property_id, dict(siteId=property_id), "ingest_vision")
         return public(await run_in_threadpool(service(request).vision.ingest, property_id, payload, actor))
 
     @app.get("/api/properties/{property_id}/inspections/vision")
@@ -946,10 +1375,22 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         return public(service(request).ops.activity(agent_id))
 
     @app.get("/api/agents/{agent_id}/memory")
-    def agent_memory(agent_id: str, request: Request, query: str = Query(default="", max_length=2000)):
+    def agent_memory(agent_id: str, request: Request, query: str = Query(default="", max_length=2000), include: str = ""):
         svc = service(request)
         svc.ops.config(agent_id)  # validates the agent id
-        return public(svc.memory.recall(agent_id, query or None))
+        return public(svc.memory.recall(agent_id, query or None, include=include))
+
+    @app.get("/api/memory")
+    def memory_page(request: Request, siteId: str = "", agentId: str = "", query: str = Query(default="", max_length=2000),
+                    limit: int = Query(default=100, ge=1, le=500), include: str = ""):
+        """The memory page: every agent's memories, newest first, each with agentId, agentName, siteId, kind, text, refs,
+        source, origin and at. Seed memories only with ?include=all; Supermemory only when its live switch is on."""
+        svc = service(request)
+        if siteId:
+            svc.require_property(siteId)
+        if agentId:
+            svc.ops.config(agentId)  # validates the agent id (404 for an unknown agent)
+        return public(svc.memory.feed(siteId or None, agentId or None, query or None, limit, include=include))
 
     @app.get("/api/agents/{agent_id}/config")
     def agent_config(agent_id: str, request: Request):
@@ -971,11 +1412,21 @@ def create_app(data_directory: Path | None = None, start_workers=True):
 
     @app.post("/api/telemetry", status_code=201)
     def append_telemetry(body: TelemetryRequest, request: Request):
+        """One row per MCP tool call (`{agentId, tool, tokens, ms, detail: {in, out}}`). The MCP does not send X-Steward-Tool, so
+        the per-request middleware never counts these calls a second time."""
         agent = parse_actor(body.agentId)
         if body.siteId:
             service(request).require_property(body.siteId)
-        return public(service(request).telemetry.record(agent, "mcp", body.tool, tokens=body.tokens, ms=body.ms, ok=body.ok, site_id=body.siteId,
-                                                        mission_id=body.missionId, detail=body.detail))
+        if isinstance(body.detail, dict):
+            detail = json.dumps(body.detail, ensure_ascii=False, separators=(",", ":"), default=str)[:200]
+        else:
+            detail = (body.detail or "")[:200] or None
+        tokens = body.tokens
+        if tokens is None and isinstance(body.detail, dict):
+            numbers = [body.detail.get(k) for k in ("in", "out")]
+            tokens = sum(n for n in numbers if isinstance(n, int) and not isinstance(n, bool)) or None
+        return public(service(request).telemetry.record(agent, "mcp", body.tool, tokens=tokens, text=None if tokens is not None else detail, ms=body.ms,
+                                                        ok=body.ok, site_id=body.siteId, mission_id=body.missionId, detail=detail))
 
     @app.post("/api/inbound/local")
     async def inbound_local(request: Request):
@@ -1145,6 +1596,7 @@ def create_app(data_directory: Path | None = None, start_workers=True):
         return {"jsonrpc": "2.0", "id": identifier, "result": result}
 
     app.state.call_tool = call_tool
+    install_supabase(app, start_workers)
     return app
 
 

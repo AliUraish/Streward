@@ -19,7 +19,6 @@ export function usePoll<T>(loader: () => Promise<T>, deps: unknown[], intervalMs
 
 export const useOverview = () => usePoll(() => api3.overview(), [], 3_000);
 export const useAgents3 = () => usePoll(() => api3.agents(), [], 5_000);
-export const useScenarios = () => usePoll(() => api3.scenarios(), [], 30_000);
 export const useBoardMeetings = (siteId?: string) => usePoll(() => api3.boardMeetings(siteId ? { siteId } : {}), [siteId], 6_000);
 export const useScene = (siteId: string) => usePoll(() => api3.scene(siteId), [siteId], 15_000);
 export const useIssues3 = (siteId: string) => usePoll(() => api3.issues(siteId), [siteId], 5_000);
@@ -38,15 +37,19 @@ export const useEvals3 = (fast: boolean) => usePoll(() => api3.evals(), [], fast
 export const useEvalFindings = () => usePoll(() => api3.evalFindings(), [], 10_000);
 /* Contract 4 */
 export const useMetricsSummary = () => usePoll(() => api3.metricsSummary(), [], 10_000);
-export const useMetrics = (siteId: string, hours: number, step?: string | number) => usePoll(() => {
+/* The live readings, every 5 s (the backend's own grid); all sites, or one with siteId. */
+export const useMetricsLive = (siteId?: string) => usePoll(() => api3.metricsLive(siteId), [siteId], 5_000);
+export const useMetrics = (siteId: string, hours: number, step?: string | number, intervalMs?: number) => usePoll(() => {
   const to = new Date(); const from = new Date(to.getTime() - hours * 3_600_000);
   return api3.metrics(siteId, { from: from.toISOString(), to: to.toISOString(), step });
-}, [siteId, hours, step], hours <= 24 ? 10_000 : 60_000);
+}, [siteId, hours, step], intervalMs ?? (hours <= 24 ? 10_000 : 60_000));
 export const useEvalMetrics = () => usePoll(() => api3.evalMetrics(), [], 20_000);
 export const useConversations = (filters: { siteId?: string; agentId?: string } = {}) => usePoll(() => api3.conversations(filters), [filters.siteId, filters.agentId], 6_000);
 export const useRegulations = (siteId?: string) => usePoll(() => api3.regulations(siteId), [siteId], 60_000);
+export const useRegulationsWithComparison = (siteId: string) => usePoll(() => api3.regulationsWithComparison(siteId), [siteId], 60_000);
 export const useMaintenance = (siteId?: string) => usePoll(() => api3.maintenance(siteId), [siteId], 20_000);
 export const useNotifications = (siteId?: string) => usePoll(() => api3.notifications(siteId), [siteId], 8_000);
+export const useFixWorkflows = (siteId?: string) => usePoll(() => api3.fixWorkflows(siteId), [siteId], 8_000);
 export const useA2ATasks = () => usePoll(() => api3.a2aTasks(), [], 6_000);
 export const useEyeFeed = (siteId: string, intervalMs = 3_000) => usePoll(() => api3.eyeFeed(siteId), [siteId], intervalMs);
 export const useIssue = (issueId: string | null, fast: boolean) => usePoll(() => issueId ? api3.issue(issueId) : Promise.resolve(null), [issueId], fast ? 2_000 : 15_000);
@@ -88,3 +91,6 @@ export function useViewerCommands(siteId: string, onCommand: (c: ViewerCommand) 
   }, [siteId, tick]);
   return { readiness, error, retry: () => setTick(t => t + 1) };
 }
+/* Contract 6: forged tools. */
+export const useTools = (siteId?: string) => usePoll(() => api3.tools(siteId ? { siteId } : {}), [siteId], 6_000);
+export const useTool = (id: string | null, fast: boolean) => usePoll(() => id ? api3.tool(id) : Promise.resolve(null), [id], fast ? 2_000 : 10_000);

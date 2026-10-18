@@ -1,62 +1,73 @@
 "use client";
 
-/* /app, the portfolio: both factories side by side, the two-site averages, what is happening at each right now,
-   and the scenario demo control. */
+/* /app, the portfolio: the three sites side by side, the three-site figures (live readings every 5 s) and what is
+   happening at each right now. */
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Remote } from "@/lib/reality";
 import { api3 } from "@/lib/api-3";
-import { useConversations, useMetricsSummary, usePoll, useScenarios } from "@/lib/hooks-3";
-import { AGENTS3, SCENARIOS3, SITES3, agentName, rn, scenarioTitle, site3, type Site3 } from "@/lib/sites-3";
+import { useConversations, useMetricsLive, useMetricsSummary, usePoll } from "@/lib/hooks-3";
+import { AGENTS3, SITES3, rn, siteList, type Site3 } from "@/lib/sites-3";
 import type { AgentInfo } from "@/lib/types-2";
-import type { Conversation, Overview, Scenario, ScenarioRun, SiteOverview, SiteSummary } from "@/lib/types-3";
-import { Kpis } from "./kpis";
+import type { Conversation, LiveKpis, Overview, SiteOverview, SiteSummary } from "@/lib/types-3";
+import { Kpis, totalOf, withFigures } from "./kpis";
 import { useShared } from "./shell";
-import { Btn, DemoTag, NotYet, PageHead, Reveal, SynthTag, ago, errorText, n, useToast } from "./ui3";
+import { NotYet, PageHead, Reveal, SiteTitle, ago } from "./ui3";
 
 export default function PortfolioPage() {
   const { overview, agents } = useShared();
   const summary = useMetricsSummary();
+  const live = useMetricsLive();
   const conversations = useConversations();
-  const active = overview.data?.activeScenario ?? null;
-  const average = summary.data?.average ?? averageOf(summary.data?.sites ?? []);
+  const covered = summary.data?.sites.map(x => x.siteId) ?? [];
+  const missing = SITES3.filter(x => !covered.includes(x.id));
+  const average = covered.length === SITES3.length ? summary.data?.average ?? averageOf(summary.data?.sites ?? []) : averageOf(summary.data?.sites ?? []) ?? summary.data?.average ?? null;
+  /* Across the sites: the backend's averages, but people checked in as a total, as the other counts are. */
+  const liveAverage = useMemo<LiveKpis | null>(() => live.data ? { ...live.data.average, checkedIn: totalOf(live.data.sites.map(x => x.kpis.checkedIn)) } : null, [live.data]);
   return <div className="page3">
-    <PageHead id="portfolio" title="Portfolio" sub="The Myer Plant Room in Melbourne and the Bristol Dock Pump House in England: two teams, one Operations Director, one record." />
+    <PageHead id="portfolio" title="Portfolio" sub="The Myer Plant Room in Melbourne, the Bristol Dock Pump House in England and the Tomioka Silk Mill in Japan: three teams, one Operations Director, one record." />
     <Reveal as="section" className="p3 avg3" aria-labelledby="avg-h">
-      <div className="p-head"><h2 id="avg-h">Both factories</h2><span className="meta">two-site averages{summary.data?.synthetic ? ", synthetic metrics" : ""}</span></div>
-      <Kpis s={average} remote={summary as Remote<unknown>} />
+      <div className="p-head"><h2 id="avg-h">All three sites</h2>{summary.data && missing.length ? <span className="meta">{siteList(missing.map(x => x.id))} not in the summary yet</span> : live.data ? <span className="meta">live, every 5 s</span> : null}</div>
+      <Kpis s={average} live={liveAverage} liveAt={live.data?.at} remote={summary as Remote<unknown>} />
+      <p className="note3 under">{summary.data && missing.length ? `Averages across ${siteList(covered)} until the summary includes ${siteList(missing.map(x => x.id))}; counts are totals.` : "Averages across the three sites; pressure, flow and uptime come from the two pumped sites, as the mill has no pumps. Counts are totals across all three."}</p>
     </Reveal>
-    <div className="tiles3">
-      {SITES3.map((s, i) => <FactoryTile key={s.id} site={s} i={i} sum={summary.data?.sites.find(x => x.siteId === s.id) ?? null} summary={summary as Remote<unknown>} ov={overview.data?.sites.find(x => x.siteId === s.id) ?? null} overview={overview} active={active && active.siteId === s.id ? active : null} />)}
+    <div className="tiles3 three">
+      {SITES3.map((s, i) => <FactoryTile key={s.id} site={s} i={i} sum={summary.data?.sites.find(x => x.siteId === s.id) ?? null} summary={summary as Remote<unknown>} live={live.data?.sites.find(x => x.siteId === s.id)?.kpis ?? null} liveAt={live.data?.at ?? null} ov={overview.data?.sites.find(x => x.siteId === s.id) ?? null} overview={overview} />)}
     </div>
     <NowBoard overview={overview} agents={agents} conversations={conversations.data ?? []} />
-    <Scenarios active={active} onStarted={overview.reload} />
   </div>;
 }
 
+/* The averages when the backend's own row is missing or covers fewer sites than the page shows. */
 function averageOf(sites: SiteSummary[]): SiteSummary | null {
   if (sites.length < 2) return null;
   const avg = (k: keyof SiteSummary) => { const v = sites.map(s => s[k]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const sum = (k: keyof SiteSummary) => { const v = sites.map(s => s[k]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
-  return { siteId: "average", avgPressure: avg("avgPressure"), avgFlow: avg("avgFlow"), uptimePct: avg("uptimePct"), openIssues: sum("openIssues"), compliancePct: avg("compliancePct"), crewOnShift: sum("crewOnShift"), agentActionsToday: sum("agentActionsToday") };
+  return { siteId: "average", avgPressure: avg("avgPressure"), avgFlow: avg("avgFlow"), uptimePct: avg("uptimePct"), openIssues: sum("openIssues"), compliancePct: avg("compliancePct"), crewOnShift: sum("crewOnShift"), agentActionsToday: sum("agentActionsToday"), employeesCheckedIn: sum("employeesCheckedIn") };
 }
 
-function FactoryTile({ site, sum, summary, ov, overview, active, i }: { site: Site3; sum: SiteSummary | null; summary: Remote<unknown>; ov: SiteOverview | null; overview: Remote<Overview>; active: ScenarioRun | null; i: number }) {
+function FactoryTile({ site, sum, summary, live, liveAt, ov, overview, i }: { site: Site3; sum: SiteSummary | null; summary: Remote<unknown>; live: LiveKpis | null; liveAt: string | null; ov: SiteOverview | null; overview: Remote<Overview>; i: number }) {
   /* Until the overview answers, the severity counts come straight from the site's issues. */
   const fromIssues = usePoll(() => ov ? Promise.resolve(null) : api3.issues(site.id), [site.id, Boolean(ov)], 10_000);
+  /* The mill's figures come from its own series while the summary does not carry them. */
+  const wants = site.kpis.filter(k => k === "avgHumidity" || k === "maxCrackWidth");
+  const needSeries = wants.length > 0 && (!sum || wants.some(k => sum[k] === undefined || sum[k] === null));
+  const series = usePoll(() => {
+    if (!needSeries) return Promise.resolve(null);
+    const to = new Date(); const from = new Date(to.getTime() - 24 * 3_600_000);
+    return api3.metrics(site.id, { from: from.toISOString(), to: to.toISOString(), step: 300 });
+  }, [site.id, needSeries], 60_000);
+  const figures = withFigures(sum, series.data?.series, site.id);
   const counts = ov?.issues ?? (fromIssues.data ? fromIssues.data.filter(x => !x.status || !["resolved", "closed"].includes(x.status)).reduce((m, x) => ({ ...m, [x.severity]: (m[x.severity] ?? 0) + 1 }), { high: 0, medium: 0, low: 0 } as Record<string, number>) : null);
   const c = ov?.compliance;
   return <Reveal as="article" className="tile3" i={i}>
     <Link href={`/app/${site.id}`} className="thumb" aria-label={`Open ${site.name}`}>
-      <img src={site.thumbnailUrl} alt={`${site.name}, thumbnail of the SuperSplat capture`} width={960} height={540} loading="lazy" />
+      <img src={site.thumbnailUrl} alt={`${site.name}, 3-D scan`} width={960} height={540} loading="lazy" />
     </Link>
     <div className="tile-body">
       <div className="tile-head">
-        <div><h2>{site.name}</h2><p className="place">{site.place}</p></div>
-        <Link className="b3 small quiet" href={`/app/${site.id}`}><span>Open factory</span><span className="arrow" aria-hidden="true">→</span></Link>
+        <div><h2><SiteTitle site={site} /></h2><p className="place">{site.line}</p></div>
       </div>
-      {active ? <p className="active-run"><span className="sig bad" aria-hidden="true" />Scenario running: {scenarioTitle(active.scenarioId)}{active.steps ? `, step ${active.step ?? 0} of ${active.steps}` : ""}<SynthTag rec={active} /></p> : null}
-      <Kpis s={sum} remote={summary} compact only={["avgPressure", "avgFlow", "uptimePct", "compliancePct", "agentActionsToday"]} />
       <dl className="stats3">
         <div className="stat">
           <dt>Open issues</dt>
@@ -73,14 +84,13 @@ function FactoryTile({ site, sum, summary, ov, overview, active, i }: { site: Si
             <span><span className="sig warn" aria-hidden="true" />{c.due_soon} due soon</span>
             <span className={c.overdue ? "bad" : ""}><span className={`sig ${c.overdue ? "bad" : "off"}`} aria-hidden="true" />{c.overdue} overdue</span>
             <span className={c.blocked ? "bad" : ""}><span className={`sig ${c.blocked ? "bad" : "off"}`} aria-hidden="true" />{c.blocked} blocked</span>
-          </span> : <NotYet remote={overview} what="compliance" />}</dd>
-        </div>
-        <div className="stat">
-          <dt>Crew on shift</dt>
-          <dd>{ov ? <span className="fig">{typeof ov.crewOnShift === "number" ? ov.crewOnShift : ov.crewOnShift.count}</span> : sum?.crewOnShift != null ? <span className="fig">{sum.crewOnShift}</span> : <NotYet remote={overview} what="crew" />}</dd>
+          </span> : overview.readiness === "ready" ? <span className="st3-inline">Not in the overview yet</span> : <NotYet remote={overview} what="compliance" />}</dd>
         </div>
       </dl>
-      <p className="credit3">{site.sceneTitle}, captured by {site.author} on SuperSplat. <a className="lnk" href={site.sceneUrl} target="_blank" rel="noreferrer">superspl.at/scene/{site.splatId}</a></p>
+      <Kpis s={figures ?? (ov ? { siteId: site.id, avgPressure: null, avgFlow: null, uptimePct: null, openIssues: null, compliancePct: null, crewOnShift: typeof ov.crewOnShift === "number" ? ov.crewOnShift : ov.crewOnShift.count, agentActionsToday: null } : null)} live={live} liveAt={liveAt} remote={summary} compact only={site.kpis} missingText={`The metrics summary does not include ${site.short} yet.`} />
+      <div className="tile-foot">
+        <Link className="b3 small" href={`/app/${site.id}`}><span>Open {site.short}</span><span className="arrow" aria-hidden="true">→</span></Link>
+      </div>
     </div>
   </Reveal>;
 }
@@ -95,7 +105,8 @@ function NowBoard({ overview, agents, conversations }: { overview: Remote<Overvi
     <ol className="now-top">{rows.filter(r => !r.siteId).map(r => <NowCell key={r.id} r={r} />)}</ol>
     <div className="now-sites">
       {SITES3.map(s => {
-        const mine = changes.filter(c => (c.siteId ?? "").startsWith(s.id.slice(0, 2)) || (c as { site?: string }).site === s.id.slice(0, 2)).slice(0, 4);
+        const tag = (c: { siteId?: string; site?: string }) => c.siteId ?? c.site ?? "";
+        const mine = changes.filter(c => { const t = tag(c as { siteId?: string; site?: string }); return t === s.id || t.startsWith(s.id.slice(0, 2)) || t.toLowerCase() === s.prefix.toLowerCase(); }).slice(0, 4);
         const call = conversations.find(c => c.siteIds.includes(s.id));
         return <div className="now-site" key={s.id}>
           <h3><Link href={`/app/${s.id}`} className="lnk-plain">{s.name}</Link></h3>
@@ -128,7 +139,7 @@ export function NowCell({ r }: { r: NowRow }) {
   const status = r.status ?? (r.known ? "idle" : "unknown");
   return <li className="now-cell" data-status={status}>
     {flash ? <span className="flash" key={flash} aria-hidden="true" /> : null}
-    <span className="who"><span className={`sig ${status === "working" ? "ok" : status === "waiting" ? "warn" : "off"}`} aria-hidden="true" />{r.name}</span>
+    <span className="who"><span className={`sig ${status === "working" ? "ok" : status === "waiting" ? "warn" : "off"}`} aria-hidden="true" /><span className="nm">{r.name}</span></span>
     <span className="task" key={r.task ?? "none"}>{r.task ?? (r.known ? "No task" : "Status not available yet")}</span>
     {r.why ? <span className="why">Why: {r.why}</span> : null}
     {r.waitingOn ? <span className="wait">Waiting on {r.waitingOn}</span> : null}
@@ -136,34 +147,3 @@ export function NowCell({ r }: { r: NowRow }) {
   </li>;
 }
 
-function Scenarios({ active, onStarted }: { active: ScenarioRun | null; onStarted: () => void }) {
-  const remote = useScenarios();
-  const toast = useToast();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState("");
-  const list: Scenario[] = remote.data?.length ? remote.data : SCENARIOS3;
-  async function start(s: Scenario) {
-    setBusy(s.id); setError("");
-    try { await api3.startScenario(s.id); toast(`Scenario started: ${rn(s.title)}`); onStarted(); remote.reload(); }
-    catch (e) { setError(`${rn(s.title)}: ${errorText(e)}`); }
-    finally { setBusy(null); }
-  }
-  return <Reveal as="section" className="scen3" i={2} aria-labelledby="scen-h">
-    <div className="scen-head">
-      <div><h2 id="scen-h">Start scenario</h2><p>Nothing fires until a scenario is started here or with start_scenario over MCP. Every scenario is a synthetic script.</p></div>
-      <DemoTag />
-    </div>
-    {remote.readiness !== "ready" ? <p className="note3">{remote.readiness === "loading" ? "Listing scenarios." : <>The scenario list endpoint is not available yet; showing the scenarios agreed in the contracts. <button type="button" className="retry" onClick={remote.reload}>Retry</button></>}</p> : null}
-    {error ? <p className="err3" role="alert">{error}</p> : null}
-    <ul className="scen-list">{list.map(s => {
-      const running = active?.scenarioId === s.id && active.state === "running";
-      return <li key={s.id} className={running ? "running" : ""}>
-        <div className="what"><span className="title">{rn(s.title)}{s.headline ? <span className="tg">headline</span> : null}<SynthTag rec={s} always /></span><span className="sum">{rn(s.summary)}</span></div>
-        <span className="where">{s.siteId ? site3(s.siteId).short : "Both"}</span>
-        <span className="owners">{s.owners.map(o => agentName(o)).join(", ")}</span>
-        <Btn small arrow={!running} disabled={Boolean(busy) || running} onClick={() => start(s)}>{running ? "Running" : busy === s.id ? "Starting" : "Start"}</Btn>
-      </li>;
-    })}</ul>
-    {active ? <p className="note3">Active: {scenarioTitle(active.scenarioId)}, {active.state}{active.startedAt ? `, started ${ago(active.startedAt)}` : ""}{active.steps ? `, step ${n(active.step ?? 0)} of ${n(active.steps)}` : ""}.</p> : null}
-  </Reveal>;
-}

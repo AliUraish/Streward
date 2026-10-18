@@ -16,7 +16,7 @@ from .env import env
 from .sites import SITE_IDS, site_env_suffix
 
 # Contract 4 team identities per site (INKBOX_IDENTITY_<PREFIX>_<ROLE>); agents.py holds the full roster.
-TEAM_ENV_PREFIX = {"myer-plant": "MYER", "bristol-pumps": "BRISTOL"}
+TEAM_ENV_PREFIX = {"myer-plant": "MYER", "bristol-pumps": "BRISTOL", "tomioka-mill": "TOMIOKA"}
 TEAM_ROLES = ("MANAGER", "ENGINEER", "COMPLIANCE", "TECHNICIAN")
 
 
@@ -48,6 +48,13 @@ def clean_env(name: str, default: str = "") -> str:
 def inkbox_base_url() -> str:
     value = clean_env("INKBOX_BASE_URL")
     return value if value.startswith(("https://", "http://localhost", "http://127.0.0.1")) else "https://inkbox.ai"
+
+
+def external_messages_allowed() -> bool:
+    """The single send-time gate for every outbound message to a person (SMS, email, iMessage, calls, owner questions,
+    notices, document email). Read from the environment on every call, never cached, so flipping
+    STEWARD_ALLOW_EXTERNAL_MESSAGES takes effect without a restart."""
+    return clean_env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false").strip().lower() == "true"
 
 
 def allowed_recipients() -> set[str]:
@@ -118,7 +125,7 @@ class InkboxAdapter:
     @staticmethod
     def identity_handle(property_id):
         """The site identity that sends work-item task cards by email is the site's Field Technician
-        (INKBOX_IDENTITY_<MYER|BRISTOL>_TECHNICIAN; every agent emails from its own identity), with the shared
+        (INKBOX_IDENTITY_<MYER|BRISTOL|TOMIOKA>_TECHNICIAN; every agent emails from its own identity), with the shared
         INKBOX_IDENTITY as the fallback. The retired Warden identities are never read."""
         return clean_env(team_identity_env(property_id)) or clean_env("INKBOX_IDENTITY")
 
@@ -161,7 +168,7 @@ class InkboxAdapter:
             return {"handle": identity.agent_handle, "email": identity.email_address, "propertyId": property_id}
 
     def send(self, property_id, to, subject, body_text):
-        if env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false").lower() != "true":
+        if not external_messages_allowed():
             raise ProviderNotConfigured("External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.")
         allowlist = allowed_recipients()
         if not to or any(address.casefold() not in allowlist for address in to):
@@ -203,6 +210,12 @@ class InkboxAdapter:
         value = clean_env("INKBOX_OWNER_PHONE")
         return value if PHONE_RE.match(value) else ""
 
+    @staticmethod
+    def owner_email():
+        """The owner's address for compliance alerts (contract 7 §2), validated like the contractor's; empty when unset."""
+        value = clean_env("INKBOX_OWNER_EMAIL")
+        return value if EMAIL_RE.match(value) else ""
+
     def dispatch_target(self, property_id: str) -> tuple[str, str, str]:
         """(channel, recipient, reason). `local` unless the API key, the site identity, the external-messages gate and a
         validated, allowlisted recipient all exist; the reason says which condition failed."""
@@ -210,7 +223,7 @@ class InkboxAdapter:
             return "local", "", "INKBOX_API_KEY is not set"
         if not self.identity_handle(property_id):
             return "local", "", f"no Inkbox identity handle for {property_id} ({team_identity_env(property_id)})"
-        if clean_env("STEWARD_ALLOW_EXTERNAL_MESSAGES", env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false")).lower() != "true":
+        if not external_messages_allowed():
             return "local", "", "STEWARD_ALLOW_EXTERNAL_MESSAGES is not true"
         allowlist = allowed_recipients()
         phone, email = self.contractor_phone(), self.contractor_email()
@@ -255,7 +268,7 @@ class InkboxAdapter:
 
     @staticmethod
     def _gate(recipient: str):
-        if env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false").lower() != "true":
+        if not external_messages_allowed():
             raise ProviderNotConfigured("External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.")
         allowlist = allowed_recipients()
         if not recipient or recipient.strip().casefold() not in allowlist:
@@ -279,16 +292,49 @@ class InkboxAdapter:
             raw = self.serialize(message)
             return {"id": str(message.id), "conversationId": str(message.conversation_id) if message.conversation_id else None, "raw": raw}
 
-    def send_email(self, property_id: str, to: str, subject: str, body: str, reference: str, in_reply_to: str | None = None) -> dict:
-        """Send an email with the work-item reference in the subject. Returns {id, threadId, messageId, raw}."""
+    @staticmethod
+    def client_with(api_key: str):
+        """An SDK client for an identity-scoped key: an agent emails from its own identity with its own key."""
+        try:
+            from inkbox import Inkbox
+        except ImportError:
+            raise ProviderNotConfigured("Inkbox SDK is missing. Install backend requirements before enabling this integration.")
+        return Inkbox(api_key=api_key, base_url=inkbox_base_url())
+
+    @staticmethod
+    def attachment(item: dict) -> dict:
+        """One SDK attachment: {filename, content_type, content_base64, content_id?}. A content_id renders the (image)
+        attachment inline in the HTML body as cid:<content_id>; other keys (sizes kept for the record) are dropped."""
+        if not item.get("filename") or not item.get("content_type") or not item.get("content_base64"):
+            raise ValueError("Each attachment needs filename, content_type and content_base64.")
+        out = {"filename": str(item["filename"])[:180], "content_type": str(item["content_type"]), "content_base64": item["content_base64"]}
+        if item.get("content_id"):
+            out["content_id"] = str(item["content_id"])[:120]
+        return out
+
+    def send_email(self, property_id: str, to: str, subject: str, body: str, reference: str, in_reply_to: str | None = None,
+                   html: str | None = None, attachments: list[dict] | None = None, sender_handle: str | None = None,
+                   api_key: str | None = None, idempotency_key: str | None = None) -> dict:
+        """Send an email with the work-item reference in the subject. Returns {id, threadId, messageId, raw}.
+
+        `html` goes out as `body_html` (the plain `body` stays the text part) and `attachments` as Inkbox attachments
+        (`attachment()` shape). `sender_handle` sends from that agent identity (with its identity-scoped `api_key` when
+        given) instead of the site's Field Technician, the way agent document email picks its sender."""
         self._gate(to)
         if reference and reference not in subject:
             subject = f"[{reference}] {subject}"
-        with self.client() as client:
-            identity = self.resolve_identity(client, property_id)
+        with (self.client_with(api_key) if api_key else self.client()) as client:
+            identity = client.get_identity(sender_handle) if sender_handle else self.resolve_identity(client, property_id)
             if identity.email_address is None:
                 raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no mailbox; email is unavailable.")
-            message = identity.send_email(to=[to], subject=subject[:300], body_text=body, in_reply_to_message_id=in_reply_to)
+            kwargs = dict(to=[to], subject=subject[:300], body_text=body, in_reply_to_message_id=in_reply_to)
+            if html:
+                kwargs["body_html"] = html
+            if attachments:
+                kwargs["attachments"] = [self.attachment(item) for item in attachments]
+            if idempotency_key:
+                kwargs["idempotency_key"] = idempotency_key
+            message = identity.send_email(**kwargs)
             return {"id": str(message.id), "threadId": str(message.thread_id) if message.thread_id else None,
                     "messageId": message.message_id, "raw": self.serialize(message)}
 

@@ -1,13 +1,120 @@
 {
   "family": "maintenance",
   "synthetic": true,
-  "generator": "hand-seed",
+  "generator": "claude-opus-5-5",
   "note": "Maintenance windows per site (dates relative to the first load). Cross-factory windows are created by the x-maintenance scenario and approved by the Operations Director.",
   "records": [
-    {"id": "mw-my-tk201-exam", "siteIds": ["myer-plant"], "inDays": 9, "scope": "TK-201 written-scheme examination and relief valve check", "examiner": "Synthetic competent person (demo)", "status": "approved", "assetTags": ["TK-201"], "obligationId": "ob-my-tk201-scheme", "synthetic": true, "generator": "hand-seed"},
-    {"id": "mw-my-db401-survey", "siteIds": ["myer-plant"], "inDays": 20, "scope": "DB-401 thermographic survey and CP-402 label fix", "examiner": "Synthetic electrical contractor (demo)", "status": "proposed", "assetTags": ["DB-401", "CP-402"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "mw-my-p103-overhaul", "siteIds": ["myer-plant"], "inDays": 31, "scope": "P-103 standby pump seal replacement", "examiner": "Shift technician (synthetic)", "status": "proposed", "assetTags": ["P-103"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "mw-br-walkway-deck", "siteIds": ["bristol-pumps"], "inDays": 12, "scope": "W-1201 deck board replacement near the sump lip", "examiner": "Restoration volunteers (synthetic)", "status": "approved", "assetTags": ["W-1201"], "synthetic": true, "generator": "hand-seed"},
-    {"id": "mw-br-p103-service", "siteIds": ["bristol-pumps"], "inDays": 3, "scope": "P-103 drainage pump float switch service", "examiner": "Synthetic pump contractor (demo)", "status": "proposed", "assetTags": ["P-103", "CP-402"], "synthetic": true, "generator": "hand-seed"}
+    {
+      "id": "mw-my-tk201-exam",
+      "siteIds": [
+        "myer-plant"
+      ],
+      "inDays": 8,
+      "scope": "TK-201 pressure vessel inspection and relief valve function check against the written inspection plan (DEMO-RP/PV-04, records retained per demo rule pack)",
+      "examiner": "Synthetic competent person (demo)",
+      "status": "approved",
+      "assetTags": [
+        "TK-201"
+      ],
+      "obligationId": "ob-my-tk201-scheme",
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "mw-my-db401-survey",
+      "siteIds": [
+        "myer-plant"
+      ],
+      "inDays": 22,
+      "scope": "DB-401 thermographic survey under load and CP-402 circuit label correction",
+      "examiner": "Synthetic electrical contractor (demo)",
+      "status": "proposed",
+      "assetTags": [
+        "DB-401",
+        "CP-402"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "mw-my-p103-overhaul",
+      "siteIds": [
+        "myer-plant"
+      ],
+      "inDays": 34,
+      "scope": "P-103 standby pump mechanical seal replacement and coupling alignment check",
+      "examiner": "Shift technician (synthetic)",
+      "status": "proposed",
+      "assetTags": [
+        "P-103"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "mw-br-walkway-deck",
+      "siteIds": [
+        "bristol-pumps"
+      ],
+      "inDays": 11,
+      "scope": "W-1201 replacement of three softened deck boards adjacent to the sump lip, with temporary barrier during works",
+      "examiner": "Restoration volunteers (synthetic)",
+      "status": "approved",
+      "assetTags": [
+        "W-1201"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "mw-br-p103-service",
+      "siteIds": [
+        "bristol-pumps"
+      ],
+      "inDays": 4,
+      "scope": "P-103 drainage pump float switch clean and service, with CP-402 control panel interlock test",
+      "examiner": "Synthetic pump contractor (demo)",
+      "status": "proposed",
+      "assetTags": [
+        "P-103",
+        "CP-402"
+      ],
+      "synthetic": true,
+      "generator": "claude-opus-5-5"
+    },
+    {
+      "id": "mw-tm-dh1101-service",
+      "siteIds": [
+        "tomioka-mill"
+      ],
+      "inDays": 12,
+      "scope": "DH-1101 mobile dehumidifier filter clean and condensate pump check before the autumn rains",
+      "examiner": "Conservator (synthetic)",
+      "status": "approved",
+      "assetTags": [
+        "DH-1101"
+      ],
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "mw-tm-fire-inspection",
+      "siteIds": [
+        "tomioka-mill"
+      ],
+      "inDays": 30,
+      "scope": "Six-monthly inspection of extinguishers FE-501 to FE-503 and the indoor hydrant FH-601, with the report to the fire department (demo rule pack)",
+      "examiner": "Synthetic fire equipment inspector (demo)",
+      "status": "proposed",
+      "assetTags": [
+        "FE-501",
+        "FE-502",
+        "FE-503",
+        "FH-601"
+      ],
+      "obligationId": "ob-tm-fe-inspection",
+      "synthetic": true,
+      "generator": "hand-seed"
+    }
   ]
 }

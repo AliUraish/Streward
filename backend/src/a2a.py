@@ -59,11 +59,19 @@ class A2ABus:
     # ---- configuration --------------------------------------------------------------------------------
 
     @staticmethod
-    def inkbox_available() -> bool:
-        return bool(clean_env("INKBOX_API_KEY"))
+    def mode() -> str:
+        """STEWARD_A2A_TRANSPORT: `local` never calls Inkbox A2A (sends, replies, follow-ups, startup recovery) even when
+        keys exist; `inkbox` and `auto` (default) use Inkbox whenever both identities and the sender's key exist."""
+        value = clean_env("STEWARD_A2A_TRANSPORT", "auto").strip().lower()
+        return value if value in ("auto", "local", "inkbox") else "auto"
+
+    @classmethod
+    def inkbox_available(cls) -> bool:
+        return cls.mode() != "local" and bool(clean_env("INKBOX_API_KEY"))
 
     def transport_for(self, agent_id: str, other: str | None = None) -> str:
-        """`inkbox` when INKBOX_API_KEY and both handles exist, else `local`. The Operator has no identity."""
+        """`inkbox` when the transport mode allows it, INKBOX_API_KEY and both handles exist, else `local`. The Owner's agent
+        has no identity."""
         if not self.inkbox_available():
             return "local"
         ends = [agent_id] + ([other] if other else [])
@@ -163,7 +171,7 @@ class A2ABus:
                       providerTaskId=None, providerContextId=None, siteId=site, steward=steward, createdAt=now(), updatedAt=now())
         if simulated:
             record["simulated"] = True
-        if record["transport"] == "inkbox":
+        if record["transport"] == "inkbox" and self.inkbox_available():
             try:
                 provider = self._inkbox_send(caller, target, parts, message_id=task_id, context_id=self._provider_context(context_id, site, caller, target))
                 record.update(providerTaskId=provider["taskId"], providerContextId=provider.get("contextId"))
@@ -199,7 +207,9 @@ class A2ABus:
             parts = [{"text": text}, {"data": {"steward": steward}}]
             record["messages"].append(dict(role="agent", parts=parts, at=now(), id=message_id, intent=intent))
             record["state"] = INTENT_STATE[intent]
-            if record["transport"] == "inkbox" and record.get("providerTaskId"):
+            if record["transport"] == "inkbox" and record.get("providerTaskId") and not self.inkbox_available():
+                record["providerError"] = "Reply kept local: STEWARD_A2A_TRANSPORT=local (or no INKBOX_API_KEY)."
+            elif record["transport"] == "inkbox" and record.get("providerTaskId"):
                 try:
                     self._inkbox_reply(agent, record["providerTaskId"], intent, parts)
                 except Exception as error:
@@ -229,7 +239,9 @@ class A2ABus:
             record["messages"].append(dict(role="caller", parts=parts, at=now(), id=message_id))
             record["state"] = "working"
             self._telemetry(caller, "a2a_message", text, record)
-            if record["transport"] == "inkbox" and record.get("providerTaskId"):
+            if record["transport"] == "inkbox" and record.get("providerTaskId") and not self.inkbox_available():
+                record["providerError"] = "Follow-up kept local: STEWARD_A2A_TRANSPORT=local (or no INKBOX_API_KEY)."
+            elif record["transport"] == "inkbox" and record.get("providerTaskId"):
                 try:
                     self._inkbox_send(caller, record["target"], parts, message_id=message_id, context_id=record.get("providerContextId"),
                                       task_id=record["providerTaskId"])

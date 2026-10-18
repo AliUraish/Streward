@@ -1,0 +1,413 @@
+{
+  "family": "forged_tools",
+  "synthetic": true,
+  "generator": "hand-seed",
+  "note": "Prepared Tool Forge drafts (contract 6) so the demo needs no live Claude call: a request whose task matches a draft's keywords at its site and agent uses it (generator hand-seed); scripts/synth/forge.py --live drafts any other task with Claude. Declarative only: allow-listed ops and pure transforms, run with the creating agent's authority at its own site.",
+  "records": [
+    {
+      "id": "draft-pump-spec-breaches",
+      "name": "pump_spec_breaches",
+      "siteId": "myer-plant",
+      "createdBy": "myer-engineer",
+      "requestedBy": "operator",
+      "match": [
+        "pump",
+        "pumps",
+        "pressure",
+        "spec",
+        "breach",
+        "breaches",
+        "times",
+        "responsible",
+        "days"
+      ],
+      "task": "Which pumps went over their pressure spec more than three times in the last 7 days, and who is responsible for each?",
+      "why": {
+        "gap": "get_metrics returns raw series and who_is_responsible takes one issue kind; nothing counts breaches per asset or joins owners",
+        "consideredTools": [
+          {
+            "name": "get_metrics",
+            "whyNot": "returns about 6,000 raw 5-minute points for the pump circuits; it does not count readings above the spec maximum"
+          },
+          {
+            "name": "who_is_responsible",
+            "whyNot": "answers for one issue kind at a time; it does not attach an owner to each asset"
+          },
+          {
+            "name": "list_issues",
+            "whyNot": "only lists issues that were raised; a breach that never became an issue is missing"
+          }
+        ]
+      },
+      "description": "Counts, per pump circuit at Myer Plant Room, the 5-minute pressure readings above the circuit's spec maximum over the last `days` days (1-7, default 7), keeps the circuits with more than `minBreaches` such readings (default 3), and names who is responsible (the crew owner of overpressure). Read-only, local data, about 1 s and a few hundred tokens of output. Next: get_issue or start a fix for the worst circuit, or eye_go_to its gauge.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "default": 7,
+            "description": "Look-back window in days (1-7)."
+          },
+          "minBreaches": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2016,
+            "default": 3,
+            "description": "Report a circuit when it has more than this many readings above spec."
+          }
+        }
+      },
+      "steps": [
+        {
+          "id": "readings",
+          "op": "metrics.samples",
+          "args": {
+            "series": "pressure_bar",
+            "days": "{{input.days}}"
+          }
+        },
+        {
+          "id": "over",
+          "op": "filter",
+          "args": {
+            "from": "{{steps.readings}}",
+            "where": "value > item.max"
+          }
+        },
+        {
+          "id": "per_asset",
+          "op": "group_count",
+          "args": {
+            "from": "{{steps.over}}",
+            "by": "assetTag",
+            "max": "value"
+          }
+        },
+        {
+          "id": "frequent",
+          "op": "filter",
+          "args": {
+            "from": "{{steps.per_asset}}",
+            "where": "count > {{input.minBreaches}}"
+          }
+        },
+        {
+          "id": "owner",
+          "op": "crew.responsible",
+          "args": {
+            "issueKind": "overpressure"
+          }
+        },
+        {
+          "id": "rows",
+          "op": "map",
+          "args": {
+            "from": "{{steps.frequent}}",
+            "assetTag": "{{item.assetTag}}",
+            "breaches": "{{item.count}}",
+            "worstValue": "{{item.max}}",
+            "unit": "{{item.first.unit}}",
+            "owner": "{{steps.owner.owner.name}}"
+          }
+        },
+        {
+          "id": "ranked",
+          "op": "sort",
+          "args": {
+            "from": "{{steps.rows}}",
+            "by": "breaches",
+            "order": "desc"
+          }
+        }
+      ],
+      "output": {
+        "template": "{{steps.ranked}}",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "assetTag": {
+                "type": "string"
+              },
+              "breaches": {
+                "type": "integer"
+              },
+              "worstValue": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "owner": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "assetTag",
+              "breaches",
+              "worstValue",
+              "unit",
+              "owner"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "test": {
+        "input": {
+          "days": 7,
+          "minBreaches": 3
+        }
+      },
+      "approver": "myer-manager",
+      "synthetic": true,
+      "generator": "hand-seed"
+    },
+    {
+      "id": "draft-visitor-route-readiness",
+      "name": "visitor_route_readiness",
+      "siteId": "bristol-pumps",
+      "createdBy": "bristol-compliance",
+      "requestedBy": "bristol-manager",
+      "match": [
+        "visitor",
+        "route",
+        "asset",
+        "issue",
+        "obligation",
+        "overdue",
+        "regulation",
+        "act",
+        "opening",
+        "every"
+      ],
+      "task": "List every asset on the visitor route that has an open issue or an overdue obligation, the regulation involved, and who must act.",
+      "why": {
+        "gap": "issues and obligations are separate tools without route membership or the regulation link",
+        "consideredTools": [
+          {
+            "name": "list_issues",
+            "whyNot": "lists every open issue at the site, with no idea which assets are on the visitor route and no regulation"
+          },
+          {
+            "name": "list_obligations",
+            "whyNot": "obligations come separately from issues and are not tied to the route"
+          },
+          {
+            "name": "get_regulations",
+            "whyNot": "regulations are listed without the asset or issue they bear on"
+          }
+        ]
+      },
+      "description": "Readiness check before a visitor opening at Bristol Dock Pump House: every asset on the visitor route (the walkway W-1201 and the assets the register places on or beside it) with an open issue or an overdue obligation, the binding regulation involved, who must act, and whether it blocks the opening; `ready` is true when nothing blocks. No arguments. Read-only, local data, under a second. Next: start the fix workflow for each blocking row, or decide to keep the route closed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "steps": [
+        {
+          "id": "assets",
+          "op": "components.list",
+          "args": {}
+        },
+        {
+          "id": "route",
+          "op": "filter",
+          "args": {
+            "from": "{{steps.assets}}",
+            "where": "subsystem == 'Visitor route' or description contains 'walkway' or description contains 'visitor route'"
+          }
+        },
+        {
+          "id": "issues",
+          "op": "issues.list",
+          "args": {
+            "status": "open"
+          }
+        },
+        {
+          "id": "route_issues",
+          "op": "join_on",
+          "args": {
+            "left": "{{steps.issues}}",
+            "right": "{{steps.route}}",
+            "on": "assetTag=tag",
+            "as": "asset"
+          }
+        },
+        {
+          "id": "overdue",
+          "op": "obligations.list",
+          "args": {
+            "status": "overdue"
+          }
+        },
+        {
+          "id": "route_overdue",
+          "op": "join_on",
+          "args": {
+            "left": "{{steps.overdue}}",
+            "right": "{{steps.route}}",
+            "on": "assetTag=tag",
+            "as": "asset"
+          }
+        },
+        {
+          "id": "crew",
+          "op": "crew.list",
+          "args": {}
+        },
+        {
+          "id": "issue_owners",
+          "op": "join_on",
+          "args": {
+            "left": "{{steps.route_issues}}",
+            "right": "{{steps.crew}}",
+            "on": "ownerId=id",
+            "as": "owner",
+            "mode": "left"
+          }
+        },
+        {
+          "id": "obligation_owners",
+          "op": "join_on",
+          "args": {
+            "left": "{{steps.route_overdue}}",
+            "right": "{{steps.crew}}",
+            "on": "ownerId=id",
+            "as": "owner",
+            "mode": "left"
+          }
+        },
+        {
+          "id": "issue_rows",
+          "op": "map",
+          "args": {
+            "from": "{{steps.issue_owners}}",
+            "assetTag": "{{item.assetTag}}",
+            "kind": "issue",
+            "issueOrObligation": "{{item.kind}}: {{item.summary}}",
+            "regulation": "{{item.regulation}}",
+            "owner": "{{item.owner.name}}",
+            "blocking": "if: severity == 'high' or severity == 'medium'"
+          }
+        },
+        {
+          "id": "obligation_rows",
+          "op": "map",
+          "args": {
+            "from": "{{steps.obligation_owners}}",
+            "assetTag": "{{item.assetTag}}",
+            "kind": "obligation",
+            "issueOrObligation": "{{item.title}}",
+            "regulation": "{{item.regulation}}",
+            "owner": "{{item.owner.name}}",
+            "blocking": "if: status == 'overdue'"
+          }
+        },
+        {
+          "id": "rows",
+          "op": "concat",
+          "args": {
+            "issues": "{{steps.issue_rows}}",
+            "obligations": "{{steps.obligation_rows}}"
+          }
+        },
+        {
+          "id": "ranked",
+          "op": "sort",
+          "args": {
+            "from": "{{steps.rows}}",
+            "by": "blocking",
+            "order": "desc"
+          }
+        },
+        {
+          "id": "blocking",
+          "op": "filter",
+          "args": {
+            "from": "{{steps.ranked}}",
+            "where": "blocking == true"
+          }
+        }
+      ],
+      "output": {
+        "template": "{\"items\": {{steps.ranked}}, \"ready\": {{steps.blocking.empty}}}",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "assetTag": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "issue",
+                      "obligation"
+                    ]
+                  },
+                  "issueOrObligation": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "owner": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "blocking": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "assetTag",
+                  "kind",
+                  "issueOrObligation",
+                  "regulation",
+                  "owner",
+                  "blocking"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "ready": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "items",
+            "ready"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "test": {
+        "input": {}
+      },
+      "approver": "bristol-manager",
+      "synthetic": true,
+      "generator": "hand-seed"
+    }
+  ]
+}

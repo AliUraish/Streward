@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Steward eval runner. Replays the suites in evals/ (mission-workflow, demo-workflow,
- * factory-workflow, safety, efficiency) against any Steward MCP URL (tool steps, via
+ * factory-workflow, safety, efficiency, vision, tool-forge) against any Steward MCP URL (tool steps, via
  * @mcp-use/client) and a backend URL (http steps, which play the technician through
- * POST /api/inbound/local). Prints a pass/fail table per suite and exits non-zero on any failure.
+ * POST /api/inbound/local or an agent through its own routes). Prints a pass/fail table per suite and exits non-zero on any failure.
  *
  *   node evals/run.mjs [--suite evals/demo-workflow.json] [--suite mission-workflow] \
  *                      [--mcp http://127.0.0.1:8002/mcp] [--backend http://127.0.0.1:8001] [--json]
@@ -16,7 +16,8 @@
  * Environment: STEWARD_MCP_TOKEN (bearer for the MCP endpoint), STEWARD_BACKEND_TOKEN
  * (bearer for the backend's inbound route), MCP_USE_ANONYMIZED_TELEMETRY=false is set here.
  *
- * Step options (see the suite files' notes): kind tool|http, args/body with ${var} substitution,
+ * Step options (see the suite files' notes): kind tool|http|tools (tools: list the MCP's tools as {tools: [...]},
+ * e.g. to wait for a forged tool to appear), tool and args/body with ${var} substitution,
  * expect (dotted paths, [n] / [-1] indexes, [key=value] array filters, operators $in $exists
  * $contains $jsonContains $matches $gte $lte $not, and a top-level $any list of alternative expectation
  * maps), capture {var: path}, until (poll a tool step until these expectations hold; timeoutMs,
@@ -25,7 +26,9 @@
  * expectStatus (http), headers (http), stopOnFailure (default true), expectError (tool: the isError
  * payload {code, message, recovery} is matched by expect), actor (tool: the step runs as that agent
  * through the X-Steward-Act-As header, honoured only by an MCP started with STEWARD_MCP_ALLOW_ACT_AS=true
- * on loopback; used by the safety and efficiency suites). Paths: [key=value] selects the first matching
+ * on loopback; used by the safety and efficiency suites). Every connection carries X-Steward-Harness: evals, so an
+ * MCP started with STEWARD_MCP_HARNESS_TOOLS=true (loopback only) serves this runner the scenario tools
+ * (list_scenarios, start_scenario) it hides from every other client. Paths: [key=value] selects the first matching
  * element, [?key=value] all of them (an array), so 'assets[?kind=valve][1].assetTag' works.
  */
 import { createRequire } from 'node:module';
@@ -39,8 +42,10 @@ process.env.MCP_USE_ANONYMIZED_TELEMETRY ??= 'false';
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(resolvePath(here, '../mcp-runtime/package.json'));
 /** Default order: the mission first, so on a fresh database the agents' dispatch path runs; the demo suite then replays with a stale fact; then the addendum-3 suites. */
-export const DEFAULT_SUITES = ['mission-workflow', 'demo-workflow', 'factory-workflow', 'safety', 'efficiency'];
+export const DEFAULT_SUITES = ['mission-workflow', 'demo-workflow', 'factory-workflow', 'safety', 'efficiency', 'vision', 'tool-forge'];
 export const ACT_AS_HEADER = 'X-Steward-Act-As';
+/** Sent on every connection: an MCP started with STEWARD_MCP_HARNESS_TOOLS=true (loopback only) then lists and serves list_scenarios / start_scenario to this runner, and to nobody else. */
+export const HARNESS_HEADER = 'X-Steward-Harness';
 
 async function loadClient() {
   // @mcp-use/client lives in mcp-runtime/node_modules; its exports map has no CommonJS condition,
@@ -157,11 +162,12 @@ function toolResultData(result) {
   try { return JSON.parse(text); } catch { return { text }; }
 }
 
-function targetOf(step) { return step.kind === 'tool' ? step.tool : `${step.method ?? 'POST'} ${step.path}`; }
+function targetOf(step) { return step.kind === 'tool' ? step.tool : step.kind === 'tools' ? 'tools/list' : `${step.method ?? 'POST'} ${step.path}`; }
 
 export async function runWorkflow({ mcpUrl, backendUrl, workflow, mcpToken, backendToken, onStep } = {}) {
   const MCPClient = await loadClient();
-  const headers = mcpToken ? { Authorization: `Bearer ${mcpToken}` } : {};
+  // Every connection (act-as ones included) is the eval harness's: the scenario tools are served only to it.
+  const headers = { [HARNESS_HEADER]: 'evals', ...(mcpToken ? { Authorization: `Bearer ${mcpToken}` } : {}) };
   // One connection per acting agent: the default (the MCP's own STEWARD_MCP_ACTOR) plus any step.actor.
   const actors = [...new Set(workflow.steps.map(step => step.actor).filter(Boolean))];
   const servers = { steward: { url: mcpUrl, headers, timeout: 330000, oauth: false, detectMixedAuth: false } };
@@ -176,6 +182,12 @@ export async function runWorkflow({ mcpUrl, backendUrl, workflow, mcpToken, back
   const vars = {};
   const rows = [];
   const startedAt = new Date().toISOString();
+  // Actor steps must never run as the wrong agent (as the operator, an attest meant to be refused would be accepted).
+  // They run only when the MCP reports actAs: true on /health (STEWARD_MCP_ALLOW_ACT_AS=true, loopback only).
+  let actAs = actors.length === 0;
+  if (actors.length) {
+    try { const health = await (await fetch(new URL('/health', mcpUrl), { signal: AbortSignal.timeout(5000) })).json(); actAs = health?.actAs === true; } catch { actAs = false; }
+  }
   try {
     await connectionFor(undefined);
     for (const step of workflow.steps) {
@@ -183,9 +195,12 @@ export async function runWorkflow({ mcpUrl, backendUrl, workflow, mcpToken, back
       let data; let failures = []; let error; let skipped = false; let polls = 0; let progress = 0;
       try {
         const skipReason = Object.entries(step.skipIf ?? {}).find(([name, expected]) => name in vars && match(vars[name], expected) === null);
-        if (skipReason) { skipped = true; failures = []; data = undefined; }
-        else if (step.kind === 'tool') {
+        if (step.actor && !actAs) { skipped = true; data = undefined; failures = [`not run: this MCP does not honour X-Steward-Act-As, so the step would run as the wrong agent; start the MCP with STEWARD_MCP_ALLOW_ACT_AS=true (loopback only)`]; }
+        else if (skipReason) { skipped = true; failures = []; data = undefined; }
+        else if (step.kind === 'tool' || step.kind === 'tools') {
           const args = substitute(step.args ?? {}, vars);
+          // The tool name may come from an earlier step (a forged tool's forge_<name>).
+          const toolName = step.kind === 'tool' ? substitute(step.tool, vars) : null;
           const until = step.until ? substitute(step.until, vars) : null;
           const deadline = Date.now() + (step.timeoutMs ?? 30000);
           const interval = step.intervalMs ?? 2000;
@@ -193,7 +208,16 @@ export async function runWorkflow({ mcpUrl, backendUrl, workflow, mcpToken, back
           for (;;) {
             polls += 1;
             // A progress handler makes the client send a progressToken (wait_for reports progress every 15 s), and progress resets the timeout.
-            const result = await connection.callTool(step.tool, args, { timeout: 330000, resetTimeoutOnProgress: true, onprogress: () => { progress += 1; } });
+            if (step.kind === 'tools') {
+              data = { tools: (await connection.listTools()).map(tool => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema, annotations: tool.annotations })) };
+              if (!until) break;
+              const pendingList = checkExpectations(data, until);
+              if (!pendingList.length) break;
+              if (Date.now() + interval > deadline) { failures.push(`timed out after ${step.timeoutMs ?? 30000} ms (${polls} polls) waiting for ${pendingList.join('; ')}`); break; }
+              if (interval > 0) await sleep(interval);
+              continue;
+            }
+            const result = await connection.callTool(toolName, args, { timeout: 330000, resetTimeoutOnProgress: true, onprogress: () => { progress += 1; } });
             data = toolResultData(result);
             if (result.isError && !step.expectError) { failures.push(`tool returned isError: ${JSON.stringify(data).slice(0, 300)}`); break; }
             if (!result.isError && step.expectError) { failures.push(`expected an error result, got ${JSON.stringify(data).slice(0, 200)}`); break; }
@@ -220,11 +244,11 @@ export async function runWorkflow({ mcpUrl, backendUrl, workflow, mcpToken, back
           if (captured === undefined) failures.push(`capture ${name}: path ${path} is undefined`); else vars[name] = captured;
         }
       } catch (caught) { error = caught instanceof Error ? caught.message : String(caught); }
-      const detail = error ?? (skipped ? `skipped: ${Object.entries(step.skipIf).map(([name, expected]) => `${name} is ${JSON.stringify(vars[name])} (${JSON.stringify(expected)})`).join(', ')}` : failures.join('; ')) + (polls > 1 && !error && !failures.length ? ` (${polls} polls)` : '') + (progress ? ` (${progress} progress notifications)` : '');
+      const detail = error ?? (skipped && failures.length ? failures.join('; ') : skipped ? `skipped: ${Object.entries(step.skipIf).map(([name, expected]) => `${name} is ${JSON.stringify(vars[name])} (${JSON.stringify(expected)})`).join(', ')}` : failures.join('; ')) + (polls > 1 && !error && !failures.length ? ` (${polls} polls)` : '') + (progress ? ` (${progress} progress notifications)` : '');
       const row = { id: step.id, kind: step.kind, target: targetOf(step) + (step.actor ? ` (as ${step.actor})` : ''), ok: !error && failures.length === 0, ms: Date.now() - started, at: new Date(started).toISOString(), detail, data, ...(skipped ? { skipped: true } : {}) };
       rows.push(row);
       onStep?.(row);
-      if (!row.ok && step.stopOnFailure !== false) {
+      if (!row.ok && step.stopOnFailure !== false && !(step.actor && !actAs)) {
         // Later steps depend on captured values; stop to avoid cascading noise.
         for (const rest of workflow.steps.slice(workflow.steps.indexOf(step) + 1)) rows.push({ id: rest.id, kind: rest.kind, target: targetOf(rest), ok: false, ms: 0, detail: 'skipped after failure', data: undefined, skipped: true });
         break;

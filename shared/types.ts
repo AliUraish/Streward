@@ -37,10 +37,10 @@ export interface ClearanceResult { clear: boolean; widthM: number; blockingAsset
 export interface ContextMin { propertyId: string; name: string; version: number; assets: number; facts: { known: number; stale: number; unknown: number }; blockers: { assetTag: string; attribute: string; state: WorkState; reference: string }[]; sensors: { assetTag: string; attribute: string; value: string|number|boolean; ageSeconds: number }[]; }
 
 // ---- Addendum 2: environments, agents, A2A, missions, transcripts, evals (see REALITY-CONTRACT-2.md) ----
-export type SiteId = 'harbor-works' | 'myer-plant' | 'bristol-pumps';
+export type SiteId = 'myer-plant' | 'bristol-pumps' | 'tomioka-mill';
 export interface Environment { kind: 'fixture' | 'splat'; splatId?: string; embedUrl?: string; thumbnailUrl?: string; credit: string; captureNote: string; }
 export interface Issue { id: string; assetTag: string; componentId: string; kind: 'out_of_range'|'rejected_evidence'|'overdue'|'unknown_identity'|'escalated'; severity: 'low'|'medium'|'high'; summary: string; refId: string; pin?: { x: number; y: number } | null; at: string; simulated?: boolean; }
-export type AgentId = 'operator' | 'atlas' | `warden:${string}` | 'runner';
+export type AgentId = 'operator' | 'director' | 'myer-manager' | 'myer-engineer' | 'myer-compliance' | 'myer-technician' | 'bristol-manager' | 'bristol-engineer' | 'bristol-compliance' | 'bristol-technician' | 'tomioka-manager' | 'tomioka-engineer' | 'tomioka-compliance' | 'tomioka-technician';
 export interface AgentInfo { id: string; level: 1|2|3|4; name: string; role: string; handle?: string | null; status: 'idle'|'working'|'waiting'; currentTask?: string | null; lastActivityAt: string | null; authority: string[]; }
 export interface A2AMessage { role: 'caller'|'agent'; parts: { text?: string; data?: Record<string, unknown> }[]; at: string; }
 export interface A2ATask { id: string; contextId: string; caller: string; target: string; state: 'submitted'|'working'|'input_required'|'completed'|'failed'|'canceled'; messages: A2AMessage[]; transport: 'local'|'inkbox'; providerTaskId?: string | null; simulated?: boolean; createdAt: string; updatedAt: string; }

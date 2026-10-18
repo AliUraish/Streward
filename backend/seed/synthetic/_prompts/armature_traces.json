@@ -1,0 +1,86 @@
+{
+ "family": "armature_traces",
+ "mode": "dry-run",
+ "note": "Request body only; nothing was sent.",
+ "request": {
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "system": "You generate synthetic demonstration data for Steward, an agent platform that runs two industrial sites from their 3D scans: myer-plant (a modern basement plant room in the Kenneth Myer building, Melbourne) and bristol-pumps (a 1907 dock pump house under restoration in Bristol, England). Every record is fictional and must be plausible to a facilities engineer. Never use real people's names, phone numbers or email addresses; the only contactable crew member is 'Duty engineer (you)' with contact 'user'. Rule references are a labelled demo rule pack (DEMO-RP/...), never statutory advice. Keep every id, asset tag, agent id and cross-reference consistent with the example you are given; you may vary wording, numbers and dates.",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Family: armature_traces. Armature-style session traces: per agent mission, tool calls with estimated tokens, for the efficiency eval baseline.\n\nReturn JSON with a `records` array of 11 records in exactly this shape. Every record must keep `synthetic: true`. Example (the current hand-written seed):\n\n[\n {\n  \"id\": \"trace-atlas-sweep-1\",\n  \"agentId\": \"director\",\n  \"missionId\": \"baseline-atlas-1\",\n  \"calls\": [\n   {\n    \"tool\": \"get_overview\",\n    \"tokens\": 520\n   },\n   {\n    \"tool\": \"list_issues\",\n    \"tokens\": 310\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   },\n   {\n    \"tool\": \"get_board_meeting\",\n    \"tokens\": 280\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-atlas-sweep-2\",\n  \"agentId\": \"director\",\n  \"missionId\": \"baseline-atlas-2\",\n  \"calls\": [\n   {\n    \"tool\": \"get_overview\",\n    \"tokens\": 540\n   },\n   {\n    \"tool\": \"get_agent_activity\",\n    \"tokens\": 260\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-warden-my-1\",\n  \"agentId\": \"myer-engineer\",\n  \"missionId\": \"baseline-warden-my-1\",\n  \"calls\": [\n   {\n    \"tool\": \"resolve\",\n    \"tokens\": 240\n   },\n   {\n    \"tool\": \"list_issues\",\n    \"tokens\": 330\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   },\n   {\n    \"tool\": \"attest\",\n    \"tokens\": 410\n   },\n   {\n    \"tool\": \"focus_view\",\n    \"tokens\": 70\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-warden-my-2\",\n  \"agentId\": \"myer-engineer\",\n  \"missionId\": \"baseline-warden-my-2\",\n  \"calls\": [\n   {\n    \"tool\": \"resolve\",\n    \"tokens\": 250\n   },\n   {\n    \"tool\": \"get_issue\",\n    \"tokens\": 300\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   },\n   {\n    \"tool\": \"attest\",\n    \"tokens\": 390\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-warden-br-1\",\n  \"agentId\": \"bristol-engineer\",\n  \"missionId\": \"baseline-warden-br-1\",\n  \"calls\": [\n   {\n    \"tool\": \"resolve\",\n    \"tokens\": 260\n   },\n   {\n    \"tool\": \"list_issues\",\n    \"tokens\": 350\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   },\n   {\n    \"tool\": \"attest\",\n    \"tokens\": 420\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-warden-br-2\",\n  \"agentId\": \"bristol-engineer\",\n  \"missionId\": \"baseline-warden-br-2\",\n  \"calls\": [\n   {\n    \"tool\": \"resolve\",\n    \"tokens\": 240\n   },\n   {\n    \"tool\": \"get_scene\",\n    \"tokens\": 610\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-runner-1\",\n  \"agentId\": \"myer-technician\",\n  \"missionId\": \"baseline-runner-1\",\n  \"calls\": [\n   {\n    \"tool\": \"who_is_responsible\",\n    \"tokens\": 210\n   },\n   {\n    \"tool\": \"dispatch\",\n    \"tokens\": 380\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   },\n   {\n    \"tool\": \"collect_evidence\",\n    \"tokens\": 460\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-runner-2\",\n  \"agentId\": \"bristol-technician\",\n  \"missionId\": \"baseline-runner-2\",\n  \"calls\": [\n   {\n    \"tool\": \"who_is_responsible\",\n    \"tokens\": 200\n   },\n   {\n    \"tool\": \"dispatch\",\n    \"tokens\": 360\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-myer-manager-1\",\n  \"agentId\": \"myer-manager\",\n  \"missionId\": \"baseline-myer-manager-1\",\n  \"calls\": [\n   {\n    \"tool\": \"get_overview\",\n    \"tokens\": 480\n   },\n   {\n    \"tool\": \"list_crew\",\n    \"tokens\": 260\n   },\n   {\n    \"tool\": \"assign_issue\",\n    \"tokens\": 140\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-myer-compliance-1\",\n  \"agentId\": \"myer-compliance\",\n  \"missionId\": \"baseline-myer-compliance-1\",\n  \"calls\": [\n   {\n    \"tool\": \"list_obligations\",\n    \"tokens\": 420\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   },\n   {\n    \"tool\": \"get_document\",\n    \"tokens\": 450\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n },\n {\n  \"id\": \"trace-bristol-manager-1\",\n  \"agentId\": \"bristol-manager\",\n  \"missionId\": \"baseline-bristol-manager-1\",\n  \"calls\": [\n   {\n    \"tool\": \"get_overview\",\n    \"tokens\": 500\n   },\n   {\n    \"tool\": \"list_crew\",\n    \"tokens\": 240\n   },\n   {\n    \"tool\": \"wait_for\",\n    \"tokens\": 90\n   }\n  ],\n  \"synthetic\": true,\n  \"generator\": \"hand-seed\"\n }\n]"
+   }
+  ],
+  "output_config": {
+   "effort": "high",
+   "format": {
+    "type": "json_schema",
+    "schema": {
+     "type": "object",
+     "properties": {
+      "records": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "agentId": {
+          "type": "string"
+         },
+         "missionId": {
+          "type": "string"
+         },
+         "calls": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "tool": {
+             "type": "string"
+            },
+            "tokens": {
+             "type": "integer"
+            }
+           },
+           "required": [
+            "tool",
+            "tokens"
+           ],
+           "additionalProperties": false
+          }
+         },
+         "synthetic": {
+          "type": "boolean"
+         },
+         "generator": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "id",
+         "agentId",
+         "missionId",
+         "calls",
+         "synthetic",
+         "generator"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "betas": [
+   "server-side-fallback-2026-07-01"
+  ],
+  "fallbacks": "default"
+ }
+}

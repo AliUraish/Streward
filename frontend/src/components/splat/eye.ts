@@ -55,13 +55,40 @@ export interface EyeFramePost {
   camera: CameraInfo;
   visiblePins: VisiblePin[];
   assetTag?: string | null;
-  mark?: { x: number; y: number; world: Vec3Tuple; hit: boolean; note: string | null };
+  /** `mark`: the screen point and the world point picked under it. */
+  mark?: EyeMark;
+  /** The same record as `mark`, under the key newer backends read. */
+  annotation?: EyeMark;
+  /** go_to / orbit: whether the start pose came from `params.viewPose` or from the pin and the fixed approach direction. */
+  startPose?: 'viewPose' | 'approach';
+  /** True when a labelled synthetic defect was applied to the gaussians for this frame (orbit `defect`). */
+  synthetic: boolean;
+  defect: 'none' | 'leak' | 'corrosion' | 'missing-handwheel';
+  /** Whether "synthetic defect: <kind>" is burned into the pixels (orbit `label: false` keeps them clean). */
+  labelled: boolean;
   error?: string;
+  /** Milliseconds from command receipt to the frame being ready for upload. */
   renderMs: number;
+  /** Where that time went: camera move, settle (sort + two frames), JPEG capture, pin projection. */
+  timings?: { moveMs: number; settleMs: number; captureMs: number; pinsMs: number };
   at: string;
 }
 
+export interface EyeMark { x: number; y: number; world: Vec3Tuple; hit: boolean; note: string | null }
+
+/** A camera pose an agent asks for exactly (go_to jumps to it; orbit starts from its position). */
+export interface EyeViewPose { position: Vec3Tuple; target: Vec3Tuple; fov: number | null }
+
 export type EyeStatus = 'connecting' | 'online' | 'offline';
+
+/** What `onFrame` receives for each eye frame: the posted metadata plus the local JPEG. */
+export type SplatEyeFrameMeta = Omit<EyeFramePost, 'jpegBase64'> & {
+  dataUrl: string;
+  actorName: string | null;
+  posted: boolean;
+  frameId: string | null;
+  frameUrl: string | null;
+};
 
 type Json = unknown;
 const isObj = (v: Json): v is Record<string, Json> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -80,7 +107,7 @@ function parseOne(c: Json): EyeCommand | null {
   if (!id || !action) return null;
   const params: Record<string, unknown> = isObj(c.params) ? { ...c.params } : {};
   // tolerate flat commands: { action, assetTag, meters, ... }
-  for (const k of ['direction', 'meters', 'yawDeg', 'pitchDeg', 'assetTag', 'frames', 'x', 'y', 'note', 'distance']) {
+  for (const k of ['direction', 'meters', 'yawDeg', 'pitchDeg', 'assetTag', 'frames', 'x', 'y', 'note', 'distance', 'defect', 'label', 'viewPose']) {
     if (params[k] === undefined && c[k] !== undefined) params[k] = c[k];
   }
   const actorObj = isObj(c.actor) ? c.actor : null;
@@ -96,6 +123,16 @@ function parseOne(c: Json): EyeCommand | null {
     at: str(c.at) ?? str(c.createdAt),
     pin: toVec3(c.pin) ?? toVec3(params.pin),
   };
+}
+
+/** `params.viewPose` as {position, target, fov?} (vectors as [x, y, z] or {x, y, z}); null when absent or unusable. */
+export function parseViewPose(v: Json): EyeViewPose | null {
+  if (!isObj(v)) return null;
+  const position = toVec3(v.position), target = toVec3(v.target);
+  if (!position || !target) return null;
+  if (Math.hypot(target[0] - position[0], target[1] - position[1], target[2] - position[2]) < 1e-3) return null;
+  const f = typeof v.fov === 'number' ? v.fov : typeof v.fov === 'string' && v.fov.trim() !== '' ? Number(v.fov) : NaN;
+  return { position, target, fov: Number.isFinite(f) && f >= 10 && f <= 120 ? f : null };
 }
 
 export function parseCommands(json: Json): EyeCommand[] {
@@ -205,7 +242,9 @@ export class EyeClient {
     }
   }
 
-  async postFrame(frame: EyeFramePost): Promise<boolean> {
+  /** POST one frame; resolves with the backend's frame id and URL when it accepted it. */
+  async postFrame(frame: EyeFramePost): Promise<{ ok: boolean; frameId: string | null; frameUrl: string | null }> {
+    const fail = { ok: false, frameId: null, frameUrl: null };
     for (let attempt = 0; attempt < 3 && !this.stopped; attempt++) {
       try {
         const res = await fetch(`${this.base}/frames`, {
@@ -214,14 +253,19 @@ export class EyeClient {
           body: JSON.stringify(frame),
           signal: this.abort.signal,
         });
-        if (res.ok) return true;
-        if (res.status === 404 || res.status === 409 || res.status === 422) return false;
+        if (res.ok) {
+          let body: Json = null;
+          try { body = await res.json(); } catch { /* empty body */ }
+          const rec = isObj(body) ? body : {};
+          return { ok: true, frameId: str(rec.frameId) ?? str(rec.id), frameUrl: str(rec.frameUrl) ?? str(rec.url) };
+        }
+        if (res.status === 404 || res.status === 409 || res.status === 422) return fail;
       } catch {
-        if (this.stopped) return false;
+        if (this.stopped) return fail;
       }
       await sleep(600 * (attempt + 1), this.abort.signal);
     }
-    return false;
+    return fail;
   }
 }
 
@@ -232,8 +276,8 @@ export function describeCommand(cmd: EyeCommand): string {
     case 'look': return 'look';
     case 'move': return `move ${String(p.direction ?? 'forward')} ${n(p.meters, 1).toFixed(1)} m`;
     case 'turn': return `turn yaw ${n(p.yawDeg).toFixed(0)}° pitch ${n(p.pitchDeg).toFixed(0)}°`;
-    case 'go_to': return `go to ${String(p.assetTag ?? '')}`;
-    case 'orbit': return `orbit ${String(p.assetTag ?? '')} · ${Math.round(n(p.frames, 8))} frames`;
+    case 'go_to': return `go to ${String(p.assetTag ?? '')}${p.viewPose ? ' · view pose' : ''}`;
+    case 'orbit': return `orbit ${String(p.assetTag ?? '')} · ${Math.round(n(p.frames, 8))} frames${typeof p.defect === 'string' && p.defect !== 'none' ? ` · synthetic defect: ${p.defect}` : ''}`;
     case 'mark': return `mark ${n(p.x).toFixed(2)}, ${n(p.y).toFixed(2)}${p.note ? ` · ${String(p.note)}` : ''}`;
     default: return String(cmd.action);
   }

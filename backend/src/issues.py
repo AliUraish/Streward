@@ -56,7 +56,8 @@ class IssueService:
         moment = now()
         issue = existing or dict(id=identifier, siteId=site_id, kind=kind, at=moment, history=[], status="open")
         issue.update(assetTag=component["tag"] if component else None, componentId=component["id"] if component else None, severity=severity,
-                     summary=summary[:400], refId=ref_id or issue.get("refId") or identifier, pin=(component or {}).get("pin"), status="open",
+                     summary=summary[:400], refId=ref_id or issue.get("refId") or identifier, pin=(component or {}).get("pin"),
+                     pinSource=(component or {}).get("pinSource", "estimated") if component else None, status="open",
                      source=source, scenarioId=scenario_id or issue.get("scenarioId"), runId=run_id or issue.get("runId"),
                      ownerId=(owner or {}).get("id") or issue.get("ownerId"), obligationId=obligation_id or issue.get("obligationId"),
                      documentId=document_id or issue.get("documentId"), synthetic=bool(synthetic))

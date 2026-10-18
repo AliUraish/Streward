@@ -6,3 +6,5 @@ frames/
 # request bodies embed base64 frames
 results/_requests/
 results/*.embeddings.npz
+# renders of the third-party capture used as baselines stay local too
+reference/*/*/

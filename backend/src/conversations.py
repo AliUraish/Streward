@@ -3,7 +3,9 @@
 `{id, kind: call | meeting | message, topic, participants, siteIds, convener, transport: inkbox | local,
 providerTaskIds, a2aTaskIds, contextId, transcript: [{speaker, name, text, at, taskId?, transport?}], summary:
 {headline, points, decisions, actions: [{owner, task, due}]} | null, summaryBy: claude-opus-5-5 | hand-seed | null,
-startedAt, endedAt, synthetic, scenarioId?, runId?, issueId?, issueKind?, resolution?, contact?}`.
+startedAt, endedAt, synthetic, origin: seed | run | workflow | inkbox, scenarioId?, runId?, issueId?, issueKind?, resolution?,
+contact?}`. Lists hide `origin: seed` records unless `include=all`, and add the real texts (emails, SMS and calls sent
+or received through Inkbox) as derived `message` conversations; see real_only.py.
 
 - A **meeting** is convened by a manager or the director: the convener asks each participant over A2A and the
   participant's reply is its statement; the convener states the resolution and the contact is decided from the
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 from .agents import DIRECTOR, OPERATOR, display_name, is_known, kind_of, site_of
 from .errors import RealityError
+from .real_only import INCLUDE_ALL, ORIGINS, TEXT_PREFIX, conversation_origin, creation_origin, include_all, migrate_origins, real_texts
 from .store import now, uid
 
 VOICE_NOTE = "Voice is the browser's text-to-speech reading the transcript; agents talk over Inkbox A2A, not phone calls."
@@ -59,6 +62,12 @@ class ConversationService:
     def __init__(self, service):
         self.service = service
         self.store = service.store
+        # Owner, Oct 18: every conversation and agent memory carries `origin` (seed | run | workflow | inkbox); backfill once.
+        self.origin_backfill = migrate_origins(self.store)
+
+    @staticmethod
+    def _with_origin(conversation: dict) -> dict:
+        return conversation if conversation.get("origin") in ORIGINS else dict(conversation, origin=conversation_origin(conversation))
 
     # ---- records ------------------------------------------------------------------------------------------
 
@@ -82,10 +91,12 @@ class ConversationService:
             if not is_known(agent) or agent == "owner":
                 raise RealityError(f"{agent} cannot take part in a conversation.", "INVALID_REQUEST", "Participants are Steward agents.")
         sites = list(dict.fromkeys([s for s in site_ids if s] + [site_of(a) for a in participants if site_of(a)]))
+        # Created while the system runs, so never `seed`: `run` for a scenario run, else `workflow` unless the caller says.
+        origin = creation_origin(dict(origin=extra.pop("origin", None), runId=extra.get("runId")))
         conversation = dict(id=uid("conv"), kind=kind, topic=topic[:200], convener=convener, participants=list(dict.fromkeys(participants)),
                             siteIds=sites, transport="local", providerTaskIds=[], a2aTaskIds=[], contextId=uid("ctx"), transcript=[],
                             summary=None, summaryBy=None, startedAt=now(), endedAt=None, status="live", voiceNote=VOICE_NOTE,
-                            synthetic=bool(extra.pop("synthetic", True)), **{k: v for k, v in extra.items() if v is not None})
+                            synthetic=bool(extra.pop("synthetic", True)), origin=origin, **{k: v for k, v in extra.items() if v is not None})
         self._save(conversation)
         self._change(conversation, f"{display_name(convener)} started a {kind}: {topic[:160]}", "started")
         return conversation
@@ -115,7 +126,8 @@ class ConversationService:
                 self.service.memory.write(agent, f"{conversation['kind'].title()} on {conversation['topic'][:120]}: "
                                                  f"{(conversation.get('resolution') or (conversation.get('summary') or {}).get('headline') or headline)[:300]}",
                                           "conversation", dict(conversationId=conversation["id"], issueId=conversation.get("issueId")),
-                                          conversation["siteIds"][0] if conversation["siteIds"] else None, synthetic=conversation["synthetic"])
+                                          conversation["siteIds"][0] if conversation["siteIds"] else None, synthetic=conversation["synthetic"],
+                                          origin=self._with_origin(conversation)["origin"])
         return conversation
 
     # ---- meetings and calls -----------------------------------------------------------------------------------
@@ -123,7 +135,7 @@ class ConversationService:
     def meeting(self, convener: str, topic: str, participants: list[str], turns: list[dict], resolution: str | None = None,
                 site_ids: list[str] | None = None, issue_kind: str | None = None, issue_id: str | None = None, scenario_id: str | None = None,
                 run_id: str | None = None, context: dict | None = None, summary: dict | None = None, summary_by: str = "hand-seed",
-                contact_site: str | None = None, synthetic: bool = True) -> dict:
+                contact_site: str | None = None, synthetic: bool = True, origin: str | None = None) -> dict:
         participants = list(dict.fromkeys([convener] + [p for p in participants if p != convener]))
         site_ids = site_ids or [s for s in (site_of(p) for p in participants) if s]
         context = dict(context or {})
@@ -137,7 +149,7 @@ class ConversationService:
                 contact = dict(crewMemberId=owner["id"], name=owner["name"], role=owner["role"], contactable=owner["contactable"],
                                channel=plan.get("channel"), via=plan.get("via"), reason=plan.get("reason"), fallback=responsible.get("fallback", False))
         conversation = self._new("meeting", convener, participants, site_ids, topic, issueKind=issue_kind, issueId=issue_id, scenarioId=scenario_id,
-                                 runId=run_id, synthetic=synthetic)
+                                 runId=run_id, synthetic=synthetic, origin=origin)
         bus = self.service.bus
         for turn in turns:
             speaker = turn["speaker"]
@@ -165,12 +177,12 @@ class ConversationService:
     def call(self, caller: str, callee: str, topic: str, turns: list[dict], participants: list[str] | None = None, site_ids: list[str] | None = None,
              issue_id: str | None = None, issue_kind: str | None = None, scenario_id: str | None = None, run_id: str | None = None,
              context: dict | None = None, summary: dict | None = None, summary_by: str = "hand-seed", synthetic: bool = True,
-             workflow_id: str | None = None) -> dict:
+             workflow_id: str | None = None, origin: str | None = None) -> dict:
         """A multi-turn A2A conversation between `caller` and `callee` (others may join with `to` set)."""
         everyone = list(dict.fromkeys([caller, callee] + list(participants or []) + [t["speaker"] for t in turns]))
         context = dict(context or {})
         conversation = self._new("call", caller, everyone, site_ids or [], topic, issueId=issue_id, issueKind=issue_kind, scenarioId=scenario_id,
-                                 runId=run_id, workflowId=workflow_id, synthetic=synthetic)
+                                 runId=run_id, workflowId=workflow_id, synthetic=synthetic, origin=origin)
         bus = self.service.bus
         open_tasks: dict[frozenset, str] = {}
         for turn in turns:
@@ -197,6 +209,28 @@ class ConversationService:
         headline = f"Call ended: {topic[:200]}"
         return self._finish(conversation, fill(summary, context) if summary else None, summary_by, headline)
 
+    def message(self, sender: str, recipient: str, topic: str, text: str, site_ids: list[str] | None = None, issue_id: str | None = None,
+                data: dict | None = None, synthetic: bool = False, origin: str | None = None) -> dict:
+        """A stored one-question conversation: the question goes out as an A2A task that stays open until `answer`."""
+        conversation = self._new("message", sender, [sender, recipient], site_ids or [], topic, issueId=issue_id, synthetic=synthetic, origin=origin)
+        task = self.service.bus.send(sender, recipient, text, dict(kind="decision_request", conversationId=conversation["id"], issueId=issue_id, **(data or {})),
+                                     self._site_for(conversation, sender, recipient), context_id=conversation["contextId"], deliver=False)
+        self._line(conversation, sender, text, task)
+        conversation["status"] = "awaiting_answer"
+        return self._save(conversation)
+
+    def answer(self, conversation_id: str, speaker: str, text: str) -> dict:
+        """Close a one-question conversation: `speaker` (the task's target) replies `complete` with the answer."""
+        conversation = self.get(conversation_id)
+        task_id = next(iter(conversation.get("a2aTaskIds") or []), None)
+        task = None
+        if task_id:
+            current = self.service.bus.task(task_id)
+            if current["state"] not in ("completed", "failed", "canceled"):
+                task = self.service.bus.reply(current["target"], task_id, "complete", text, dict(kind="decision_answer", conversationId=conversation_id), deliver=False)
+        self._line(conversation, speaker, text, task)
+        return self._finish(conversation, None, None, f"Answered: {text[:200]}")
+
     # ---- reading --------------------------------------------------------------------------------------------
 
     def _derived(self) -> list[dict]:
@@ -222,7 +256,13 @@ class ConversationService:
             identifier = f"conv-ctx-{context_id}"
             summary = summaries.get(identifier)
             closed = all(t["state"] in ("completed", "failed", "canceled") for t in tasks)
-            derived.append(dict(id=identifier, kind="message", topic=(transcript[0]["text"][:120] if transcript else "A2A exchange"), convener=tasks[0]["caller"],
+            # Origin: A2A tasks only exist once sent at run time; Inkbox-carried ones are real external traffic.
+            over_inkbox = [t["providerTaskId"] for t in tasks if t["transport"] == "inkbox" and t.get("providerTaskId")]
+            origin = ("seed" if all(t.get("generator") for t in tasks) else "inkbox" if over_inkbox
+                      else "run" if any((t.get("steward") or {}).get("runId") for t in tasks) else "workflow")
+            derived.append(dict(id=identifier, kind="message", origin=origin, channel="a2a", direction="inbound" if str(tasks[0]["caller"]).startswith("external:") else "internal",
+                                providerRef=over_inkbox[0] if over_inkbox else None,
+                                topic=(transcript[0]["text"][:120] if transcript else "A2A exchange"), convener=tasks[0]["caller"],
                                 participants=participants, siteIds=list(dict.fromkeys(t.get("siteId") for t in tasks if t.get("siteId"))),
                                 transport="inkbox" if any(t["transport"] == "inkbox" for t in tasks) else "local",
                                 providerTaskIds=[t["providerTaskId"] for t in tasks if t.get("providerTaskId")], a2aTaskIds=[t["id"] for t in tasks],
@@ -233,10 +273,24 @@ class ConversationService:
                                 voiceNote=VOICE_NOTE))
         return derived
 
-    def list(self, site_id: str | None = None, agent_id: str | None = None, kind: str | None = None, limit: int = 100) -> list[dict]:
+    def _texts(self) -> list[dict]:
+        """Real texts (emails, SMS and calls sent or received through Inkbox) as `message` conversations (real_only.py)."""
+        return real_texts(self.service, {s["id"]: s for s in self.store.all("conversation_summary", "")})
+
+    def list(self, site_id: str | None = None, agent_id: str | None = None, kind: str | None = None, limit: int = 100,
+             include: str | None = None, origin: str | None = None) -> list[dict]:
+        """Newest first. Seed records are hidden unless `include` is `all` (owner, Oct 18: real calls and texts only);
+        `origin` (comma-separated, e.g. `inkbox` for real Inkbox traffic only) narrows further."""
         if site_id:
             self.service.require_property(site_id)
-        records = self.store.all("conversation", "") + self._derived()
+        wanted = {o.strip() for o in (origin or "").split(",") if o.strip()}
+        records = [self._with_origin(c) for c in self.store.all("conversation", "")]
+        if not kind or kind == "message":
+            records += self._derived() + self._texts()
+        if not include_all(include) and "seed" not in wanted:
+            records = [c for c in records if c.get("origin") != "seed"]
+        if wanted:
+            records = [c for c in records if c.get("origin") in wanted]
         if site_id:
             records = [c for c in records if site_id in c["siteIds"]]
         if agent_id:
@@ -246,12 +300,21 @@ class ConversationService:
         records.sort(key=lambda c: c["startedAt"], reverse=True)
         return records[:limit]
 
-    def get(self, conversation_id: str) -> dict:
+    def get(self, conversation_id: str, include: str | None = INCLUDE_ALL) -> dict:
+        """One conversation. Internal callers see every record; the API passes its `include` (a seed record is 404 there
+        unless `include=all`)."""
         record = self.store.get("conversation", conversation_id, "")
         if record:
-            return record
+            record = self._with_origin(record)
+            if record["origin"] != "seed" or include_all(include):
+                return record
+            raise RealityError("Conversation not found among real records.", "NOT_FOUND", "It is a seed record; pass ?include=all to read it.", 404)
         if conversation_id.startswith("conv-ctx-"):
             match = next((c for c in self._derived() if c["id"] == conversation_id), None)
+            if match and (match["origin"] != "seed" or include_all(include)):
+                return match
+        if conversation_id.startswith(TEXT_PREFIX):
+            match = next((c for c in self._texts() if c["id"] == conversation_id), None)
             if match:
                 return match
         raise RealityError("Conversation not found.", "NOT_FOUND", "List conversations with GET /api/conversations.", 404)
@@ -275,16 +338,18 @@ class ConversationService:
         return dict(conversation, convenedBy=conversation["convener"], siteId=conversation["siteIds"][0] if conversation["siteIds"] else None,
                     resolvedAt=conversation.get("endedAt"), status="resolved" if conversation["status"] == "ended" else "convened")
 
-    def board_meetings(self, site_id: str | None = None) -> list[dict]:
-        return [self.as_board_meeting(c) for c in self.list(site_id, kind="meeting", limit=200)]
+    def board_meetings(self, site_id: str | None = None, include: str | None = None) -> list[dict]:
+        return [self.as_board_meeting(c) for c in self.list(site_id, kind="meeting", limit=200, include=include)]
 
-    def board_meeting(self, meeting_id: str | None = None, issue_id: str | None = None) -> dict:
+    def board_meeting(self, meeting_id: str | None = None, issue_id: str | None = None, include: str | None = None) -> dict:
+        """Same rule as the conversations list: seed meetings only with `include=all`."""
+        shown = (lambda c: True) if include_all(include) else (lambda c: c["origin"] != "seed")
         if meeting_id:
             record = self.store.get("conversation", meeting_id, "")
-            if record and record["kind"] == "meeting":
-                return self.as_board_meeting(record)
+            if record and record["kind"] == "meeting" and shown(self._with_origin(record)):
+                return self.as_board_meeting(self._with_origin(record))
         if issue_id:
-            matches = [c for c in self.store.all("conversation", "") if c["kind"] == "meeting" and c.get("issueId") == issue_id]
+            matches = [c for c in map(self._with_origin, self.store.all("conversation", "")) if c["kind"] == "meeting" and c.get("issueId") == issue_id and shown(c)]
             if matches:
                 return self.as_board_meeting(sorted(matches, key=lambda c: c["startedAt"])[-1])
         raise RealityError("Board meeting not found.", "NOT_FOUND", "List meetings with GET /api/board-meetings?siteId=.", 404)

@@ -12,7 +12,7 @@ ARGS=(
   --dockerfile Dockerfile
   --env "STEWARD_BACKEND_URL=$STEWARD_BACKEND_URL"
   --env "STEWARD_ALLOW_REMOTE_BACKEND=true"
-  --env "STEWARD_MCP_PROPERTY_IDS=harbor-works,myer-plant,bristol-pumps"
+  --env "STEWARD_MCP_PROPERTY_IDS=myer-plant,bristol-pumps,tomioka-mill"
 )
 [ -n "${STEWARD_BACKEND_TOKEN:-}" ] && ARGS+=(--env "STEWARD_BACKEND_TOKEN=$STEWARD_BACKEND_TOKEN")
 [ -n "${STEWARD_MCP_TOKEN:-}" ]     && ARGS+=(--env "STEWARD_MCP_TOKEN=$STEWARD_MCP_TOKEN")

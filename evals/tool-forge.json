@@ -1,0 +1,298 @@
+{
+  "name": "steward-tool-forge-myer-pump-spec-breaches",
+  "suite": "tool-forge",
+  "description": "REALITY-CONTRACT-6.md Tool Forge end to end: the Owner's agent asks Myer's team for a tool no existing tool answers (request_tool), the Site Engineer drafts forge_pump_spec_breaches (the prepared draft in dry-run), validates and tests it on local data, a field technician and another site's manager cannot approve it, the Plant Manager · Myer approves and publishes it, wait_for hears the publication, the MCP lists it as a first-class tool within one sync (5 s), and it is called by its own name and through call_forged_tool, with usage counted.",
+  "siteId": "myer-plant",
+  "notes": [
+    "The lifecycle steps call the backend directly with X-Steward-Actor (the builder validates and tests; approval and publication are the Plant Manager's), as the agents and the dashboard do; they need no act-as on the MCP.",
+    "Replays are safe: each run drafts a new version; publishing it retires the previous one. The tools step waits until tools/list carries the new version's id (its description names it).",
+    "The publication wait is opened before publishing (a 1 s window returns still_waiting with its waitId) and re-held with that waitId afterwards, so the event is never missed."
+  ],
+  "steps": [
+    {
+      "id": "request_tool",
+      "kind": "tool",
+      "tool": "request_tool",
+      "args": {
+        "siteId": "myer-plant",
+        "agentId": "myer-engineer",
+        "task": "Which pumps went over their pressure spec more than three times in the last 7 days, and who is responsible for each?"
+      },
+      "expect": {
+        "status": {
+          "$in": [
+            "draft",
+            "validated",
+            "tested"
+          ]
+        },
+        "mcpName": "forge_pump_spec_breaches",
+        "agentId": "myer-engineer",
+        "toolId": {
+          "$exists": true
+        },
+        "gap": {
+          "$matches": "/get_metrics/"
+        },
+        "consideredTools": {
+          "$jsonContains": "\"whyNot\""
+        }
+      },
+      "capture": {
+        "toolId": "toolId",
+        "mcpName": "mcpName"
+      }
+    },
+    {
+      "id": "draft_listed",
+      "kind": "tool",
+      "tool": "list_forged_tools",
+      "args": {
+        "siteId": "myer-plant",
+        "status": "all"
+      },
+      "expect": {
+        "tools": {
+          "$jsonContains": "\"id\":\"${toolId}\""
+        }
+      }
+    },
+    {
+      "id": "validate",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/tools/${toolId}/validate",
+      "headers": {
+        "X-Steward-Actor": "myer-engineer"
+      },
+      "body": {},
+      "expect": {
+        "id": "${toolId}",
+        "status": "validated"
+      }
+    },
+    {
+      "id": "test_on_local_data",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/tools/${toolId}/test",
+      "headers": {
+        "X-Steward-Actor": "myer-engineer"
+      },
+      "body": {},
+      "expect": {
+        "status": "tested",
+        "test.passed": true,
+        "test.output": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "technician_cannot_approve",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/tools/${toolId}/approve",
+      "headers": {
+        "X-Steward-Actor": "myer-technician"
+      },
+      "body": {
+        "approve": true,
+        "reason": "not mine to approve"
+      },
+      "expectStatus": 403,
+      "expect": {
+        "$any": [
+          {
+            "code": "AUTHORITY_DENIED"
+          },
+          {
+            "detail.code": "AUTHORITY_DENIED"
+          }
+        ]
+      }
+    },
+    {
+      "id": "other_site_manager_cannot_approve",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/tools/${toolId}/approve",
+      "headers": {
+        "X-Steward-Actor": "bristol-manager"
+      },
+      "body": {
+        "approve": true,
+        "reason": "cross-site"
+      },
+      "expectStatus": 403,
+      "expect": {
+        "$any": [
+          {
+            "code": "AUTHORITY_DENIED"
+          },
+          {
+            "detail.code": "AUTHORITY_DENIED"
+          }
+        ]
+      }
+    },
+    {
+      "id": "plant_manager_approves",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/tools/${toolId}/approve",
+      "headers": {
+        "X-Steward-Actor": "myer-manager"
+      },
+      "body": {
+        "approve": true,
+        "reason": "Read-only; tested on local data."
+      },
+      "expect": {
+        "status": "approved",
+        "approvedBy": "myer-manager"
+      }
+    },
+    {
+      "id": "open_publication_wait",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "any",
+        "siteId": "myer-plant",
+        "filter": {
+          "type": "tool",
+          "toolId": "${toolId}",
+          "status": "published"
+        },
+        "timeoutSeconds": 1
+      },
+      "expect": {
+        "status": "still_waiting",
+        "tokensWhileWaiting": 0
+      },
+      "capture": {
+        "publishWaitId": "waitId"
+      }
+    },
+    {
+      "id": "publish",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/tools/${toolId}/publish",
+      "headers": {
+        "X-Steward-Actor": "myer-manager"
+      },
+      "body": {},
+      "expect": {
+        "status": "published"
+      }
+    },
+    {
+      "id": "publication_heard",
+      "kind": "tool",
+      "tool": "wait_for",
+      "args": {
+        "event": "any",
+        "waitId": "${publishWaitId}",
+        "timeoutSeconds": 50
+      },
+      "until": {
+        "status": "fired"
+      },
+      "carry": {
+        "waitId": "waitId"
+      },
+      "intervalMs": 0,
+      "timeoutMs": 120000,
+      "expect": {
+        "status": "fired",
+        "tokensWhileWaiting": 0,
+        "event.toolId": "${toolId}",
+        "event.status": "published"
+      }
+    },
+    {
+      "id": "first_class_tool",
+      "kind": "tools",
+      "until": {
+        "tools[name=forge_pump_spec_breaches].description": {
+          "$matches": "/Forged tool ${toolId} v/"
+        }
+      },
+      "intervalMs": 500,
+      "timeoutMs": 20000,
+      "expect": {
+        "tools[name=forge_pump_spec_breaches].description": {
+          "$matches": "/^Built by .+ on \\d{4}-\\d{2}-\\d{2} because /"
+        },
+        "tools[name=forge_pump_spec_breaches].annotations.readOnlyHint": true,
+        "tools": {
+          "$jsonContains": "\"name\":\"call_forged_tool\""
+        }
+      }
+    },
+    {
+      "id": "call_by_name",
+      "kind": "tool",
+      "tool": "${mcpName}",
+      "args": {
+        "days": 7,
+        "minBreaches": 4
+      },
+      "expect": {
+        "rows": {
+          "$exists": true
+        },
+        "rows[0].assetTag": {
+          "$exists": true
+        },
+        "rows[0].breaches": {
+          "$gte": 4
+        },
+        "rows[0].owner": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "call_forged_tool",
+      "kind": "tool",
+      "tool": "call_forged_tool",
+      "args": {
+        "toolId": "${toolId}",
+        "args": {
+          "days": 7,
+          "minBreaches": 4
+        }
+      },
+      "expect": {
+        "name": "${mcpName}",
+        "siteId": "myer-plant",
+        "output.rows": {
+          "$exists": true
+        }
+      }
+    },
+    {
+      "id": "usage_counted",
+      "kind": "tool",
+      "tool": "list_forged_tools",
+      "args": {
+        "siteId": "myer-plant",
+        "status": "published"
+      },
+      "expect": {
+        "tools[0].id": "${toolId}",
+        "tools[0].firstClass": true,
+        "tools[0].approvedBy": "myer-manager",
+        "tools[0].usage.calls": {
+          "$gte": 2
+        },
+        "firstClass": {
+          "$contains": "${mcpName}"
+        }
+      }
+    }
+  ]
+}

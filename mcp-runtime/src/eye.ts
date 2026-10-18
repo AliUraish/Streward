@@ -121,31 +121,35 @@ export function registerEyeTools({ tool, backend, config, siteId }: EyeDeps) {
     return new WithContent(data, blocks);
   }
 
-  const SHARED = 'The eye is shared: people watching the dashboard\'s Environment page see the camera move and your agent name. Cost: one rendered 640×400 frame (~350 image tokens) and up to ~20 s while a renderer draws it (progress notifications keep the call alive). Do not loop it to watch for change; use wait_for.';
+  // The backend waits up to 20 s for a warm renderer, and up to 90 s (orbit 120 s) when the headless renderer has to start
+  // first (the first eye call after a restart); these client windows sit above that so the backend's answer always arrives.
+  const ACT_MS = 105_000;
+  const ORBIT_MS = 135_000;
+  const SHARED = 'The eye is shared: people watching the dashboard\'s Environment page see the camera move and your agent name. Cost: one rendered 640×400 frame (~350 image tokens) and up to ~20 s while a renderer draws it; the first eye call after a restart can take up to ~90 s while the headless renderer starts (progress notifications keep the call alive). Do not loop it to watch for change; use wait_for.';
   const NEXT = 'eye_go_to(assetTag) to fly to a tagged asset; eye_move / eye_turn in small steps to adjust; eye_orbit to see all sides; eye_mark(x, y, note) to flag what you see.';
 
   tool('eye_look', `Look at the plant through the agent eye: renders the site's 3-D scan from the eye's current pose and returns the frame as an image, plus the camera pose and the asset tags visible in it (screen position 0..1, distance in metres, occluded or not). START HERE whenever you need to see something on site. ${SHARED} NEXT: ${NEXT}`,
-    z.strictObject({ siteId }), EyeResultSchema, async ({ siteId: id }, call) => act(id, 'look', {}, call.ctx, NEXT, 45_000), READ_ONLY);
+    z.strictObject({ siteId }), EyeResultSchema, async ({ siteId: id }, call) => act(id, 'look', {}, call.ctx, NEXT, ACT_MS), READ_ONLY);
 
   tool('eye_move', `Move the agent eye's camera without turning it: forward, back, left, right, up or down by meters (0.1 to 5). Explore in small steps: 0.3 to 1 m near equipment, up to 3 m to cross a room; check visibleTags after each step. Returns the new frame as an image with pose and visible tags. ${SHARED} NEXT: keep stepping toward what you are looking for, or eye_go_to(assetTag) when you know the tag.`,
     z.strictObject({ siteId, direction: z.enum(['forward', 'back', 'left', 'right', 'up', 'down']), meters: z.number().min(0.1).max(5).default(0.5).describe('Distance in metres (0.1 to 5). Small steps work best: 0.3 to 1.') }),
-    EyeResultSchema, async ({ siteId: id, direction, meters }, call) => act(id, 'move', { direction, meters }, call.ctx, NEXT, 45_000), LOCAL_WRITE);
+    EyeResultSchema, async ({ siteId: id, direction, meters }, call) => act(id, 'move', { direction, meters }, call.ctx, NEXT, ACT_MS), LOCAL_WRITE);
 
   tool('eye_turn', `Turn the agent eye's camera in place: yawDeg rotates around the vertical axis, pitchDeg tilts up or down (check the returned pose for the direction). Use 10 to 45° to scan a room, small angles to centre an asset. Returns the new frame as an image with pose and visible tags. ${SHARED} NEXT: eye_move toward what you see, or eye_mark to flag it.`,
     z.strictObject({ siteId, yawDeg: z.number().min(-180).max(180).default(0).describe('Degrees around the vertical axis, -180 to 180.'), pitchDeg: z.number().min(-89).max(89).default(0).describe('Degrees of tilt, -89 to 89.') }),
-    EyeResultSchema, async ({ siteId: id, yawDeg, pitchDeg }, call) => act(id, 'turn', { yawDeg, pitchDeg }, call.ctx, NEXT, 45_000), LOCAL_WRITE);
+    EyeResultSchema, async ({ siteId: id, yawDeg, pitchDeg }, call) => act(id, 'turn', { yawDeg, pitchDeg }, call.ctx, NEXT, ACT_MS), LOCAL_WRITE);
 
   tool('eye_go_to', `Fly the agent eye to a tagged asset and frame it (the fastest way to look at something you know by tag). The asset's tag should then be in visibleTags and not occluded; if it is occluded or the pin is estimated, step around it with eye_move / eye_turn or use eye_orbit. Returns the frame as an image with pose and visible tags. ${SHARED} NEXT: eye_orbit(assetTag) for all sides, eye_mark to flag a defect, capture_view / get_inspection for the valve pipeline's frames.`,
     z.strictObject({ siteId, assetTag }), EyeResultSchema, async ({ siteId: id, assetTag: tag }, call) => {
-      const result = await act(id, 'go_to', { assetTag: tag }, call.ctx, `Check that ${tag} is in visibleTags. Then eye_orbit(assetTag="${tag}") for all sides, eye_mark(x, y, note) to flag what you see, or eye_move / eye_turn in small steps.`, 45_000);
+      const result = await act(id, 'go_to', { assetTag: tag }, call.ctx, `Check that ${tag} is in visibleTags. Then eye_orbit(assetTag="${tag}") for all sides, eye_mark(x, y, note) to flag what you see, or eye_move / eye_turn in small steps.`, ACT_MS);
       return result;
     }, LOCAL_WRITE);
 
   tool('eye_orbit', `Circle a tagged asset with the agent eye and return a ring of frames (4 to 16) as images, so you can inspect every side: handwheels, gauges, leaks, corrosion, labels. At most ${MAX_IMAGES_PER_RESULT} images come back in one result; the rest are listed with their URLs and pins. Cost: one frame per position (~350 image tokens each) and up to ~20 s per frame while the renderer draws them. ${SHARED} NEXT: eye_mark(x, y, note) on the frame that shows the problem (eye_go_to first to return to that view), or get_inspection(siteId) for the valve pipeline's verdict.`,
     z.strictObject({ siteId, assetTag, frames: z.number().int().min(4).max(16).default(8).describe('Positions around the asset, 4 to 16.') }),
-    EyeResultSchema, async ({ siteId: id, assetTag: tag, frames }, call) => act(id, 'orbit', { assetTag: tag, frames }, call.ctx, `Pick the frame that shows the problem; eye_mark it, or move on with eye_go_to.`, 30_000 + frames * 20_000), LOCAL_WRITE);
+    EyeResultSchema, async ({ siteId: id, assetTag: tag, frames }, call) => act(id, 'orbit', { assetTag: tag, frames }, call.ctx, `Pick the frame that shows the problem; eye_mark it, or move on with eye_go_to.`, ORBIT_MS), LOCAL_WRITE);
 
   tool('eye_mark', `Flag what you see: a screen point (x, y from 0 to 1 on the latest eye frame, 0,0 top-left) and a short note. The backend projects it to a world point on the scan, stores an annotation, and may open an issue candidate for a person to confirm. Use it after eye_look / eye_go_to when you see a defect or something worth a second look. Marks are local records; nothing is dispatched. Synthetic defects stay labelled synthetic. NEXT: get_issue / list_issues for the candidate, decide or request_fix to act on it.`,
     z.strictObject({ siteId, x: z.number().min(0).max(1).describe('Horizontal screen position on the latest frame, 0 (left) to 1 (right).'), y: z.number().min(0).max(1).describe('Vertical screen position, 0 (top) to 1 (bottom).'), note: z.string().min(3).max(300).describe('What you see there, e.g. "Handwheel missing on V-503".') }),
-    EyeResultSchema, async ({ siteId: id, x, y, note }, call) => act(id, 'mark', { x, y, note }, call.ctx, 'list_issues(siteId) shows any issue candidate the mark opened; decide or request_fix to act on it.', 45_000), LOCAL_WRITE);
+    EyeResultSchema, async ({ siteId: id, x, y, note }, call) => act(id, 'mark', { x, y, note }, call.ctx, 'list_issues(siteId) shows any issue candidate the mark opened; decide or request_fix to act on it.', ACT_MS), LOCAL_WRITE);
 }

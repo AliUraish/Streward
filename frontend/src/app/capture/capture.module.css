@@ -27,3 +27,7 @@
 .card { display: grid; gap: 4px; }
 .card strong { font-weight: 500; font-size: 14px; }
 .card span { color: var(--muted, #a1a1a1); }
+
+.hudMock { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.hudLeft { position: absolute; left: 16px; top: 16px; bottom: 110px; width: 308px; background: rgba(10, 10, 10, .82); pointer-events: auto; }
+.hudBottom { position: absolute; left: 16px; right: 16px; bottom: 16px; height: 78px; background: rgba(10, 10, 10, .82); pointer-events: auto; }
