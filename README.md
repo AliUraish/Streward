@@ -117,3 +117,14 @@ npm test
 The API contract is in [API-CONTRACT.md](API-CONTRACT.md), backend details in [backend/README.md](backend/README.md), and implementation status plus earlier product context in [STEWARD-BUILD-BRIEF.md](STEWARD-BUILD-BRIEF.md).
 
 The completed reference comparison and browser verification are in [design-qa.md](design-qa.md); the final local preview is saved in [qa/steward-final.png](qa/steward-final.png). All 28 automated checks and the frontend, MCP and optional agent-runtime builds passed. Live provider actions still require the account configuration described above.
+
+## Sponsor integrations
+
+Steward runs on four sponsors; each is switched on by a key and falls back to a local mode without one. The single table of what each is used for, which env vars it needs, what its judge can see, and the ordered switch-on checklist is in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md). Per sponsor:
+
+- **Inkbox**: identity, phone, tunnel, webhooks, hosted voice, allowlist: [docs/INKBOX.md](docs/INKBOX.md)
+- **Manufact**: hosting the MCP server, env, what the dashboard shows, `manufact/deploy.sh`: [manufact/README.md](manufact/README.md)
+- **Supabase**: `supabase/migrations/0001_reality.sql`, seed, keys, verification query: [supabase/README.md](supabase/README.md)
+- **Armature**: analytics SDK, eval suite (`armature/evals/`), agent.reviews, `docs/llms.txt`: [armature/README.md](armature/README.md)
+
+Every environment variable across backend, frontend and MCP is listed with a one-line comment in [.env.example](.env.example). The agent-facing description of the three verbs and the error-recovery contract is [docs/llms.txt](docs/llms.txt).

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "armature": {
+      "type": "http",
+      "url": "https://mcp.armature.tech/mcp"
+    }
+  }
+}
