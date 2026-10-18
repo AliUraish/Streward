@@ -11,6 +11,7 @@ from urllib.parse import quote
 import httpx
 
 from .env import env
+from .sites import SITE_IDS, site_env_suffix
 
 
 class ModelAdapter:
@@ -90,11 +91,15 @@ def integration_status(property_id: str | None = None) -> list[dict]:
     inkbox = bool(os.getenv("INKBOX_API_KEY"))
     stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
     identity_handle = os.getenv("INKBOX_IDENTITY", "")
+
+    def site_handle(site_id):
+        from .providers import clean_env, team_identity_env
+        return clean_env(team_identity_env(site_id)) or ""
+
     if property_id:
-        identity_handle = os.getenv(f"INKBOX_IDENTITY_{property_id.upper()}") or identity_handle
+        identity_handle = site_handle(property_id) or identity_handle
     else:
-        identity_handle = identity_handle or next((os.getenv(f"INKBOX_IDENTITY_{name.upper()}") for name in ("cedar", "harbor", "juniper")
-                                                   if os.getenv(f"INKBOX_IDENTITY_{name.upper()}")), "")
+        identity_handle = identity_handle or next((site_handle(name) for name in SITE_IDS if site_handle(name)), "")
     inkbox_ready = inkbox and bool(identity_handle)
     capabilities = {
         "inkbox": {"identity": inkbox_ready, "inbox": inkbox_ready,
@@ -105,11 +110,12 @@ def integration_status(property_id: str | None = None) -> list[dict]:
         "stripe": {"testCheckout": stripe_key.startswith("sk_test_")},
         "insforge": {"check": bool(os.getenv("INSFORGE_BASE_URL") and os.getenv("INSFORGE_ANON_KEY"))},
         "model": {"synthesize": configured_model},
+        "supabase": {"mirror": bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY"))},
     }
     statuses = [
         dict(id="storage", name="Local database & storage", description="Persistent project records, uploaded sources and evidence",
              status="local", detail="SQLite WAL + private files on this machine. Runtime edits survive restart."),
-        dict(id="agents", name="Property agent workers", description="One portfolio coordinator and three scoped property contexts",
+        dict(id="agents", name="Site agent workers", description="Owner's agent, the Operations Director and a four-agent team per factory on the A2A bus",
              status="local", detail="Durable local tool workflows. Interrupted jobs resume on startup; evidence checks are deterministic."),
         dict(id="model", name="Model synthesis", description="Optional model-backed explanations over verified project context",
              status="local" if configured_model else "not_configured",
@@ -120,8 +126,12 @@ def integration_status(property_id: str | None = None) -> list[dict]:
              detail="API key present; optional sync/recall runs on request. Connectivity has not been pre-verified." if supermemory else
                     "Add SUPERMEMORY_API_KEY to enable external sync. Local source-linked memory works now."),
         dict(id="inkbox", name="Inkbox", description="Persistent external identity and communication",
-             status="not_configured", detail="Credential present, but no mailbox connected. External messages are disabled." if inkbox else
-                    "Add account credentials and configure an identity. Local agent identities are active; no external inbox is provisioned."),
+             status="connected" if inkbox_ready else "not_configured",
+             detail=(("Identities configured: " + ", ".join(h for h in (os.getenv("INKBOX_IDENTITY_DIRECTOR", ""), identity_handle, os.getenv("INKBOX_IDENTITY_DISPATCH", "")) if h)
+                      + (". External SMS/email enabled to allowlisted recipients only." if capabilities["inkbox"]["sendEmail"] else ". External sends disabled (STEWARD_ALLOW_EXTERNAL_MESSAGES)."))
+                     if inkbox_ready else
+                     "Credential present; set INKBOX_IDENTITY_<SUFFIX> for the director and both site teams, and INKBOX_IDENTITY_DISPATCH." if inkbox else
+                     "Add account credentials and configure an identity. Local agent identities are active; no external inbox is provisioned.")),
         dict(id="stripe", name="Stripe", description="Payment provider for explicitly authorized economic actions",
              status="not_configured", detail="Test credential present. Explicit sandbox Checkout route available; connection not yet verified. Default workflow only stores proposals." if stripe_key.startswith("sk_test_") else
                     "No payment adapter active. Purchase proposals persist locally and never charge a card."),
@@ -129,6 +139,9 @@ def integration_status(property_id: str | None = None) -> list[dict]:
              status="local", detail="TypeScript mcp-use endpoint at http://127.0.0.1:8002/mcp; the FastAPI compatibility endpoint remains on port 8001. Both use the same local records. No hosted deployment."),
         dict(id="insforge", name="InsForge", description="Optional cloud backend",
              status="not_configured", detail="Local-only mode selected. No cloud resources or deployments created."),
+        dict(id="supabase", name="Supabase", description="Mirror of facts, attestations, work items, dispatches, changes and subscriptions",
+             status="not_configured", detail="Credentials present; status becomes connected after the first successful PostgREST upsert." if capabilities["supabase"]["mirror"] else
+                    "Set SUPABASE_URL and SUPABASE_SERVICE_KEY to mirror reality records. SQLite remains the source of truth."),
     ]
     for integration in statuses:
         integration["capabilities"] = capabilities.get(integration["id"], {})

@@ -1,0 +1,12 @@
+{
+  "site": "fixture",
+  "tag": "FX-01",
+  "pin": null,
+  "defect": "none",
+  "source": "fixture",
+  "synthetic": true,
+  "fixture": "solid-colour + low noise",
+  "expectedOutlier": false,
+  "capturedAt": null,
+  "note": "numpy-generated test clip, not a render of any site"
+}

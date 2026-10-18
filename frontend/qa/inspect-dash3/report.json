@@ -1,0 +1,1422 @@
+{
+ "url": "http://127.0.0.1:3000/app",
+ "at": "2026-10-18T04:06:53.594Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 9,
+   "filled": [
+    0.8,
+    0.84,
+    0.76,
+    0.66,
+    0.65,
+    0.63,
+    0.55,
+    0.63,
+    0.56
+   ],
+   "motion": {
+    "elements": 65,
+    "css": 25,
+    "transitions": 39,
+    "scripted": 1,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 7519,
+     "screens": 8.4,
+     "words": 1837,
+     "img": 8,
+     "video": 0,
+     "canvas": 1,
+     "svg": 0,
+     "sections": 6,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 8,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [
+      "xl.webp",
+      "xl.webp",
+      "xl.webp",
+      "xl.webp",
+      "frame-1.jpg",
+      "frame-2.jpg",
+      "frame-3.jpg",
+      "frame-4.jpg"
+     ],
+     "blendText": 19,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": []
+    },
+    "hero": {
+     "text": "0 medium",
+     "words": 2,
+     "chars": 8,
+     "lines": 2,
+     "size": 44,
+     "vw": 3.1,
+     "font": "GeistSans",
+     "weight": 500,
+     "tracking": -0.03,
+     "leading": 1,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "left",
+     "widthRatio": 0.03,
+     "top": 650,
+     "tag": "span",
+     "kind": "heading"
+    },
+    "h1": null,
+    "headings": [
+     {
+      "text": "Overview",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.46,
+      "top": 96,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Myer Plant Room",
+      "words": 3,
+      "chars": 15,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.16,
+      "top": 586,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "Bristol Dock Pump House",
+      "words": 4,
+      "chars": 23,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.24,
+      "top": 586,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "9 high",
+      "words": 2,
+      "chars": 6,
+      "lines": 2,
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.02,
+      "top": 650,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 medium",
+      "words": 2,
+      "chars": 8,
+      "lines": 2,
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.03,
+      "top": 650,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "0 low",
+      "words": 2,
+      "chars": 5,
+      "lines": 2,
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.02,
+      "top": 650,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 high",
+      "words": 2,
+      "chars": 6,
+      "lines": 2,
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.02,
+      "top": 650,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 medium",
+      "words": 2,
+      "chars": 8,
+      "lines": 2,
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.03,
+      "top": 650,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 low",
+      "words": 2,
+      "chars": 5,
+      "lines": 2,
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.02,
+      "top": 650,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "Factories",
+      "words": 1,
+      "chars": 9,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.41,
+      "top": 1876,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "People",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.38,
+      "top": 3274,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Compliance",
+      "words": 1,
+      "chars": 10,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.52,
+      "top": 3697,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Agents",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.52,
+      "top": 4544,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Atlas",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.35,
+      "top": 4677,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "Evals",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 30,
+      "vw": 2.1,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.47,
+      "top": 6010,
+      "tag": "h2",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 15,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 5,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "GeistSans",
+       "share": 1,
+       "mono": false
+      },
+      {
+       "family": "GeistMono",
+       "share": 0,
+       "mono": true
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      12,
+      13,
+      15,
+      16,
+      17,
+      20,
+      30,
+      44
+     ],
+     "sizeCount": 8,
+     "notLoaded": [],
+     "body": {
+      "font": "GeistSans",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 12.7
+     },
+     "measureChars": 93,
+     "max": {
+      "size": 44,
+      "vw": 3.1,
+      "font": "GeistSans",
+      "text": "9"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [
+      "GeistMono"
+     ],
+     "monoSamples": [
+      "100% · 163 MB of 163 MB"
+     ],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.05,
+     "smallText": 3
+    },
+    "eyebrows": [
+     {
+      "text": "to Operator, a2a",
+      "above": "People",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 3194
+     },
+     {
+      "text": "synthetic",
+      "above": "Compliance",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 3658
+     },
+     {
+      "text": "Oct 17, 08:35 PM",
+      "above": "Agents",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 4495
+     },
+     {
+      "text": "synthetic",
+      "above": "Atlas",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 4639
+     }
+    ],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#000000",
+     "bodyBgHsl": {
+      "h": 0,
+      "s": 0,
+      "l": 0
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#000000",
+       "top": 0,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 0
+       }
+      },
+      {
+       "color": "#0a0a0a",
+       "top": 186,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 0.04
+       }
+      },
+      {
+       "color": "#121212",
+       "top": 1966,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 0.07
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#c9c9c9",
+       "share": 0.45
+      },
+      {
+       "color": "#a1a1a1",
+       "share": 0.37
+      },
+      {
+       "color": "#ededed",
+       "share": 0.17
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.01
+      },
+      {
+       "color": "#000000",
+       "share": 0
+      }
+     ],
+     "button": {
+      "bg": "#ffffff",
+      "hsl": {
+       "h": 0,
+       "s": 0,
+       "l": 1
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 17,
+     "inHero": 3,
+     "radius": 0,
+     "height": 32,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Overview",
+      "Open in Factories →",
+      "Open in Factories →"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 9,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 6,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 900
+      },
+      {
+       "count": 9,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 2227
+      },
+      {
+       "count": 3,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 4022
+      },
+      {
+       "count": 4,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 4844
+      },
+      {
+       "count": 24,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 1650
+      },
+      {
+       "count": 4,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 6536
+      }
+     ]
+    },
+    "heroMedia": [
+     {
+      "type": "img",
+      "ratio": 0.2
+     },
+     {
+      "type": "img",
+      "ratio": 0.2
+     }
+    ],
+    "nav": {
+     "links": 7,
+     "fixed": true,
+     "height": 56,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "geistsans",
+     "geistmono"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 12,
+   "filled": [
+    0.71,
+    0.83,
+    0.85,
+    0.9,
+    0.75,
+    0.77,
+    0.87,
+    0.74,
+    0.86,
+    0.8,
+    0.88,
+    0.81
+   ],
+   "motion": {
+    "elements": 65,
+    "css": 24,
+    "transitions": 39,
+    "scripted": 2,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 12922,
+     "screens": 15.3,
+     "words": 1857,
+     "img": 7,
+     "video": 0,
+     "canvas": 1,
+     "svg": 0,
+     "sections": 6,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 0,
+     "uiAbuse": false,
+     "realPictures": 2,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [
+      "xl.webp",
+      "xl.webp"
+     ],
+     "blendText": 19,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": []
+    },
+    "hero": {
+     "text": "0 medium",
+     "words": 2,
+     "chars": 8,
+     "lines": 2,
+     "size": 36,
+     "vw": 9.2,
+     "font": "GeistSans",
+     "weight": 500,
+     "tracking": -0.03,
+     "leading": 1,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "left",
+     "widthRatio": 0.12,
+     "top": 581,
+     "tag": "span",
+     "kind": "heading"
+    },
+    "h1": null,
+    "headings": [
+     {
+      "text": "Overview",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 154,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Myer Plant Room",
+      "words": 3,
+      "chars": 15,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.51,
+      "top": 480,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "9 high",
+      "words": 2,
+      "chars": 6,
+      "lines": 2,
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.07,
+      "top": 581,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 medium",
+      "words": 2,
+      "chars": 8,
+      "lines": 2,
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.12,
+      "top": 581,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "0 low",
+      "words": 2,
+      "chars": 5,
+      "lines": 2,
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.05,
+      "top": 581,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "Bristol Dock Pump House",
+      "words": 4,
+      "chars": 23,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.75,
+      "top": 1177,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "0 high",
+      "words": 2,
+      "chars": 6,
+      "lines": 2,
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.07,
+      "top": 1278,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 medium",
+      "words": 2,
+      "chars": 8,
+      "lines": 2,
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.12,
+      "top": 1278,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "0 low",
+      "words": 2,
+      "chars": 5,
+      "lines": 2,
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.03,
+      "leading": 1,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.05,
+      "top": 1278,
+      "tag": "span",
+      "kind": "statement"
+     },
+     {
+      "text": "Factories",
+      "words": 1,
+      "chars": 9,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 3791,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "People",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 6057,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Compliance",
+      "words": 1,
+      "chars": 10,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 6707,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Agents",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 8021,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "Atlas",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 30,
+      "vw": 7.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.84,
+      "top": 8759,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "Evals",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "GeistSans",
+      "weight": 500,
+      "tracking": -0.025,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 10595,
+      "tag": "h2",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 15,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 5,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "GeistSans",
+       "share": 1,
+       "mono": false
+      }
+     ],
+     "familyCount": 1,
+     "sizes": [
+      12,
+      13,
+      16,
+      17,
+      20,
+      26,
+      30,
+      36
+     ],
+     "sizeCount": 8,
+     "notLoaded": [],
+     "body": {
+      "font": "GeistSans",
+      "size": 16,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 12.7
+     },
+     "measureChars": 55,
+     "max": {
+      "size": 36,
+      "vw": 9.2,
+      "font": "GeistSans",
+      "text": "9"
+     },
+     "monoShare": 0,
+     "monoProseShare": 0,
+     "monoFamilies": [],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.04,
+     "smallText": 2
+    },
+    "eyebrows": [
+     {
+      "text": "to Atlas, a2a",
+      "above": "People",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 6036
+     },
+     {
+      "text": "Oct 17, 08:03 PM",
+      "above": "Compliance",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 6646
+     },
+     {
+      "text": "Oct 17, 08:26 PM",
+      "above": "Agents",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 8004
+     },
+     {
+      "text": "to Runner, a2a",
+      "above": "Atlas",
+      "upper": false,
+      "tracked": false,
+      "mono": false,
+      "pill": false,
+      "size": 13,
+      "top": 8706
+     }
+    ],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#000000",
+     "bodyBgHsl": {
+      "h": 0,
+      "s": 0,
+      "l": 0
+     },
+     "dark": true,
+     "sectionBgs": [
+      {
+       "color": "#000000",
+       "top": 0,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 0
+       }
+      },
+      {
+       "color": "#0a0a0a",
+       "top": 263,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 0.04
+       }
+      },
+      {
+       "color": "#121212",
+       "top": 3962,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 0.07
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#c9c9c9",
+       "share": 0.45
+      },
+      {
+       "color": "#a1a1a1",
+       "share": 0.37
+      },
+      {
+       "color": "#ededed",
+       "share": 0.17
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.01
+      },
+      {
+       "color": "#000000",
+       "share": 0
+      }
+     ],
+     "button": {
+      "bg": "#ffffff",
+      "hsl": {
+       "h": 0,
+       "s": 0,
+       "l": 1
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 18,
+     "inHero": 2,
+     "radius": 0,
+     "height": 32,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Overview",
+      "Open in Factories →"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 3,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 6,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 1711
+      },
+      {
+       "count": 6,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 2740
+      },
+      {
+       "count": 9,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 4759
+      },
+      {
+       "count": 34,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 4893
+      },
+      {
+       "count": 3,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 10759
+      },
+      {
+       "count": 4,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 11356
+      }
+     ]
+    },
+    "heroMedia": [
+     {
+      "type": "img",
+      "ratio": 0.22
+     }
+    ],
+    "nav": {
+     "links": 7,
+     "fixed": true,
+     "height": 130,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "geistsans",
+     "geistmono"
+    ]
+   },
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "FAIL",
+   "id": "eyebrow",
+   "width": 1440,
+   "message": "4 eyebrow/kicker label(s) above headings: \"to Operator, a2a\" above \"People\"; \"synthetic\" above \"Compliance\"; \"Oct 17, 08:35 PM\" above \"Agents\"; \"synthetic\" above \"Atlas\"",
+   "fix": "Delete them. If the label carried real information, fold it into the headline or the supporting sentence.",
+   "alsoAt": [
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "card-rows",
+   "width": 1440,
+   "message": "6 rows of identical boxed cards.",
+   "fix": "Vary the composition; not every section is a card grid.",
+   "alsoAt": [
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "no-footage",
+   "width": 1440,
+   "message": "No video anywhere on the page.",
+   "fix": "Look for one honest clip with scripts/assets.mjs --video (the place, the material, the process) and use it as a muted loop with a poster frame. Defend its absence only if no clip fits the subject."
+  },
+  {
+   "level": "WARN",
+   "id": "blend-text",
+   "width": 1440,
+   "message": "19 text element(s) use mix-blend-mode difference or exclusion.",
+   "fix": "Over anything but black, white or grey, blended text takes random hues (blue on orange, lilac on green) that jurors read as a glitch. Use a solid ink chosen for the ground, or keep the blended text over neutral grounds only.",
+   "alsoAt": [
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "measure",
+   "width": 1440,
+   "message": "Longest paragraph runs about 93 characters per line.",
+   "fix": "Cap paragraphs at 45–75 characters (max-width: 60ch)."
+  },
+  {
+   "level": "WARN",
+   "id": "small-text",
+   "width": 1440,
+   "message": "3 text block(s) under 13px.",
+   "fix": "Nothing meant to be read goes below 13px.",
+   "alsoAt": [
+    390
+   ]
+  },
+  {
+   "level": "FAIL",
+   "id": "focal-point",
+   "width": 1440,
+   "message": "The first screen has no dominant element: the largest type is 44px (3.1vw) and no single picture holds a third of the viewport.",
+   "fix": "Make one thing lead: the headline at display size, or one large picture. A grid of many small pictures is not one thing; in blind tests jurors marked a first screen without a headline down every time. On the strongest studied sites the largest type has a median of 8.4vw."
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/desktop-fold.jpg",
+   "pages": [
+    "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/desktop-page-01.jpg",
+    "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/desktop-page-02.jpg",
+    "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/desktop-page-03.jpg"
+   ]
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/mobile-fold.jpg",
+   "pages": [
+    "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/mobile-page-01.jpg",
+    "/Users/aliuraishmirani/YC_Hackstripe/frontend/qa/inspect-dash3/mobile-page-02.jpg"
+   ]
+  }
+ ]
+}

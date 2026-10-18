@@ -1,0 +1,12 @@
+{
+  "site": "fixture",
+  "tag": "FX-06",
+  "pin": null,
+  "defect": "none",
+  "source": "fixture",
+  "synthetic": true,
+  "fixture": "full-range uniform noise (outlier)",
+  "expectedOutlier": true,
+  "capturedAt": null,
+  "note": "numpy-generated test clip, not a render of any site"
+}

@@ -1,0 +1,4 @@
+.full { position: fixed; inset: 0; background: #000; }
+.full .stage { position: absolute; inset: 0; }
+.fixed { min-height: 100vh; background: #000; }
+.fixed .stage { position: relative; }

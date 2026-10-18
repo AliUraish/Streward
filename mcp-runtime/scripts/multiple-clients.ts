@@ -12,7 +12,7 @@ const { values } = parseArgs({ options: {
 } });
 
 if (values.help) {
-  console.log('STEWARD two-client smoke demo\n\nnpm --prefix mcp-runtime run demo\nnpm --prefix mcp-runtime run demo -- --run-inspection --property cedar --scope pump-01\n\nDefault: read-only discovery, property/context reads and invalid-property recovery.\n--run-inspection: explicitly queues ONE local inspection, polls its persisted job through the other client, and exports the report.\nOptional: --url http://127.0.0.1:8002/mcp --timeout-ms 60000.\nAuthentication: optional STEWARD_MCP_TOKEN environment variable.');
+  console.log('STEWARD two-client smoke demo\n\nnpm --prefix mcp-runtime run demo\nnpm --prefix mcp-runtime run demo -- --run-inspection --property harbor-works --scope pump-01\n\nDefault: read-only discovery, property/context reads and invalid-property recovery.\n--run-inspection: explicitly queues ONE local inspection, polls its persisted job through the other client, and exports the report.\nOptional: --url http://127.0.0.1:8002/mcp --timeout-ms 60000.\nAuthentication: optional STEWARD_MCP_TOKEN environment variable.');
   process.exit(0);
 }
 
@@ -31,7 +31,7 @@ function output<S extends z.ZodType>(result: CallToolResult, schema: S): z.outpu
   if (result.isError) throw new Error(text(result));
   return schema.parse(result.structuredContent ?? JSON.parse(text(result)));
 }
-function isExpectedInvalid(error: unknown) { return error instanceof Error && /invalid|property|enum|scope|cedar|harbor|juniper/i.test(error.message); }
+function isExpectedInvalid(error: unknown) { return error instanceof Error && /invalid|property|enum|scope|harbor-works|myer-plant|bristol-pumps/i.test(error.message); }
 
 const mcpUse = new MCPClient({
   clientInfo: { name: 'steward-mcp-use-smoke', version: '0.1.0' },

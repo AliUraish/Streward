@@ -1,0 +1,1182 @@
+{
+  "name": "steward-demo-harbor-works-restart",
+  "suite": "demo-workflow",
+  "startedAt": "2026-10-18T02:36:38.703Z",
+  "finishedAt": "2026-10-18T02:36:38.812Z",
+  "passed": 12,
+  "failed": 0,
+  "rows": [
+    {
+      "id": "list_sites",
+      "kind": "tool",
+      "target": "list_sites",
+      "ok": true,
+      "ms": 7,
+      "detail": "",
+      "data": {
+        "sites": [
+          {
+            "id": "harbor-works",
+            "name": "Harbor Works",
+            "site": "Harbor Works, main plant room (demonstration site)",
+            "operator": "Harbor Works operations (demonstration)",
+            "status": "restart pending",
+            "environment": {
+              "kind": "fixture",
+              "credit": "Steward fixture twin (shared/scene.json), rendered with Three.js",
+              "captureNote": "Synthetic plant-room twin rendered by the dashboard from shared/scene.json; not a capture of a real site."
+            },
+            "readiness": 75,
+            "componentCount": 24,
+            "openIssues": 2,
+            "updatedAt": "2026-10-18T02:36:12.931612Z",
+            "siteId": "harbor-works"
+          },
+          {
+            "id": "myer-plant",
+            "name": "Myer Plant Room",
+            "site": "Myer Plant Room, basement plant room (demonstration site)",
+            "operator": "Myer facilities team (demonstration)",
+            "status": "operational",
+            "environment": {
+              "kind": "splat",
+              "splatId": "66b655d3",
+              "embedUrl": "https://superspl.at/s?id=66b655d3",
+              "thumbnailUrl": "https://s3-eu-west-1.amazonaws.com/images.playcanvas.com/splat/66b655d3/v1/xl.webp",
+              "credit": "Gaussian splat 'Myer plant room' (SuperSplat scene 66b655d3), captured by its SuperSplat author (handle as shown on superspl.at); third-party capture, not ours",
+              "captureNote": "Scene rendered from a third-party capture hosted on SuperSplat; shown here as the site environment."
+            },
+            "readiness": 79,
+            "componentCount": 24,
+            "openIssues": 2,
+            "updatedAt": "2026-10-18T02:36:12.933847Z",
+            "siteId": "myer-plant"
+          },
+          {
+            "id": "bristol-pumps",
+            "name": "Bristol Dock Machine Room",
+            "site": "Bristol Dock Machine Room, 1907 pump house (demonstration site)",
+            "operator": "Dock machine room restoration project (demonstration)",
+            "status": "under restoration",
+            "environment": {
+              "kind": "splat",
+              "splatId": "8a8ce192",
+              "embedUrl": "https://superspl.at/s?id=8a8ce192",
+              "thumbnailUrl": "https://s3-eu-west-1.amazonaws.com/images.playcanvas.com/splat/8a8ce192/v1/xl.webp",
+              "credit": "Gaussian splat '1907 dock pump room under restoration' (SuperSplat scene 8a8ce192), captured by its SuperSplat author (handle as shown on superspl.at); third-party capture, not ours",
+              "captureNote": "Scene rendered from a third-party capture hosted on SuperSplat; shown here as the site environment."
+            },
+            "readiness": 77,
+            "componentCount": 24,
+            "openIssues": 5,
+            "updatedAt": "2026-10-18T02:36:12.936613Z",
+            "siteId": "bristol-pumps"
+          }
+        ],
+        "mode": "local"
+      }
+    },
+    {
+      "id": "resolve_certificate_known",
+      "kind": "tool",
+      "target": "resolve",
+      "ok": true,
+      "ms": 5,
+      "detail": "",
+      "data": {
+        "status": "known",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "attribute": "commissioning_certificate",
+        "value": "HW-COMM-2026-0611",
+        "unit": null,
+        "observedAt": "2026-06-18T02:36:12Z",
+        "ageSeconds": 10540826,
+        "attestationId": "att-01e3c359395e4d2e",
+        "expiresAt": "2027-06-18T02:36:12Z",
+        "nextStep": "cite attestation att-01e3c359395e4d2e; no dispatch needed"
+      }
+    },
+    {
+      "id": "resolve_valve_known",
+      "kind": "tool",
+      "target": "resolve",
+      "ok": true,
+      "ms": 3,
+      "detail": "",
+      "data": {
+        "status": "known",
+        "propertyId": "harbor-works",
+        "assetTag": "V-501",
+        "attribute": "position",
+        "value": "open",
+        "unit": null,
+        "observedAt": "2026-10-18T01:56:12Z",
+        "ageSeconds": 2426,
+        "attestationId": "att-67381617598841e7",
+        "expiresAt": "2026-10-18T02:56:12Z",
+        "nextStep": "cite attestation att-67381617598841e7; no dispatch needed"
+      }
+    },
+    {
+      "id": "resolve_pressure_unknown_no_budget",
+      "kind": "tool",
+      "target": "resolve",
+      "ok": true,
+      "ms": 2,
+      "detail": "",
+      "data": {
+        "status": "stale",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "attribute": "pressure_bar",
+        "value": 2.4,
+        "unit": "bar",
+        "observedAt": "2026-10-18T02:36:38Z",
+        "ageSeconds": 0,
+        "attestationId": "att-1b8e123093184c73",
+        "expiresAt": "2026-10-18T03:36:38Z",
+        "nextStep": "call resolve again with budget > 0 to dispatch a fresh reading"
+      }
+    },
+    {
+      "id": "resolve_pressure_dispatch",
+      "kind": "tool",
+      "target": "resolve",
+      "ok": true,
+      "ms": 8,
+      "detail": "",
+      "data": {
+        "status": "stale",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "attribute": "pressure_bar",
+        "value": 2.4,
+        "unit": "bar",
+        "observedAt": "2026-10-18T02:36:38Z",
+        "ageSeconds": 0,
+        "attestationId": "att-1b8e123093184c73",
+        "workItemId": "wi-66f06d605ce54608",
+        "workState": "waiting",
+        "reference": "HW-P101-PRESSURE_BAR-0002",
+        "dispatchedVia": "sms",
+        "expiresAt": "2026-10-18T03:36:38Z",
+        "cost": 0,
+        "nextStep": "wait for work item HW-P101-PRESSURE_BAR-0002 via get_changes or the callback; the stale value is cited above"
+      }
+    },
+    {
+      "id": "inbound_wrong_tag_rejected",
+      "kind": "http",
+      "target": "POST /api/inbound/local",
+      "ok": true,
+      "ms": 5,
+      "detail": "",
+      "data": {
+        "routed": true,
+        "workItemId": "wi-66f06d605ce54608",
+        "verdict": "rejected",
+        "reasons": [
+          "tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102",
+          "P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east)."
+        ],
+        "attestationId": "att-e93082a6c4714b9b",
+        "factId": null
+      }
+    },
+    {
+      "id": "receipt_after_rejection",
+      "kind": "tool",
+      "target": "get_receipt",
+      "ok": true,
+      "ms": 3,
+      "detail": "",
+      "data": {
+        "id": "wi-66f06d605ce54608",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "componentId": "pump-01",
+        "attribute": "pressure_bar",
+        "attributeClass": "reading",
+        "reference": "HW-P101-PRESSURE_BAR-0002",
+        "state": "waiting",
+        "requester": "steward-eval",
+        "budget": 5,
+        "deadlineAt": "2026-10-18T04:36:38Z",
+        "dispatches": [
+          {
+            "id": "dsp-10639a66a0344517",
+            "channel": "sms",
+            "to": "# E.164 phone of the technician (task cards by SMS; must have texted START)",
+            "reference": "HW-P101-PRESSURE_BAR-0002",
+            "sentAt": "2026-10-18T02:36:38.775179Z",
+            "providerRef": null,
+            "body": "[not sent: External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.]\nHarbor Works, plant room, north wall.\nAsset P-101, primary circulation pump, tag plate on the housing. Nearby: PG-601 (primary pressure gauge) 0.5 m south; P-102 (secondary circulation pump) 1.9 m east.\nNeed: pressure bar reading in bar. Photograph it with the tag plate visible, or reply with the tag and value.\nExpected range 1.5 to 3.5 bar. Reply to this thread. Pays on verified proof only.\nReference HW-P101-PRESSURE_BAR-0002"
+          },
+          {
+            "id": "dsp-010a0d997cef41ca",
+            "channel": "local",
+            "to": "local-contractor",
+            "reference": "HW-P101-PRESSURE_BAR-0002",
+            "sentAt": "2026-10-18T02:36:38.781328Z",
+            "providerRef": null,
+            "body": "Rejected: tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102; P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east). Reference HW-P101-PRESSURE_BAR-0002."
+          }
+        ],
+        "verdicts": [
+          {
+            "attestationId": "att-e93082a6c4714b9b",
+            "verdict": "rejected",
+            "reasons": [
+              "tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102",
+              "P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east)."
+            ],
+            "at": "2026-10-18T02:36:38.780616Z"
+          }
+        ],
+        "factId": null,
+        "attestationId": null,
+        "receipt": null,
+        "createdAt": "2026-10-18T02:36:38.773957Z",
+        "updatedAt": "2026-10-18T02:36:38.781330Z"
+      }
+    },
+    {
+      "id": "inbound_right_tag_accepted",
+      "kind": "http",
+      "target": "POST /api/inbound/local",
+      "ok": true,
+      "ms": 8,
+      "detail": "",
+      "data": {
+        "routed": true,
+        "workItemId": "wi-66f06d605ce54608",
+        "verdict": "accepted",
+        "reasons": [],
+        "attestationId": "att-dfb0a56098704ad0",
+        "factId": "fact-e92f45115646479a"
+      }
+    },
+    {
+      "id": "receipt_resolved",
+      "kind": "tool",
+      "target": "get_receipt",
+      "ok": true,
+      "ms": 4,
+      "detail": "",
+      "data": {
+        "id": "wi-66f06d605ce54608",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "componentId": "pump-01",
+        "attribute": "pressure_bar",
+        "attributeClass": "reading",
+        "reference": "HW-P101-PRESSURE_BAR-0002",
+        "state": "resolved",
+        "requester": "steward-eval",
+        "budget": 5,
+        "deadlineAt": "2026-10-18T04:36:38Z",
+        "dispatches": [
+          {
+            "id": "dsp-10639a66a0344517",
+            "channel": "sms",
+            "to": "# E.164 phone of the technician (task cards by SMS; must have texted START)",
+            "reference": "HW-P101-PRESSURE_BAR-0002",
+            "sentAt": "2026-10-18T02:36:38.775179Z",
+            "providerRef": null,
+            "body": "[not sent: External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.]\nHarbor Works, plant room, north wall.\nAsset P-101, primary circulation pump, tag plate on the housing. Nearby: PG-601 (primary pressure gauge) 0.5 m south; P-102 (secondary circulation pump) 1.9 m east.\nNeed: pressure bar reading in bar. Photograph it with the tag plate visible, or reply with the tag and value.\nExpected range 1.5 to 3.5 bar. Reply to this thread. Pays on verified proof only.\nReference HW-P101-PRESSURE_BAR-0002"
+          },
+          {
+            "id": "dsp-010a0d997cef41ca",
+            "channel": "local",
+            "to": "local-contractor",
+            "reference": "HW-P101-PRESSURE_BAR-0002",
+            "sentAt": "2026-10-18T02:36:38.781328Z",
+            "providerRef": null,
+            "body": "Rejected: tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102; P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east). Reference HW-P101-PRESSURE_BAR-0002."
+          },
+          {
+            "id": "dsp-c93e0f9fd32345c6",
+            "channel": "local",
+            "to": "local-contractor",
+            "reference": "HW-P101-PRESSURE_BAR-0002",
+            "sentAt": "2026-10-18T02:36:38.790541Z",
+            "providerRef": null,
+            "body": "Accepted. P-101 pressure bar recorded. Thank you. Reference HW-P101-PRESSURE_BAR-0002."
+          }
+        ],
+        "verdicts": [
+          {
+            "attestationId": "att-e93082a6c4714b9b",
+            "verdict": "rejected",
+            "reasons": [
+              "tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102",
+              "P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east)."
+            ],
+            "at": "2026-10-18T02:36:38.780616Z"
+          },
+          {
+            "attestationId": "att-dfb0a56098704ad0",
+            "verdict": "accepted",
+            "reasons": [],
+            "at": "2026-10-18T02:36:38.789736Z"
+          }
+        ],
+        "factId": "fact-e92f45115646479a",
+        "attestationId": "att-dfb0a56098704ad0",
+        "receipt": {
+          "waitedSeconds": 0,
+          "tokensWhileWaiting": 0,
+          "estimatedPollingTokens": 0,
+          "dispatches": 2,
+          "cost": 0,
+          "currency": "USD"
+        },
+        "createdAt": "2026-10-18T02:36:38.773957Z",
+        "updatedAt": "2026-10-18T02:36:38.790543Z"
+      }
+    },
+    {
+      "id": "check_signature_valid",
+      "kind": "tool",
+      "target": "check",
+      "ok": true,
+      "ms": 3,
+      "detail": "",
+      "data": {
+        "id": "att-dfb0a56098704ad0",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "componentId": "pump-01",
+        "attribute": "pressure_bar",
+        "value": 2.4,
+        "unit": "bar",
+        "observedAt": "2026-10-18T02:36:38Z",
+        "evidenceHashes": [
+          "a55267cff4ab76fa2b8e9711277b2497bac5a98356ee8942574e7a28dbae9e2c"
+        ],
+        "checks": [
+          {
+            "name": "scope",
+            "passed": true,
+            "reason": "Property harbor-works matches the asset register and work item HW-P101-PRESSURE_BAR-0002."
+          },
+          {
+            "name": "identity",
+            "passed": true,
+            "reason": "Tag plate reads P-101 (from stated tag), matching expected P-101."
+          },
+          {
+            "name": "geometry",
+            "passed": true,
+            "reason": "P-101 is registered as pump-01 at (-3.1, 0, -0.6); sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east)."
+          },
+          {
+            "name": "plausibility",
+            "passed": true,
+            "reason": "2.4 bar is inside the 1.5–3.5 bar spec range."
+          },
+          {
+            "name": "time",
+            "passed": true,
+            "reason": "observedAt 2026-10-18T02:36:38Z (provider receipt time (no JPEG EXIF available)) is inside the accepted window."
+          },
+          {
+            "name": "integrity",
+            "passed": true,
+            "reason": "SHA-256 of the canonical JSON observation (no file): a55267cff4ab76fa2b8e9711277b2497bac5a98356ee8942574e7a28dbae9e2c."
+          }
+        ],
+        "verdict": "accepted",
+        "source": {
+          "kind": "human",
+          "ref": "local:local-4cdf85d8ad5c406d"
+        },
+        "verifierVersion": "steward-verify/1",
+        "signedAt": "2026-10-18T02:36:38.787782Z",
+        "publicKey": "THLazCL9qLSo4IeykI4Noihp4dXwrHoA1S19rFWw6zY=",
+        "signature": "QdCmK29xQC1UywMfA9mkE9uXjS65wvLRtLHJPppkS0iiMvbkofUNb0OYcnndMuWEsA3GPiukwpykqod6Q12OBQ==",
+        "valid": true
+      }
+    },
+    {
+      "id": "resolve_pressure_now_known",
+      "kind": "tool",
+      "target": "resolve",
+      "ok": true,
+      "ms": 3,
+      "detail": "",
+      "data": {
+        "status": "known",
+        "propertyId": "harbor-works",
+        "assetTag": "P-101",
+        "attribute": "pressure_bar",
+        "value": 2.4,
+        "unit": "bar",
+        "observedAt": "2026-10-18T02:36:38Z",
+        "ageSeconds": 0,
+        "attestationId": "att-dfb0a56098704ad0",
+        "expiresAt": "2026-10-18T03:36:38Z",
+        "nextStep": "cite attestation att-dfb0a56098704ad0; no dispatch needed"
+      }
+    },
+    {
+      "id": "changes_since_zero",
+      "kind": "tool",
+      "target": "get_changes",
+      "ok": true,
+      "ms": 5,
+      "detail": "",
+      "data": {
+        "version": 101,
+        "changes": [
+          {
+            "version": 2,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "fact-67568a9b0dca44e6",
+            "summary": "Seeded P-101.serial = HW-P101-SN263DA7 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.946299Z"
+          },
+          {
+            "version": 3,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "att-f9194b1175b7460c",
+            "summary": "Signed attestation for P-101.serial (accepted).",
+            "at": "2026-10-18T02:36:12.947630Z"
+          },
+          {
+            "version": 5,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "P-102",
+            "refId": "fact-3d0ab6cb6e334450",
+            "summary": "Seeded P-102.serial = HW-P102-SN0F7AC8 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.956100Z"
+          },
+          {
+            "version": 6,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "P-102",
+            "refId": "att-2c1a301deb534770",
+            "summary": "Signed attestation for P-102.serial (accepted).",
+            "at": "2026-10-18T02:36:12.961073Z"
+          },
+          {
+            "version": 8,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "P-103",
+            "refId": "fact-6d74b018c7e249a2",
+            "summary": "Seeded P-103.serial = HW-P103-SNE83CBD (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.968684Z"
+          },
+          {
+            "version": 9,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "P-103",
+            "refId": "att-ea3bef91673248ee",
+            "summary": "Signed attestation for P-103.serial (accepted).",
+            "at": "2026-10-18T02:36:12.969146Z"
+          },
+          {
+            "version": 11,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TK-201",
+            "refId": "fact-2e0e0619665c45c9",
+            "summary": "Seeded TK-201.serial = HW-TK201-SNBE6D2D (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.971529Z"
+          },
+          {
+            "version": 12,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TK-201",
+            "refId": "att-7cfe1b737e274a34",
+            "summary": "Signed attestation for TK-201.serial (accepted).",
+            "at": "2026-10-18T02:36:12.979563Z"
+          },
+          {
+            "version": 14,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TK-202",
+            "refId": "fact-f434372a84e14b55",
+            "summary": "Seeded TK-202.serial = HW-TK202-SNE704B2 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.984015Z"
+          },
+          {
+            "version": 15,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TK-202",
+            "refId": "att-5a44ccb50cae4ffb",
+            "summary": "Signed attestation for TK-202.serial (accepted).",
+            "at": "2026-10-18T02:36:12.988790Z"
+          },
+          {
+            "version": 17,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "HX-301",
+            "refId": "fact-931b79dbd0e640f1",
+            "summary": "Seeded HX-301.serial = HW-HX301-SNE472B3 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.994785Z"
+          },
+          {
+            "version": 18,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "HX-301",
+            "refId": "att-6c71f5f3df584819",
+            "summary": "Signed attestation for HX-301.serial (accepted).",
+            "at": "2026-10-18T02:36:12.995246Z"
+          },
+          {
+            "version": 20,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "HX-302",
+            "refId": "fact-36a436594d3d48ef",
+            "summary": "Seeded HX-302.serial = HW-HX302-SN42F925 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:12.998314Z"
+          },
+          {
+            "version": 21,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "HX-302",
+            "refId": "att-f170e56b8a94476c",
+            "summary": "Signed attestation for HX-302.serial (accepted).",
+            "at": "2026-10-18T02:36:12.998799Z"
+          },
+          {
+            "version": 23,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "DB-401",
+            "refId": "fact-d21457cb75554bee",
+            "summary": "Seeded DB-401.serial = HW-DB401-SN5952CC (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.000132Z"
+          },
+          {
+            "version": 24,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "DB-401",
+            "refId": "att-03b804354f1e476a",
+            "summary": "Signed attestation for DB-401.serial (accepted).",
+            "at": "2026-10-18T02:36:13.000558Z"
+          },
+          {
+            "version": 26,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "CP-402",
+            "refId": "fact-ff8d5c8197074716",
+            "summary": "Seeded CP-402.serial = HW-CP402-SNACD069 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.002076Z"
+          },
+          {
+            "version": 27,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "CP-402",
+            "refId": "att-286e5f6fef424bf2",
+            "summary": "Signed attestation for CP-402.serial (accepted).",
+            "at": "2026-10-18T02:36:13.002856Z"
+          },
+          {
+            "version": 29,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "V-501",
+            "refId": "fact-c8c76a48a9b14599",
+            "summary": "Seeded V-501.serial = HW-V501-SN381FF3 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.004220Z"
+          },
+          {
+            "version": 30,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "V-501",
+            "refId": "att-d4a8fd454cd442cd",
+            "summary": "Signed attestation for V-501.serial (accepted).",
+            "at": "2026-10-18T02:36:13.004623Z"
+          },
+          {
+            "version": 32,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "V-502",
+            "refId": "fact-9f6d588cb5044424",
+            "summary": "Seeded V-502.serial = HW-V502-SNEABFEB (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.005860Z"
+          },
+          {
+            "version": 33,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "V-502",
+            "refId": "att-b7e406fb0c104cc8",
+            "summary": "Signed attestation for V-502.serial (accepted).",
+            "at": "2026-10-18T02:36:13.006287Z"
+          },
+          {
+            "version": 35,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "V-503",
+            "refId": "fact-11807b581af44430",
+            "summary": "Seeded V-503.serial = HW-V503-SNC0458B (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.008523Z"
+          },
+          {
+            "version": 36,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "V-503",
+            "refId": "att-a96c07308fa0443d",
+            "summary": "Signed attestation for V-503.serial (accepted).",
+            "at": "2026-10-18T02:36:13.008972Z"
+          },
+          {
+            "version": 38,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "V-504",
+            "refId": "fact-79f67bbde9d84bff",
+            "summary": "Seeded V-504.serial = HW-V504-SN50F6D9 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.010219Z"
+          },
+          {
+            "version": 39,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "V-504",
+            "refId": "att-a2142cf2448a4ab0",
+            "summary": "Signed attestation for V-504.serial (accepted).",
+            "at": "2026-10-18T02:36:13.010648Z"
+          },
+          {
+            "version": 41,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "V-505",
+            "refId": "fact-a812e59cf1a24870",
+            "summary": "Seeded V-505.serial = HW-V505-SNC0610A (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.012431Z"
+          },
+          {
+            "version": 42,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "V-505",
+            "refId": "att-ebee3d71e57845bf",
+            "summary": "Signed attestation for V-505.serial (accepted).",
+            "at": "2026-10-18T02:36:13.012865Z"
+          },
+          {
+            "version": 44,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "PG-601",
+            "refId": "fact-0107e855c1444f0e",
+            "summary": "Seeded PG-601.serial = HW-PG601-SN14475A (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.014447Z"
+          },
+          {
+            "version": 45,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "PG-601",
+            "refId": "att-fb80059ccc194737",
+            "summary": "Signed attestation for PG-601.serial (accepted).",
+            "at": "2026-10-18T02:36:13.014846Z"
+          },
+          {
+            "version": 47,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "PG-602",
+            "refId": "fact-70c93242cdad401b",
+            "summary": "Seeded PG-602.serial = HW-PG602-SN9798C3 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.016059Z"
+          },
+          {
+            "version": 48,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "PG-602",
+            "refId": "att-02de1eea5f5d45aa",
+            "summary": "Signed attestation for PG-602.serial (accepted).",
+            "at": "2026-10-18T02:36:13.016478Z"
+          },
+          {
+            "version": 50,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "PG-603",
+            "refId": "fact-af454e32d779439f",
+            "summary": "Seeded PG-603.serial = HW-PG603-SN7435B9 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.017632Z"
+          },
+          {
+            "version": 51,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "PG-603",
+            "refId": "att-81a8aa552ffa45a3",
+            "summary": "Signed attestation for PG-603.serial (accepted).",
+            "at": "2026-10-18T02:36:13.018047Z"
+          },
+          {
+            "version": 53,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "AHU-701",
+            "refId": "fact-f2807243f3f242c4",
+            "summary": "Seeded AHU-701.serial = HW-AHU701-SN391A51 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.019622Z"
+          },
+          {
+            "version": 54,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "AHU-701",
+            "refId": "att-6410827962614067",
+            "summary": "Signed attestation for AHU-701.serial (accepted).",
+            "at": "2026-10-18T02:36:13.020016Z"
+          },
+          {
+            "version": 56,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "AHU-702",
+            "refId": "fact-f7ae653a16f94153",
+            "summary": "Seeded AHU-702.serial = HW-AHU702-SN6737B7 (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.021103Z"
+          },
+          {
+            "version": 57,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "AHU-702",
+            "refId": "att-8cb1ff47abc84e6a",
+            "summary": "Signed attestation for AHU-702.serial (accepted).",
+            "at": "2026-10-18T02:36:13.021502Z"
+          },
+          {
+            "version": 59,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-801",
+            "refId": "fact-3c2e6a04e54c4d8e",
+            "summary": "Seeded TS-801.serial = HW-TS801-SN6D0D9F (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.022585Z"
+          },
+          {
+            "version": 60,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-801",
+            "refId": "att-a3334ae8aff34ea5",
+            "summary": "Signed attestation for TS-801.serial (accepted).",
+            "at": "2026-10-18T02:36:13.022963Z"
+          },
+          {
+            "version": 62,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-802",
+            "refId": "fact-33bab549bdd24d05",
+            "summary": "Seeded TS-802.serial = HW-TS802-SN683B9F (patrol:seed:initial).",
+            "at": "2026-10-18T02:36:13.024376Z"
+          },
+          {
+            "version": 63,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-802",
+            "refId": "att-5c9144a9da1a43e8",
+            "summary": "Signed attestation for TS-802.serial (accepted).",
+            "at": "2026-10-18T02:36:13.025363Z"
+          },
+          {
+            "version": 65,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "fact-f5d6fb99625f4261",
+            "summary": "Seeded P-101.commissioning_certificate = HW-COMM-2026-0611 (human:document:harbor-works-observations).",
+            "at": "2026-10-18T02:36:13.026599Z"
+          },
+          {
+            "version": 66,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "att-01e3c359395e4d2e",
+            "summary": "Signed attestation for P-101.commissioning_certificate (accepted).",
+            "at": "2026-10-18T02:36:13.027047Z"
+          },
+          {
+            "version": 68,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "V-501",
+            "refId": "fact-b17ce678644946d1",
+            "summary": "Seeded V-501.position = open (patrol:seed:patrol-initial).",
+            "at": "2026-10-18T02:36:13.028252Z"
+          },
+          {
+            "version": 69,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "V-501",
+            "refId": "att-67381617598841e7",
+            "summary": "Signed attestation for V-501.position (accepted).",
+            "at": "2026-10-18T02:36:13.028652Z"
+          },
+          {
+            "version": 71,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-801",
+            "refId": "fact-1c461db54a714f6c",
+            "summary": "Seeded TS-801.temperature_c = 22.3 °C (sensor:sim:TS-801).",
+            "at": "2026-10-18T02:36:13.029815Z"
+          },
+          {
+            "version": 72,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-801",
+            "refId": "att-af89aee95fe848c6",
+            "summary": "Signed attestation for TS-801.temperature_c (accepted).",
+            "at": "2026-10-18T02:36:13.030654Z"
+          },
+          {
+            "version": 74,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-802",
+            "refId": "fact-10621fbc37384332",
+            "summary": "Seeded TS-802.temperature_c = 22.4 °C (sensor:sim:TS-802).",
+            "at": "2026-10-18T02:36:13.031769Z"
+          },
+          {
+            "version": 75,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-802",
+            "refId": "att-708f594332ed4fcd",
+            "summary": "Signed attestation for TS-802.temperature_c (accepted).",
+            "at": "2026-10-18T02:36:13.032160Z"
+          },
+          {
+            "version": 77,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-801",
+            "refId": "fact-f4f0de62512a4a58",
+            "summary": "TS-801.temperature_c = 20.8 °C (sensor:sim:TS-801)",
+            "at": "2026-10-18T02:36:33.115551Z"
+          },
+          {
+            "version": 78,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-801",
+            "refId": "att-b3f9d50077914ff0",
+            "summary": "Signed attestation for TS-801.temperature_c (accepted).",
+            "at": "2026-10-18T02:36:33.117359Z"
+          },
+          {
+            "version": 80,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-802",
+            "refId": "fact-33b61643ad8a4b41",
+            "summary": "TS-802.temperature_c = 22.0 °C (sensor:sim:TS-802)",
+            "at": "2026-10-18T02:36:33.120590Z"
+          },
+          {
+            "version": 81,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "TS-802",
+            "refId": "att-bf65054b67904034",
+            "summary": "Signed attestation for TS-802.temperature_c (accepted).",
+            "at": "2026-10-18T02:36:33.122190Z"
+          },
+          {
+            "version": 82,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-8d7c577ad8194812",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0001 opened (open) for P-101.pressure_bar by steward-eval.",
+            "at": "2026-10-18T02:36:38.444001Z"
+          },
+          {
+            "version": 83,
+            "type": "dispatch",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "dsp-e29b0fe673904149",
+            "summary": "sms dispatch for HW-P101-PRESSURE_BAR-0001 to # E.164 phone of the technician (task cards by SMS; must have texted START) (not sent: External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.) recorded locally; no provider receipt",
+            "at": "2026-10-18T02:36:38.445916Z"
+          },
+          {
+            "version": 84,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-8d7c577ad8194812",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0001 is waiting via sms.",
+            "at": "2026-10-18T02:36:38.446690Z"
+          },
+          {
+            "version": 85,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-8d7c577ad8194812",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0001 verdict rejected: tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102; P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east).",
+            "at": "2026-10-18T02:36:38.451574Z"
+          },
+          {
+            "version": 86,
+            "type": "dispatch",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "dsp-144a4a8f901e4099",
+            "summary": "local dispatch for HW-P101-PRESSURE_BAR-0001 to local-contractor (reply stored locally) recorded locally; no provider receipt",
+            "at": "2026-10-18T02:36:38.452527Z"
+          },
+          {
+            "version": 88,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "fact-60f5c76475aa438c",
+            "summary": "P-101.pressure_bar = 2.4 bar (human:local:local-7a27a65f5a3644de)",
+            "at": "2026-10-18T02:36:38.461645Z"
+          },
+          {
+            "version": 89,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "att-1b8e123093184c73",
+            "summary": "Signed attestation for P-101.pressure_bar (accepted).",
+            "at": "2026-10-18T02:36:38.462086Z"
+          },
+          {
+            "version": 90,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-8d7c577ad8194812",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0001 verdict accepted: all checks passed",
+            "at": "2026-10-18T02:36:38.462719Z"
+          },
+          {
+            "version": 91,
+            "type": "dispatch",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "dsp-878573b2a5f94479",
+            "summary": "local dispatch for HW-P101-PRESSURE_BAR-0001 to local-contractor (reply stored locally) recorded locally; no provider receipt",
+            "at": "2026-10-18T02:36:38.463435Z"
+          },
+          {
+            "version": 92,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-66f06d605ce54608",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0002 opened (open) for P-101.pressure_bar by steward-eval.",
+            "at": "2026-10-18T02:36:38.774414Z"
+          },
+          {
+            "version": 93,
+            "type": "dispatch",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "dsp-10639a66a0344517",
+            "summary": "sms dispatch for HW-P101-PRESSURE_BAR-0002 to # E.164 phone of the technician (task cards by SMS; must have texted START) (not sent: External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.) recorded locally; no provider receipt",
+            "at": "2026-10-18T02:36:38.775653Z"
+          },
+          {
+            "version": 94,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-66f06d605ce54608",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0002 is waiting via sms.",
+            "at": "2026-10-18T02:36:38.776482Z"
+          },
+          {
+            "version": 95,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-66f06d605ce54608",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0002 verdict rejected: tag plate reads P-102, expected P-101, P-101 is 1.9 m west of P-102; P-102 is pump-02 at (-1.2, 0, -0.6), not the expected pump-01; sibling of the same kind within 3 m: P-102 (Secondary circulation pump, 1.9 m east).",
+            "at": "2026-10-18T02:36:38.780904Z"
+          },
+          {
+            "version": 96,
+            "type": "dispatch",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "dsp-010a0d997cef41ca",
+            "summary": "local dispatch for HW-P101-PRESSURE_BAR-0002 to local-contractor (reply stored locally) recorded locally; no provider receipt",
+            "at": "2026-10-18T02:36:38.781786Z"
+          },
+          {
+            "version": 98,
+            "type": "fact",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "fact-e92f45115646479a",
+            "summary": "P-101.pressure_bar = 2.4 bar (human:local:local-4cdf85d8ad5c406d)",
+            "at": "2026-10-18T02:36:38.788851Z"
+          },
+          {
+            "version": 99,
+            "type": "attestation",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "att-dfb0a56098704ad0",
+            "summary": "Signed attestation for P-101.pressure_bar (accepted).",
+            "at": "2026-10-18T02:36:38.789351Z"
+          },
+          {
+            "version": 100,
+            "type": "work_item",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "wi-66f06d605ce54608",
+            "summary": "Work item HW-P101-PRESSURE_BAR-0002 verdict accepted: all checks passed",
+            "at": "2026-10-18T02:36:38.790135Z"
+          },
+          {
+            "version": 101,
+            "type": "dispatch",
+            "propertyId": "harbor-works",
+            "assetTag": "P-101",
+            "refId": "dsp-c93e0f9fd32345c6",
+            "summary": "local dispatch for HW-P101-PRESSURE_BAR-0002 to local-contractor (reply stored locally) recorded locally; no provider receipt",
+            "at": "2026-10-18T02:36:38.792499Z"
+          }
+        ],
+        "waiting": []
+      }
+    }
+  ],
+  "vars": {
+    "certificateAttestationId": "att-01e3c359395e4d2e",
+    "workItemId": "wi-66f06d605ce54608",
+    "reference": "HW-P101-PRESSURE_BAR-0002",
+    "pressureAttestationId": "att-dfb0a56098704ad0"
+  },
+  "file": "/Users/aliuraishmirani/YC_Hackstripe/evals/demo-workflow.json",
+  "steps": [
+    {
+      "name": "list_sites",
+      "target": "list_sites",
+      "result": "PASS",
+      "ms": 7,
+      "detail": ""
+    },
+    {
+      "name": "resolve_certificate_known",
+      "target": "resolve",
+      "result": "PASS",
+      "ms": 5,
+      "detail": ""
+    },
+    {
+      "name": "resolve_valve_known",
+      "target": "resolve",
+      "result": "PASS",
+      "ms": 3,
+      "detail": ""
+    },
+    {
+      "name": "resolve_pressure_unknown_no_budget",
+      "target": "resolve",
+      "result": "PASS",
+      "ms": 2,
+      "detail": ""
+    },
+    {
+      "name": "resolve_pressure_dispatch",
+      "target": "resolve",
+      "result": "PASS",
+      "ms": 8,
+      "detail": ""
+    },
+    {
+      "name": "inbound_wrong_tag_rejected",
+      "target": "POST /api/inbound/local",
+      "result": "PASS",
+      "ms": 5,
+      "detail": ""
+    },
+    {
+      "name": "receipt_after_rejection",
+      "target": "get_receipt",
+      "result": "PASS",
+      "ms": 3,
+      "detail": ""
+    },
+    {
+      "name": "inbound_right_tag_accepted",
+      "target": "POST /api/inbound/local",
+      "result": "PASS",
+      "ms": 8,
+      "detail": ""
+    },
+    {
+      "name": "receipt_resolved",
+      "target": "get_receipt",
+      "result": "PASS",
+      "ms": 4,
+      "detail": ""
+    },
+    {
+      "name": "check_signature_valid",
+      "target": "check",
+      "result": "PASS",
+      "ms": 3,
+      "detail": ""
+    },
+    {
+      "name": "resolve_pressure_now_known",
+      "target": "resolve",
+      "result": "PASS",
+      "ms": 3,
+      "detail": ""
+    },
+    {
+      "name": "changes_since_zero",
+      "target": "get_changes",
+      "result": "PASS",
+      "ms": 5,
+      "detail": ""
+    }
+  ],
+  "mcpUrl": "http://127.0.0.1:8013/mcp",
+  "backendUrl": "http://127.0.0.1:8012",
+  "at": "2026-10-18T02:36:38.812Z"
+}

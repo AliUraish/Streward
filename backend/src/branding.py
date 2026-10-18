@@ -110,7 +110,8 @@ def migrate_records(store):
 def rebrand_seed_pdfs(store):
     if store.meta("steward_seed_pdf_brand_version") == BRAND_VERSION:
         return
-    for property_id in ("cedar", "harbor", "juniper"):
+    from .sites import SITE_IDS
+    for property_id in SITE_IDS:
         for suffix in ("spec", "register", "observations"):
             identifier = f"{property_id}-{suffix}"
             document = store.get("document", identifier, property_id)

@@ -9,6 +9,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from .branding import prepare_database, migrate_records
+from .sites import migrate_site_ids, retire_sites
+from .agent_migration import migrate_agent_ids
 
 
 def now() -> str:
@@ -40,6 +42,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
             """)
         migrate_records(self)
+        migrate_site_ids(self)
+        retire_sites(self)
+        migrate_agent_ids(self)
 
     def connect(self):
         connection = sqlite3.connect(self.path, timeout=30)

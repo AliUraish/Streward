@@ -1,0 +1,141 @@
+/* Dashboard chrome. Working sizes: 14px text, 13px mono, 28px titles. Surfaces step in tone, never in lines. */
+.dash { height: 100dvh; display: flex; flex-direction: column; background: var(--g0); color: var(--ink); font-size: 14px; }
+.dash-bar { height: 56px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 20px; background: var(--g0); }
+.dash-bar .wordmark { font-size: 18px; font-weight: 500; letter-spacing: -0.02em; display: flex; align-items: baseline; gap: 12px; }
+.dash-bar .wordmark small { font-size: 13px; color: var(--muted); font-weight: 400; }
+.dash-nav { display: flex; gap: 4px; }
+.dash-nav button { padding: 8px 12px; color: var(--muted); font-size: 14px; transition: color var(--t-hover) ease, background-color var(--t-hover) ease; }
+.dash-nav button:hover { color: var(--ink); background: var(--s2); }
+.dash-nav button.active { color: var(--ink); background: var(--s3); }
+.dash-bar .right { display: flex; align-items: center; gap: 12px; }
+.dash-bar select { background: var(--s2); border: 0; padding: 8px 10px; color: var(--ink); font-size: 14px; }
+.dash-bar .transport { font-size: 13px; color: var(--muted); }
+.dash-bar .transport.realtime { color: var(--accent); }
+.dash-notice { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--s2); font-size: 13px; }
+.dash-notice span { flex: 1; }
+.dash-main { flex: 1; min-height: 0; position: relative; }
+.dash-main > .loading-state, .dash-main > .error-state { height: 100%; min-height: 300px; display: grid; place-items: center; gap: 12px; color: var(--muted); }
+
+/* Twin view: twin dominant, timeline below, rail right. */
+.twin-view { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 420px; grid-template-rows: minmax(0, 1fr) 220px; gap: 4px; padding: 0 4px 4px; }
+.twin-stage { grid-column: 1; grid-row: 1; position: relative; background: var(--s1); overflow: hidden; }
+.twin-stage > :first-child { position: absolute; inset: 0; }
+.twin-focus { position: absolute; left: 16px; bottom: 16px; background: var(--s1); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; max-width: 360px; }
+.twin-focus .tag { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; color: var(--muted); }
+.twin-focus .name { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+.twin-focus .line { font-size: 13px; color: var(--muted); }
+.twin-focus .line b { color: var(--ink); font-weight: 500; }
+.twin-tools { position: absolute; right: 16px; top: 16px; display: flex; gap: 6px; }
+.twin-tools button { background: var(--s2); color: var(--muted); font-size: 13px; padding: 7px 10px; transition: background-color var(--t-hover) ease, color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.twin-tools button:hover { background: var(--s3); color: var(--ink); }
+.twin-tools button:active { transform: scale(.96); }
+.twin-tools button.on { color: var(--ink); background: var(--s3); }
+.timeline { grid-column: 1; grid-row: 2; background: var(--s1); overflow: auto; }
+.rail { grid-column: 2; grid-row: 1 / span 2; background: var(--s1); overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+
+/* Panels: a title row, then rows that step in tone. */
+.panel { background: var(--s1); display: flex; flex-direction: column; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 16px 16px 10px; }
+.panel-head h2 { font-size: 15px; font-weight: 500; }
+.panel-head .count { color: var(--muted); font-size: 13px; }
+.panel-head .demo { font-size: 13px; color: var(--accent-ink); background: var(--accent); padding: 2px 6px; font-weight: 500; }
+.panel-body { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 12px; }
+.row { width: 100%; text-align: left; background: var(--s2); padding: 12px 12px; display: flex; flex-direction: column; gap: 6px; transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+button.row:hover { background: var(--s3); }
+button.row:active { transform: scale(.995); }
+.row.selected { background: var(--s3); }
+.row .top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.row .top .tag { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; color: var(--ink); }
+.row .top .state { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.row .top .state.known, .row .top .state.accepted, .row .top .state.resolved, .row .top .state.valid { color: var(--accent); }
+.row .attr { font-size: 14px; color: var(--ink); }
+.row .attr b { font-weight: 500; }
+.row .sub { font-size: 13px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.row .ref { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; color: var(--muted); word-break: break-all; }
+.row .value { font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+.row .value small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
+.fresh { height: 4px; background: var(--s4); width: 100%; }
+.fresh > span { display: block; height: 100%; background: var(--accent); transition: width var(--t-ui) var(--ease-out); }
+.fresh.stale > span { background: var(--muted); }
+.row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.row-actions select { background: var(--s3); border: 0; padding: 6px 8px; font-size: 13px; color: var(--ink); }
+.row-actions .btn-small { min-height: 30px; }
+.row-actions .result { font-size: 13px; color: var(--muted); flex-basis: 100%; }
+.panel .empty { padding: 14px 12px; font-size: 13px; color: var(--muted); background: var(--s2); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 16px; }
+.badge { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; padding: 6px 8px; background: var(--s2); color: var(--ink); display: inline-flex; gap: 8px; align-items: center; transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.badge:hover { background: var(--s3); }
+.badge:active { transform: scale(.96); }
+.badge .dot { width: 6px; height: 6px; background: var(--accent); }
+
+/* Timeline rows */
+.timeline .panel-head { position: sticky; top: 0; background: var(--s1); z-index: 1; }
+.tl-row { display: grid; grid-template-columns: 56px 110px 1fr auto; gap: 12px; align-items: baseline; padding: 8px 16px; font-size: 13px; width: 100%; text-align: left; transition: background-color var(--t-hover) ease; }
+button.tl-row:hover { background: var(--s2); }
+.tl-row .at { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tl-row .type { color: var(--muted); }
+.tl-row .type.attestation, .tl-row .type.fact { color: var(--accent); }
+.tl-row .summary { color: var(--ink); }
+.tl-row .tag { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .tl-row.fresh-row { animation: tl-in var(--t-ui) var(--ease-out); } }
+@keyframes tl-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* Forms in the rail */
+.form { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
+.form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form .file { font-size: 13px; color: var(--muted); }
+.form .file input { font-size: 13px; }
+.form .result { font-size: 13px; background: var(--s2); padding: 10px 12px; color: var(--ink-2); display: flex; flex-direction: column; gap: 4px; }
+.form .result b { color: var(--accent); font-weight: 500; }
+.form .result b.rejected { color: var(--ink); }
+.form .actions { display: flex; gap: 8px; align-items: center; }
+
+/* Attestation drawer: the one thing that floats. */
+.drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 40; display: flex; justify-content: flex-end; }
+.drawer { width: min(560px, 100%); height: 100%; background: var(--s1); overflow: auto; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+@media (prefers-reduced-motion: no-preference) { .drawer { animation: drawer-in 320ms var(--ease-out); } .drawer-backdrop { animation: fade-in 240ms ease; } }
+@keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.drawer h2 { font-size: 28px; font-weight: 450; letter-spacing: -0.02em; line-height: 1; }
+.drawer .id { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; color: var(--muted); word-break: break-all; }
+.drawer .valid { font-size: 16px; font-weight: 500; }
+.drawer .valid.ok { color: var(--accent); }
+.drawer dl { display: grid; grid-template-columns: 130px 1fr; gap: 8px 16px; margin: 0; font-size: 14px; }
+.drawer dt { color: var(--muted); }
+.drawer dd { margin: 0; word-break: break-all; }
+.drawer .checks { font-size: 14px; }
+.drawer .checks th, .drawer .checks td { padding: 10px 8px; }
+.drawer .checks td.pass.ok { color: var(--accent); }
+.drawer .checks td.pass { color: var(--muted); white-space: nowrap; }
+.drawer .checks td.name { font-weight: 500; white-space: nowrap; }
+.drawer .checks td.rule { color: var(--ink-2); }
+.drawer .checks { width: 100%; border-collapse: collapse; }
+.drawer .checks th, .drawer .checks td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--s3); }
+.drawer .sig { font-family: var(--font-mono); /* taste-skill-ignore: tags, references, hashes, attestation IDs and real JSON per DESIGN-DECISION.md */ font-size: 13px; color: var(--muted); word-break: break-all; background: var(--s2); padding: 12px; }
+.drawer .close { align-self: flex-start; }
+
+/* Legacy secondary views live under the same shell. */
+.dash .legacy-view { height: 100%; overflow: auto; }
+
+@media (max-width: 1100px) {
+  .dash { height: auto; min-height: 100dvh; }
+  .dash-main { min-height: 0; }
+  .twin-view { height: auto; grid-template-columns: 1fr; grid-template-rows: 56vh auto auto; }
+  .twin-stage { grid-column: 1; grid-row: 1; }
+  .rail { grid-column: 1; grid-row: 2; }
+  .timeline { grid-column: 1; grid-row: 3; max-height: 360px; }
+  .dash .legacy-view { height: calc(100dvh - 56px); }
+}
+@media (max-width: 480px) {
+  .dash-bar { height: auto; flex-wrap: wrap; padding: 8px 12px; gap: 8px 12px; }
+  .dash-bar .right { margin-left: auto; }
+  .dash-nav { order: 3; width: 100%; overflow-x: auto; }
+  .dash-bar .wordmark small { display: none; }
+  .dash-nav button { padding: 8px 8px; font-size: 13px; }
+  .twin-view { grid-template-rows: 48vh auto auto; padding: 0; gap: 2px; }
+  .twin-focus { left: 8px; right: 8px; bottom: 8px; max-width: none; }
+  .tl-row { grid-template-columns: 48px 1fr; }
+  .tl-row .type { display: none; }
+  .tl-row .tag { grid-column: 2; }
+  .form .two { grid-template-columns: 1fr; }
+}

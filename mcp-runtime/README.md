@@ -1,121 +1,136 @@
-# STEWARD local MCP runtime
+# Steward MCP: the reality layer for industrial agents
 
-A real TypeScript MCP server built with **mcp-use 2.10.1**, adapting the existing local FastAPI API. The endpoint is **http://127.0.0.1:8002/mcp**. FastAPI at **http://127.0.0.1:8001** owns the database, records, durable inspection jobs, workers, memory and reports. This adapter maintains no second database and exposes no external communication, identity provisioning, payment or deployment tools.
+An agent asks a site for a fact about a physical asset. Steward answers with a signed fact, or sends a human to get one. This is the MCP server (TypeScript, **mcp-use 2.10.1**) in front of the Steward FastAPI backend, which owns facts, work items, verification, Ed25519 signing, dispatch, the four agents and missions. The MCP server keeps no database.
 
-## Run locally
+Sites: `harbor-works` (Harbor Works, the demo site, fixture twin, reference prefix `HW`), `myer-plant` (Myer Plant Room, hosted splat, `MY`), `bristol-pumps` (Bristol Dock Machine Room, hosted splat, `BR`). The MCP calls them `siteId`; the backend keeps `propertyId` and the `/api/properties/{id}` prefix.
 
-From the repository root, the integrated application launcher starts this service alongside the frontend and backend:
+Three verbs and one mission:
+
+| call | what it does | what it costs |
+| --- | --- | --- |
+| `resolve(siteId, assetTag, attribute, maxAgeHours?, budget?)` | `known` (value + attestationId), `stale`, `unknown` or `conflict`. Never a guess. | budget 0: free. budget > 0: may dispatch a technician and spend from that budget. |
+| `attest(siteId, assetTag, attribute, value, source, statedTag?, workItemId?)` | Six checks (scope, identity, geometry, plausibility, time, integrity). `accepted` writes a fact and signs an attestation; anything else writes nothing. | free |
+| `check(attestationId)` | The signed record plus `valid`. Verifiable offline against the Ed25519 public key. | free |
+| `start_mission(siteId, goal "clear_for_restart", budget)` | Hands the whole restart clearance to Steward's own agents: Atlas delegates the restart set (`pump.commissioning_certificate`, `pump.pressure_bar`, `valve.position`, `panel.status`, `fire.pressure_ok`, `door.closed`) to the site's Warden, who cites known facts and sends the Runner to a human for unknown ones. Returns the `Mission` immediately. | budget is USD for the whole mission; humans may be messaged inside it |
+
+Supporting calls: `get_mission` / `list_missions` (state `running` / `input_required` / `completed` / `failed`, steps with agent and refs, the signed checklist on completion), `list_agents` (Operator, Atlas, Warden per site, Runner: live status, current task, handle, authority), `get_transcript(agentId, since?, limit?)` (what an agent said and heard: a2a, sms, email, imessage, call, mcp, decision, system), `get_issues(siteId)` (out-of-range readings, rejected evidence, overdue or escalated work, assets with no identity fact, each with an approximate viewer pin), `list_evals` / `get_eval` (eval runs the backend recorded), `get_changes` (diff read since a version, plus waiting work items), `subscribe` (callback on every change), `get_receipt` (work item with verdicts and the receipt: `waitedSeconds`, `tokensWhileWaiting: 0`, `estimatedPollingTokens`), `escalate` (levels 1 to 4), `query_clearance` (corridor test against the scene), `patrol`, `list_sites`. The earlier property tools (`list_properties`, `get_property_context`, `list_components`, `inspect_component`, `search_requirements`, `search_documents`, `run_inspection`, `get_job`, `get_activity`, `recall_memory`, `export_report`, `get_integrations`) are unchanged. 30 tools in all.
+
+Resources: `steward://guide` (the verbs, the four agents and their authority, missions, transcripts, the resolve policy, budget semantics, zero-token waiting, recovery), `steward://agents` (the authority table plus live status from `GET /api/agents`), `steward://schema` (the contract's TypeScript types, addendum 2 included), `steward://sites/{siteId}/context.min` (under 400 tokens), `steward://sites/{siteId}/specs`. Prompts: `prove-before-signing(siteId, task)`, `clear-site-for-restart(siteId, budget)`.
+
+Waiting costs zero tokens: after `resolve` dispatches or `start_mission` starts, the agent stops and either receives a callback (`subscribe`) or calls `get_changes` / `get_mission` once when it returns. If it must poll, never faster than every 5 s.
+
+## The four agents and the actor header
+
+| level | id | authority (enforced by the backend) |
+| --- | --- | --- |
+| 1 | `operator` | start missions, set budgets, read everything; in this build also the direct verbs (resolve with budget, attest, escalate, owner decision) so the three verbs work without a mission |
+| 2 | `atlas` | delegate to site agents, cross-site checks, declare readiness, ask the owner; cannot attest or dispatch people |
+| 3 | `warden:<siteId>` | resolve, attest and sign for its own site; delegate field work to the Runner |
+| 4 | `runner` | reach employees and contractors by SMS, email and call; collect evidence; cannot attest |
+
+Every backend request this MCP makes (reads included) carries `X-Steward-Actor`, `operator` by default; `STEWARD_MCP_ACTOR=atlas|runner|warden:<siteId>` changes it when the MCP is run by one of Steward's own agents. A refusal comes back as `{code: "AUTHORITY_DENIED", message, recovery}` with the backend's text naming who may act, `httpStatus` 403, `retryable: false`.
+
+## Run
 
 ```bash
-npm run dev
+npm run dev                       # whole stack from the repository root (frontend 3000, backend 8001, MCP 8002)
+npm --prefix mcp-runtime run dev  # MCP alone against a running backend
 ```
 
-For a standalone adapter, start the backend first, then:
+Node 24 is required; `scripts/run.sh` picks up `agent-runtime/node_modules/node/bin` when present. Endpoint: **http://127.0.0.1:8002/mcp**. Health: `GET /health` (503 while the backend is down).
+
+## Connect from Claude Code or Cursor
+
+Claude Code:
 
 ```bash
-npm --prefix mcp-runtime run dev
+claude mcp add --transport http steward http://127.0.0.1:8002/mcp
+# with a token:  claude mcp add --transport http steward http://127.0.0.1:8002/mcp --header "Authorization: Bearer $STEWARD_MCP_TOKEN"
 ```
 
-The launcher selects the project's Node 24 installation in `agent-runtime/node_modules/node/bin` when present. Dependencies are project-local. For a fresh checkout, install `mcp-runtime` dependencies with Node 24 active. `npm --prefix mcp-runtime run build` compiles the server, demo and tests; `npm --prefix mcp-runtime start` runs the compiled server. The explicit listener bind is always `127.0.0.1`; generic `HOST` environment settings cannot make this entry point public. SDK usage telemetry is disabled by the launcher.
+Cursor (`.cursor/mcp.json`) or any client that takes a JSON config:
 
-`GET http://127.0.0.1:8002/health` verifies the adapter and backend. It returns HTTP 503 when the backend is unavailable. No tunnel, cloud deployment, login or publishing is performed.
-
-## First tool call
-
-The default configuration needs no provider credentials or LLM API key. A local mcp-use client can connect with:
-
-```typescript
-import { MCPClient } from '@mcp-use/client';
-
-const client = new MCPClient({
-  mcpServers: {
-    steward: {
-      url: 'http://127.0.0.1:8002/mcp',
-      oauth: false,
-      detectMixedAuth: false,
-    },
-  },
-});
-try {
-  const connection = await client.connect('steward');
-  console.log(await connection.listTools());
-  console.log(await connection.callTool('list_properties', {}));
-} finally {
-  await client.close();
+```json
+{
+  "mcpServers": {
+    "steward": {
+      "url": "http://127.0.0.1:8002/mcp",
+      "headers": { "Authorization": "Bearer <STEWARD_MCP_TOKEN, only if set>" }
+    }
+  }
 }
 ```
 
-Use `MCP_USE_ANONYMIZED_TELEMETRY=false` before importing the client in an independent script, as our launcher does. This is a local endpoint for local MCP clients. A cloud-hosted ChatGPT session cannot directly reach your machine's loopback address; no remote ChatGPT connection or public endpoint has been configured.
+Then: "Clear Harbor Works for restart after the shutdown. Sign off nothing you cannot prove. Budget $5." The `clear-site-for-restart` prompt encodes that as a mission (start one, wait without polling, verify every checklist attestation, explain it from the transcripts); `prove-before-signing` does it fact by fact with `resolve`.
 
-## Tools and outputs
+From code with mcp-use:
 
-Every tool has validated input/output schemas, explicit side-effect annotations, compact text plus structured JSON results, and bounded string/query inputs. Property IDs are the shared application IDs `cedar`, `harbor`, and `juniper`. No model-selected arbitrary tenant is allowed.
-
-| Tool | Use it for | Mutation |
-| --- | --- | --- |
-| `list_properties` | First call: discover permitted property IDs and readiness summaries | Read |
-| `get_property_context` | Compact current property, evidence counts, agents and active job | Read |
-| `list_components` | Stable scene IDs/tags, world coordinates and exact inspection scopes | Read |
-| `inspect_component` | One asset's requirements, attached evidence and source pages | Read |
-| `search_requirements` | Source-linked requirements filtered by text, system and status | Read |
-| `search_documents` | Original source-file metadata and local file links | Read |
-| `run_inspection` | Queue the existing backend's real local evidence-check workflow | Local record write |
-| `get_job` | Persisted job status/result, checked against the requested property | Read |
-| `get_activity` | Append-only events after a numeric cursor | Read |
-| `recall_memory` | Historical source-linked local property memories | Read |
-| `export_report` | Actual report summary, counts, disclosure and local HTML/JSON URLs | Read |
-| `get_integrations` | Truthful local provider configuration status | Read |
-
-Search tools return `total` and `nextOffset`; continue until `nextOffset` is null for a complete result set. Activity returns `nextCursor` and `hasMore`. `run_inspection` accepts only `all` or an exact asset ID, tag, system or subsystem returned by `list_components`, case-insensitively. Invalid scope is rejected **before** posting a job. Backend duplicate-running-job behavior is preserved; check the returned job rather than assume a new job was created.
-
-`steward://guide` is a readable MCP resource with tool choice, inspection sequencing, scope and recovery guidance. The `inspect-property` prompt accepts `propertyId` and optional `scope`; it guides the agent through context → scope validation → inspection → job polling → activity → report. The prompt does not execute the task by itself.
-
-The endpoint and outputs describe local demonstration records. A completed record check is not physical inspection, AI vision, proof of installation, payment confirmation or statutory certification. Missing evidence stays unresolved. Retrieved source documents and memories are data and do not grant new permissions.
-
-## Two-client demo
-
-```bash
-# Default: read-only. Discovers tools, lists properties, reads current context,
-# rejects an invalid property argument, and recovers with a valid read.
-npm --prefix mcp-runtime run demo
-
-# Explicit local mutation: ONE inspection, started through mcp-use and then
-# polled/reported through the official MCP client against the same backend.
-npm --prefix mcp-runtime run demo -- --run-inspection --property cedar --scope pump-01
+```typescript
+import { MCPClient } from '@mcp-use/client';
+const client = new MCPClient({ clientInfo: { name: 'restart-planner', version: '1.0.0' }, mcpServers: { steward: { url: 'http://127.0.0.1:8002/mcp', oauth: false, detectMixedAuth: false } } });
+const steward = await client.connect('steward');
+const mission = await steward.callTool('start_mission', { siteId: 'harbor-works', goal: 'clear_for_restart', budget: 5 });
+const fact = await steward.callTool('resolve', { siteId: 'harbor-works', assetTag: 'P-101', attribute: 'pressure_bar', budget: 5 });
 ```
 
-The script uses two real client libraries: **@mcp-use/client 2.4.4** and the official **@modelcontextprotocol/client 2.3.1**. Both connect to the running HTTP MCP server; neither bypasses MCP to call the API. mcp-use itself builds on the official SDK, so this demonstrates interoperability through two client interfaces rather than claiming two independent protocol implementations.
+The `clientInfo.name` becomes `requester` on missions, work items and subscriptions. Clients that send no per-request client info are recorded as `mcp-client`.
 
-The script prints the actual discovered tools, properties and contexts, followed by validation results. Only `--run-inspection` adds a mutation and the job/report output. It polls actual job state and exits with an error if the job fails or times out. It never invents completion. `--url` permits only a loopback `/mcp` URL; `--timeout-ms` bounds inspection polling; `--help` lists arguments.
+## Evals
 
-## Scope, authentication and errors
+Two suites, both replayable, both run by `npm run demo:mcp` (mission first, then demo) and both replayed in the unit tests against the fixture backend:
 
-Copy `.env.example` to `.env` only when customization is needed. Tokens belong in the ignored local `.env` file, never in client prompts or tool arguments.
+- `evals/demo-workflow.json`, the three-minute demo fact by fact: `list_sites`; resolve P-101 commissioning certificate (known); resolve V-501 position (known); resolve P-101 pressure with budget 5 (unknown, dispatched, work item + reference `HW-P101-PRESSURE_BAR-nnnn`); technician replies with the wrong tag P-102 through `POST /api/inbound/local` (rejected, reason names P-102); replies with P-101 at 2.4 bar (accepted); `get_receipt` (resolved, receipt with `tokensWhileWaiting: 0`); `check` (valid true); resolve again (known, same attestation); `get_changes` since 0.
+- `evals/mission-workflow.json`, the four-agent mission: `list_agents` (levels 1 to 4); `start_mission` harbor-works budget 5; poll `get_mission` (2 s interval, 30 s max) until the owner is needed, a Runner step exists, or it already completed; find the P-101 pressure work item in `get_changes.waiting`; wrong tag rejected; right tag accepted; poll `get_mission` until `completed` with a checklist whose P-101 `pressure_bar` line has a `valid` attestation; `check` it; `get_transcript("atlas")` contains a2a entries for this mission; `get_transcript("runner")` contains a dispatch; `list_missions`; `get_issues`.
 
-| Environment variable | Meaning |
+```bash
+npm run demo:mcp                                                   # from the repository root, both suites against 8002 / 8001
+node evals/run.mjs --suite mission-workflow --mcp http://127.0.0.1:8013/mcp --backend http://127.0.0.1:8012
+node evals/run.mjs --suite evals/demo-workflow.json --json         # one EvalRun-shaped report {suite, passed, failed, steps:[{name,target,result,ms,detail}]}
+npm --prefix mcp-runtime run demo:clients                          # the older two-client interoperability demo
+```
+
+`--suite` takes a file path or a bare suite name and may repeat; `--workflow` is an alias. The runner prints a pass/fail table per suite and exits non-zero on any failure. Replays are safe: the demo's dispatch step passes `maxAgeHours: 1e-9`, so a fact from an earlier run is treated as stale and still dispatches; the mission suite skips its inbound steps (`skipIf`) when the mission completes without a dispatch because P-101 pressure is still inside its 1 h TTL. Step options: `expect` with dotted paths, `[n]`/`[-1]` indexes, `[key=value]` array filters, operators `$in $exists $contains $jsonContains $matches $gte $lte $not` and a top-level `$any` of alternatives; `capture`; `until` + `timeoutMs` + `intervalMs` for a polled tool step; `skipIf`; `expectStatus`; `stopOnFailure`.
+
+## Hosting on Manufact
+
+The MCP server can run on Manufact with the backend reached through an https tunnel (`manufact/README.md`, `manufact/deploy.sh`). What this code does for it:
+
+| variable | meaning |
 | --- | --- |
-| `STEWARD_BACKEND_URL` | Loopback API origin; defaults to `http://127.0.0.1:8001`. External URLs are rejected. |
-| `STEWARD_MCP_PORT` | Local listener port; defaults to 8002. Port 0 is supported for isolated tests. |
-| `STEWARD_MCP_PROPERTY_IDS` | Optional nonempty CSV subset of the three property IDs; filters discovery and tool schemas. |
-| `STEWARD_BACKEND_TOKEN` | Optional token matching the backend's configured API token. Sent only to that local backend. |
-| `STEWARD_MCP_TOKEN` | Optional separate bearer token required by the MCP endpoint and read by the demo clients. |
+| `STEWARD_BACKEND_URL=https://<tunnel-host>` | the tunnel in front of the FastAPI backend (origin only, no path) |
+| `STEWARD_ALLOW_REMOTE_BACKEND=true` | permits that non-loopback **https** origin. Default is off: only loopback http is accepted. Plain http to a remote host is never accepted. |
+| `PORT` (injected by Manufact) | hosted mode: `start.ts` calls `listen()` with no port argument so the platform's `PORT` wins (mcp-use precedence is argument > `PORT` > config), binds `0.0.0.0`, and omits the localhost-only `allowedOrigins` list because traffic arrives through the gateway. Without `PORT` everything stays loopback. |
 
-The default endpoint is unauthenticated and loopback-only for local development. Optional bearer authentication is a local gate, not an OAuth integration. Client and backend tokens are separate. Host validation and browser-Origin validation protect the local transport; nonlocal browser origins are rejected. No token is printed in logs or tool results.
+`STEWARD_MCP_HOST` and `STEWARD_MCP_PORT` override both. Set `STEWARD_MCP_TOKEN` on a hosted endpoint.
 
-Restricted property scopes also filter worker metadata; the portfolio coordinator's cross-property history is available only when all three property contexts are permitted. An active job returned in context must match the requested property.
+## Armature analytics
 
-Invalid schema arguments produce an MCP validation error. Operational failures return `isError: true` and JSON text containing `code`, `message`, `recovery`, `retryable`, and, when relevant, `httpStatus`.
+Package `@armature-tech/mcp-analytics@0.6.47`, `/v2` subpath only (the package root imports the v1 SDK; mcp-use 2.10.1 ships `@modelcontextprotocol/server` 2.x). `src/analytics.ts` imports it only when `ANALYTICS_INGEST_API_KEY` (or `ARMATURE_API_KEY`, mapped to it) is set; no key, no import, no-op. `ANALYTICS_INGEST_URL` is needed for EU workspaces. `flushMcpAnalytics` runs on SIGINT/SIGTERM.
 
-| Failure | Recovery |
+mcp-use builds a fresh SDK `McpServer` per request and does not expose it, so the SDK's documented `instrumentedFactory` / `withMcpAnalytics(server)` have no attachment point here. Two attachments are used instead, both through the SDK's public v2 API, both covered by a unit test with an injected emitter:
+
+- `wrapMcpHandler` around the Hono app's fetch, installed as `/mcp` middleware: mints `Mcp-Session-Id` on legacy-handshake `initialize` requests (Claude Code, Cursor) and records `session_init`.
+- `withMcpAnalytics` on a small registry shim (`registerTool`/`update`): every Steward tool's handler is wrapped by the SDK and invoked with an SDK-shaped handler context, so `tool_call` events carry `client_name`, `user_agent`, session id and `steward_requester` / `steward_site` metadata.
+
+Delivery to the Armature ingest endpoint with a real key has not been exercised in this repo. Armature **Evaluation** needs no SDK at all: it runs a tester agent against the hosted MCP URL; `armature/evals/steward-demo-suite.json` holds the demo as eval cases.
+
+## Configuration
+
+| variable | meaning |
 | --- | --- |
-| Unknown/forbidden property | Call `list_properties`, select a returned ID, retry the read. |
-| `INVALID_INSPECTION_SCOPE` | Call `list_components`, choose an exact `inspectionScopes` value, retry. No job was queued. |
-| `PROPERTY_SCOPE` on a job | Use the original property/job pair returned by `run_inspection`. Another property's job is not returned. |
-| `UPSTREAM_HTTP_ERROR` 404 | Rediscover the current asset or property IDs. |
-| `UPSTREAM_HTTP_ERROR` 401/403 | Correct the backend token in the environment; never supply it as a tool argument. |
-| `UPSTREAM_HTTP_ERROR` 5xx | Restore the backend and retry a read. Its HTTP status is preserved. |
-| `BACKEND_UNAVAILABLE` | Start/check the backend. If a write's response was lost, inspect current context for an active job before retrying the write. |
-| `UPSTREAM_RESPONSE_INVALID` | Run matching backend/adapter versions; invalid responses are not reported as successful data. |
+| `STEWARD_BACKEND_URL` | Backend origin; default `http://127.0.0.1:8001`. |
+| `STEWARD_ALLOW_REMOTE_BACKEND` | `true` permits an https non-loopback backend. Default off. |
+| `STEWARD_MCP_PORT` / `PORT` | Listener port; default 8002. `PORT` is the hosted fallback. |
+| `STEWARD_MCP_HOST` / `HOST` | Listener host; see Hosting. |
+| `STEWARD_MCP_PROPERTY_IDS` | CSV subset of `harbor-works,myer-plant,bristol-pumps`; filters tool schemas, discovery, agents (other sites' Wardens are hidden) and missions. |
+| `STEWARD_MCP_ACTOR` | Agent id sent as `X-Steward-Actor` on every backend call: `operator` (default), `atlas`, `runner` or `warden:<siteId>`. |
+| `STEWARD_BACKEND_TOKEN` | Bearer sent to the backend. |
+| `STEWARD_MCP_TOKEN` | Bearer required by this endpoint. Separate from the backend token. |
+| `ANALYTICS_INGEST_API_KEY` / `ARMATURE_API_KEY`, `ANALYTICS_INGEST_URL` | Armature analytics; see above. No key: no-op. |
+
+## Errors
+
+Every tool failure returns `isError: true` with JSON `{code, message, recovery, retryable, httpStatus?}`. Backend errors `{detail, code, recovery}` pass through with their own code (for example `UNSUPPORTED_ATTRIBUTE` lists the supported attributes and points at `steward://sites/{siteId}/specs`; `AUTHORITY_DENIED` names the agent who may act and is never retryable as the same actor). Adapter codes: `PROPERTY_SCOPE`, `INVALID_INSPECTION_SCOPE`, `BACKEND_UNAVAILABLE`, `UPSTREAM_HTTP_ERROR`, `UPSTREAM_RESPONSE_INVALID`. Invalid arguments (unknown or pre-addendum siteId, malformed tag, level 9, goal other than `clear_for_restart`, budget above 1000, an agent id that is not `operator`/`atlas`/`runner`/`warden:<siteId>`) are rejected by the schema before anything reaches the backend. `resolve` and `escalate` are annotated as not read-only and open-world because they may send a message to a human; `start_mission` is additionally not idempotent (every call starts a mission); `attest`, `subscribe`, `patrol` and `run_inspection` are local writes; everything else is read-only.
 
 ## Validation
 
@@ -125,16 +140,8 @@ npm --prefix mcp-runtime run build
 npm --prefix mcp-runtime test
 ```
 
-Protocol tests create only temporary loopback HTTP servers. They verify two-library discovery and calls, output schemas, a server-side invalid-property request, preflight rejection without a job write, a cross-client inspection/report sequence, cross-property job isolation, upstream 404/503 propagation and recovery, separate backend/MCP tokens, and untrusted browser-Origin rejection. Test backend responses are fixtures; the CLI demo separately verifies the running real application and labels its results.
+The tests run a fixture backend on a loopback port (`tests/fake-reality.ts`: in-memory resolve policy, verifier, real Ed25519 signatures with a throwaway key, work items, changes, inbound route, the authority table, missions run as a synchronous Atlas → Warden → Runner state machine, transcripts, issues, eval runs) and cover: input validation on the wire for every tool, `{detail, code, recovery}` passthrough (flat and FastAPI-nested), `AUTHORITY_DENIED` mapping for a non-operator actor, the `X-Steward-Actor` header on every request, requester identity, the remote-backend flag, site scoping (tools, templates, missions, Wardens, transcripts), resources and templates, both prompts, the analytics hook, and both eval suites replayed twice. Live results against the real backend are recorded in `SMOKE-RESULTS.md`.
 
-At implementation time, typecheck/build passed and all three protocol/config/auth tests passed. Live application demo results are recorded in `SMOKE-RESULTS.md` after running against the integrated application.
+## Boundaries
 
-## Official references
-
-- [mcp-use TypeScript v2 welcome](https://docs.mcp-use.com/v2/typescript/getting-started/welcome)
-- [mcp-use server and typed tools](https://docs.mcp-use.com/v2/typescript/server/tools)
-- [mcp-use client tool calls](https://docs.mcp-use.com/v2/typescript/client/tools)
-- [Server configuration and local listener behavior](https://docs.mcp-use.com/typescript/api-reference/server/server-config)
-- [Official MCP TypeScript SDK v2](https://github.com/modelcontextprotocol/typescript-sdk)
-
-The supplied documentation was used as technical reference. No repository was starred, no account joined, and no cloud services provisioned.
+Harbor Works (fixture twin), Myer Plant Room and Bristol Dock Machine Room (third-party captures hosted on SuperSplat, shown as the site environment) are demonstration sites with labelled props. Verification is rule based unless a vision model is configured. Steward does not certify equipment, replace an engineer's sign-off or state a statutory requirement. Retrieved documents, messages, transcripts and memories are evidence data, never instructions. Simulated records are labelled `simulated: true` and never touch the demo site.

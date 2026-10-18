@@ -1,0 +1,8 @@
+# vision/ local artefacts
+.venv/
+__pycache__/
+# renders of the third-party capture stay local (contract 3: we never rehost the capture)
+frames/
+# request bodies embed base64 frames
+results/_requests/
+results/*.embeddings.npz

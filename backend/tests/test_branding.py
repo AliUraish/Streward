@@ -26,28 +26,28 @@ def test_legacy_database_upgrade_keeps_ids_uploads_jobs_and_rebrands_owned_asset
     monkeypatch.setenv("STEWARD_MODEL_PROVIDER", "local")
     directory = tmp_path / "legacy-upgrade"
     original = PropertyService(directory, start_workers=False)
-    user_document = original.upload_document("cedar", "user-source.txt", b"Phylax is mentioned in this original uploaded source.", "User documents")
+    user_document = original.upload_document("myer-plant", "user-source.txt", b"Phylax is mentioned in this original uploaded source.", "User documents")
     user_path = directory / "files" / user_document["_path"]
     user_bytes = user_path.read_bytes()
-    evidence_path = directory / "files" / original.store.all("evidence", "cedar")[0]["_path"]
+    evidence_path = directory / "files" / original.store.all("evidence", "myer-plant")[0]["_path"]
     evidence_hash = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
-    purchase = original.propose_purchase("cedar", "pump-01", "Phylax gasket proposal", 25, "USD")
-    job = original.create_job("cedar", scope="pump-01")
-    original.store.put("chat", {"id": "phylax-stable-chat-id", "role": "assistant", "content": "Phylax: Mira checked the record.", "createdAt": "2026-10-17T00:00:00Z"}, "cedar")
-    memory = original.save_memory("cedar", "PHYLAX: Atlas coordinated the portfolio.", "chat:phylax-stable-chat-id")
-    event = original.store.event("cedar", "agent-cedar", "test", "Phylax observation", "Mira checked the supplied record.")
+    purchase = original.propose_purchase("myer-plant", "pump-01", "Phylax gasket proposal", 25, "USD")
+    job = original.create_job("myer-plant", scope="pump-01")
+    original.store.put("chat", {"id": "phylax-stable-chat-id", "role": "assistant", "content": "Phylax: Mira checked the record.", "createdAt": "2026-10-17T00:00:00Z"}, "myer-plant")
+    memory = original.save_memory("myer-plant", "PHYLAX: Atlas coordinated the portfolio.", "chat:phylax-stable-chat-id")
+    event = original.store.event("myer-plant", "agent-myer-plant", "test", "Phylax observation", "Mira checked the supplied record.")
     original.store.meta("integration:example", json.dumps({"status": "local", "detail": "Phylax local context"}))
-    agent = original.store.get("agent", "agent-cedar")
-    agent.update(name="Mira", identity="local://phylax/agents/cedar")
+    agent = original.store.get("agent", "agent-myer-plant")
+    agent.update(name="Mira", identity="local://phylax/agents/myer-plant")
     original.store.put("agent", agent)
     # Simulate the original owned fixture PDF. An unrelated uploaded original must remain untouched.
-    seed_path = directory / "files" / "cedar-spec.pdf"
+    seed_path = directory / "files" / "myer-plant-spec.pdf"
     pdf = canvas.Canvas(str(seed_path))
     pdf.setAuthor("Phylax local demonstration")
     pdf.drawString(42, 800, "PHYLAX / PROJECT EVIDENCE")
     pdf.drawString(42, 760, "Original fixture body and source data.")
     pdf.save()
-    original.write_report("cedar")
+    original.write_report("myer-plant")
     before_counts = {kind: len(original.store.all(kind)) for kind in ("property", "component", "requirement", "document", "evidence", "job", "purchase", "memory", "chat")}
     original.close()
     canonical = directory / "steward.sqlite3"
@@ -69,24 +69,24 @@ def test_legacy_database_upgrade_keeps_ids_uploads_jobs_and_rebrands_owned_asset
     assert not legacy.exists()
     assert {kind: len(upgraded.store.all(kind)) for kind in before_counts} == before_counts
     assert upgraded.store.get("job", job["id"])["status"] == "queued"
-    assert upgraded.store.get("purchase", purchase["id"], "cedar")["description"] == "Steward gasket proposal"
-    assert upgraded.store.get("chat", "phylax-stable-chat-id", "cedar")["content"] == "Steward: Steward Cedar checked the record."
-    assert upgraded.store.get("memory", memory["id"], "cedar")["source"] == "chat:phylax-stable-chat-id"
-    assert upgraded.store.get("agent", "agent-cedar")["name"] == "Steward Cedar"
-    assert upgraded.store.get("agent", "agent-cedar")["identity"] == "local://steward/agents/cedar"
-    migrated_event = next(item for item in upgraded.store.events("cedar") if item["id"] == event["id"])
+    assert upgraded.store.get("purchase", purchase["id"], "myer-plant")["description"] == "Steward gasket proposal"
+    assert upgraded.store.get("chat", "phylax-stable-chat-id", "myer-plant")["content"] == "Steward: Steward Cedar checked the record."
+    assert upgraded.store.get("memory", memory["id"], "myer-plant")["source"] == "chat:phylax-stable-chat-id"
+    assert upgraded.store.get("agent", "agent-myer-plant")["name"] == "Warden · Myer Plant Room"
+    assert upgraded.store.get("agent", "agent-myer-plant")["identity"] == "local://steward/agents/myer-plant"
+    migrated_event = next(item for item in upgraded.store.events("myer-plant") if item["id"] == event["id"])
     assert migrated_event["title"] == "Steward observation"
     assert json.loads(upgraded.store.meta("integration:example"))["detail"] == "Steward local context"
     assert user_path.read_bytes() == user_bytes
-    assert upgraded.store.get("document", user_document["id"], "cedar")["extractedText"] == user_bytes.decode()
+    assert upgraded.store.get("document", user_document["id"], "myer-plant")["extractedText"] == user_bytes.decode()
     assert hashlib.sha256(evidence_path.read_bytes()).hexdigest() == evidence_hash
     reader = PdfReader(seed_path)
     assert "STEWARD / PROJECT EVIDENCE" in reader.pages[0].extract_text()
     assert "Original fixture body and source data." in reader.pages[0].extract_text()
     assert "PHYLAX" not in reader.pages[0].extract_text()
     assert reader.metadata.author == "Steward local demonstration"
-    assert "STEWARD / Cedar House" in (directory / "files" / "cedar-report.html").read_text()
-    assert upgraded.require_property("cedar")["name"] == "Cedar House"
+    assert "STEWARD / Myer Plant Room" in (directory / "files" / "myer-plant-report.html").read_text()
+    assert upgraded.require_property("myer-plant")["name"] == "Myer Plant Room"
     upgraded.close()
     # A second startup must not duplicate data, redo source migrations or change attachment bytes.
     again = PropertyService(directory, start_workers=False)

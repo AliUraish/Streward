@@ -16,20 +16,20 @@ def test_stripe_sandbox_refuses_live_keys_and_builds_idempotent_test_session(mon
     purchase = dict(id="proposal-1", description="Gasket", amount=24.50, currency="USD")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_should_never_be_used")
     with pytest.raises(ProviderNotConfigured):
-        StripeSandbox().checkout("cedar", purchase)
+        StripeSandbox().checkout("myer-plant", purchase)
     calls = []
 
     def transport(request):
         calls.append(request)
         payload = parse_qs(request.content.decode())
         assert payload["line_items[0][price_data][unit_amount]"] == ["2450"]
-        assert payload["metadata[propertyId]"] == ["cedar"]
+        assert payload["metadata[propertyId]"] == ["myer-plant"]
         assert payload["metadata[purchaseId]"] == ["proposal-1"]
         assert request.headers["Idempotency-Key"] == "steward-test-checkout-proposal-1"
         return httpx.Response(200, json={"id": "cs_test_123", "livemode": False, "url": "https://checkout.stripe.com/c/test"})
 
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")
-    result = StripeSandbox(httpx.MockTransport(transport)).checkout("cedar", purchase)
+    result = StripeSandbox(httpx.MockTransport(transport)).checkout("myer-plant", purchase)
     assert result["mode"] == "test"
     assert len(calls) == 1
 
@@ -57,11 +57,11 @@ def test_inkbox_never_sends_without_explicit_enable_and_allowlist(monkeypatch):
     adapter = InkboxAdapter()
     monkeypatch.setenv("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false")
     with pytest.raises(ProviderNotConfigured):
-        adapter.send("cedar", ["owner@example.com"], "Update", "Fixture")
+        adapter.send("myer-plant", ["owner@example.com"], "Update", "Fixture")
     monkeypatch.setenv("STEWARD_ALLOW_EXTERNAL_MESSAGES", "true")
     monkeypatch.setenv("INKBOX_ALLOWED_RECIPIENTS", "owner@example.com")
     with pytest.raises(ValueError):
-        adapter.send("cedar", ["owner@example.com", "stranger@example.com"], "Update", "Fixture")
+        adapter.send("myer-plant", ["owner@example.com", "stranger@example.com"], "Update", "Fixture")
 
     @dataclass
     class Message:
@@ -69,7 +69,7 @@ def test_inkbox_never_sends_without_explicit_enable_and_allowlist(monkeypatch):
         status: str
 
     class Identity:
-        agent_handle = "cedar-bot"
+        agent_handle = "myer-plant-bot"
         email_address = "custom@approved.example"
 
         def send_email(self, **kwargs):
@@ -85,13 +85,13 @@ def test_inkbox_never_sends_without_explicit_enable_and_allowlist(monkeypatch):
             pass
 
         def get_identity(self, handle):
-            assert handle == "cedar-bot"
+            assert handle == "myer-plant-bot"
             return Identity()
 
-    monkeypatch.setenv("INKBOX_IDENTITY_CEDAR", "cedar-bot")
+    monkeypatch.setenv("INKBOX_IDENTITY_WARDEN_MYER_PLANT", "myer-plant-bot")
     monkeypatch.setattr(adapter, "client", lambda: FakeClient())
-    assert adapter.status("cedar")["email"] == "custom@approved.example"  # Trust actual assigned address.
-    assert adapter.send("cedar", ["owner@example.com"], "Update", "Fixture")["status"] == "queued"
+    assert adapter.status("myer-plant")["email"] == "custom@approved.example"  # Trust actual assigned address.
+    assert adapter.send("myer-plant", ["owner@example.com"], "Update", "Fixture")["status"] == "queued"
 
 
 def test_insforge_check_is_read_only_and_does_not_claim_database_migration(monkeypatch):
@@ -111,7 +111,7 @@ def test_model_failure_remains_explicit_and_never_reports_external_action(client
     # This test intentionally has no provider credentials and makes no network call.
     adapter = ModelAdapter()
     adapter.provider = "local"
-    assert adapter.synthesize("Did you buy it?", {"property": {"id": "cedar"}}) is None
+    assert adapter.synthesize("Did you buy it?", {"property": {"id": "myer-plant"}}) is None
 
 
 def test_supermemory_uses_server_derived_namespace_and_source_linked_async_writes(monkeypatch):
@@ -126,31 +126,31 @@ def test_supermemory_uses_server_derived_namespace_and_source_linked_async_write
     monkeypatch.setattr(httpx, "post", post)
     adapter = SupermemoryAdapter()
     memory = {"id": "memory-123", "content": "Check pump identifier", "source": "job:abc", "createdAt": "2026-10-17T20:00:00Z"}
-    assert adapter.save("cedar", memory)["status"] == "queued"
-    adapter.recall("cedar", "pump identity")
-    assert calls[0][0] == "https://api.supermemory.ai/ns/steward-local-cedar/document"
+    assert adapter.save("myer-plant", memory)["status"] == "queued"
+    adapter.recall("myer-plant", "pump identity")
+    assert calls[0][0] == "https://api.supermemory.ai/ns/steward-local-myer-plant/document"
     assert calls[0][1]["metadata"]["source"] == "job:abc"
     assert "dreaming" not in calls[0][1]  # No surprise paid instant ingestion.
-    assert calls[1][0].endswith("/steward-local-cedar/search")
+    assert calls[1][0].endswith("/steward-local-myer-plant/search")
     assert calls[1][1]["searchMode"] == "hybrid"
 
 
 def test_capabilities_reflect_credentials_property_scope_and_explicit_action_gates(monkeypatch):
-    keys = ["INKBOX_API_KEY", "INKBOX_IDENTITY", "INKBOX_IDENTITY_CEDAR", "INKBOX_IDENTITY_HARBOR", "INKBOX_IDENTITY_JUNIPER",
+    keys = ["INKBOX_API_KEY", "INKBOX_IDENTITY", "INKBOX_IDENTITY_WARDEN_MYER_PLANT", "INKBOX_IDENTITY_WARDEN_HARBOR_WORKS", "INKBOX_IDENTITY_WARDEN_BRISTOL_PUMPS",
             "INKBOX_ALLOWED_RECIPIENTS", "STEWARD_ALLOW_EXTERNAL_MESSAGES", "STEWARD_ALLOW_IDENTITY_PROVISION", "STRIPE_SECRET_KEY",
             "SUPERMEMORY_API_KEY", "INSFORGE_BASE_URL", "INSFORGE_ANON_KEY"]
     for key in keys:
         monkeypatch.delenv(key, raising=False)
 
-    def capabilities(property_id="cedar"):
+    def capabilities(property_id="myer-plant"):
         return {item["id"]: item["capabilities"] for item in integration_status(property_id)}
 
     assert capabilities()["inkbox"] == {"identity": False, "inbox": False, "sendEmail": False, "createIdentity": False}
     assert capabilities()["stripe"]["testCheckout"] is False
     monkeypatch.setenv("INKBOX_API_KEY", "fixture")
-    monkeypatch.setenv("INKBOX_IDENTITY_CEDAR", "cedar-bot")
+    monkeypatch.setenv("INKBOX_IDENTITY_WARDEN_MYER_PLANT", "myer-plant-bot")
     assert capabilities()["inkbox"]["identity"] is True
-    assert capabilities("harbor")["inkbox"]["inbox"] is False
+    assert capabilities("harbor-works")["inkbox"]["inbox"] is False
     monkeypatch.setenv("STEWARD_ALLOW_EXTERNAL_MESSAGES", "true")
     assert capabilities()["inkbox"]["sendEmail"] is False
     monkeypatch.setenv("INKBOX_ALLOWED_RECIPIENTS", "owner@example.com")

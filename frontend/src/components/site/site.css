@@ -1,0 +1,277 @@
+/* Website at `/`. Black, white and tone steps of grey only; no accent on this page (the dashboard keeps its green).
+   Direction: "The product performs" (taste skill, seed 2045055831), hero redrawn to "Control that reads the page".
+   Five type steps: --t5 wordmark, --t4 statements, --t3 headings, --t2 text, --t1 small. See frontend/DESIGN-DECISION.md. */
+.site {
+  --accent: #ffffff; --accent-ink: #000000;
+  --s5: #333333; --white: #ffffff;
+  --t5: clamp(96px, 9vw, 150px);
+  --t4: clamp(30px, 3.4vw, 48px);
+  --t3: clamp(26px, 2.2vw, 34px);
+  --t2: 17px;
+  --t1: 14px;
+  --bar: 64px;
+  overflow-x: clip; background: var(--g0); color: var(--ink);
+}
+.site p { font-size: var(--t2); line-height: 1.5; max-width: 44ch; color: var(--ink); }
+.site p.quiet { color: var(--muted); }
+.site h1, .site h2, .site h3 { font-weight: 500; letter-spacing: -0.025em; line-height: 1.05; text-wrap: balance; font-size: var(--t3); }
+.site code { font-family: var(--font-mono); /* taste-skill-ignore: real code */ font-size: 0.92em; background: var(--s2); padding: 1px 5px; }
+.site pre { margin: 0; font-family: var(--font-mono); /* taste-skill-ignore: real code */ font-size: var(--t1); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+
+/* The bar: wordmark, the switch, a few links, one action. */
+.bar { position: sticky; top: 0; z-index: 20; height: var(--bar); display: flex; align-items: center; gap: 28px; padding: 0 var(--margin); background: var(--g0); }
+.bar .wordmark { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.bar .links { display: flex; gap: 24px; margin-left: auto; font-size: 17px; }
+.bar .links a { color: var(--muted); transition: color var(--t-hover) ease; }
+.bar .links a:hover { color: var(--ink); }
+.bar .bar-btn { min-height: 40px; }
+
+/* The Human / Agent switch: a track, a gliding knob, two words that invert where the knob covers them. */
+.mode { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr 1fr; width: 176px; height: 40px; background: var(--s3); overflow: hidden; }
+.mode .knob { position: absolute; top: 0; left: 0; width: 50%; height: 100%; background: var(--white); transform: translateX(0); transition: transform 320ms var(--ease-in-out); z-index: 0; }
+.mode.is-agent .knob { transform: translateX(100%); }
+.mode .word { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--white); mix-blend-mode: difference; transition: opacity 240ms ease; }
+.mode .word.agent { opacity: .55; }
+.mode.is-agent .word.agent { opacity: 1; }
+.mode.is-agent .word.human { opacity: .55; }
+.mode:active .knob { transform: translateX(0) scaleX(.94); transform-origin: left; }
+.mode.is-agent:active .knob { transform: translateX(100%) scaleX(.94); transform-origin: right; }
+
+/* Buttons: flat white fill, square, one shape everywhere. Hover: a dark fill slides in from the left and the words invert. */
+.site .btn { position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 0 20px; background: var(--white); color: var(--white); font-size: var(--t2); font-weight: 500; white-space: nowrap; overflow: hidden; transition: transform var(--t-press) var(--ease-out); }
+.site .btn::before { content: ""; position: absolute; inset: 0; background: var(--s5); transform: scaleX(0); transform-origin: left center; transition: transform var(--t-ui) var(--ease-out); z-index: 0; }
+.site .btn > span { position: relative; z-index: 1; mix-blend-mode: difference; }
+.site .btn:hover::before, .site .btn:focus-visible::before { transform: scaleX(1); }
+.site .btn:active { transform: scale(.97); }
+.site .btn .arrow { transition: transform var(--t-hover) var(--ease-out); }
+.site .btn:hover .arrow { transform: translateX(4px); }
+.site .btn:disabled { opacity: .5; }
+
+/* Story: the drawing is the hero, full width; the headline sits just below it; the beats follow in one column. */
+.story { display: block; }
+.stage { position: relative; height: clamp(360px, 62svh, 720px); background: var(--g0); overflow: hidden; }
+.stage canvas { position: absolute; inset: 0; }
+.stage .static-hero { position: absolute; inset: 0; }
+.stage .plan { position: absolute; inset: 0; width: 100%; height: 100%; padding: 24px 0 40px; }
+.stage .labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; left: 0; top: 0; will-change: transform; font-size: 13px; line-height: 1.3; color: var(--white); white-space: nowrap; display: flex; gap: 8px; padding: 2px 6px; background: var(--g0); opacity: 0; transition: opacity 500ms ease; }
+.lbl.on { opacity: 1; }
+.lbl.dim { opacity: .5; }
+.lbl .tag { font-weight: 600; }
+.lbl span + span { color: var(--ink-2); }
+.caps { position: absolute; left: 0; right: 0; top: 18px; z-index: 2; height: 1.5em; text-align: center; font-size: var(--t2); color: var(--ink-2); pointer-events: none; }
+.caps span { position: absolute; left: 0; right: 0; opacity: 0; transition: opacity 600ms var(--ease-out); }
+.caps span.on { opacity: 1; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 24px clamp(32px, 5vw, 96px); align-items: end; padding: clamp(40px, 5vw, 72px) var(--margin) clamp(56px, 7vw, 120px); }
+.hero h1 { font-size: var(--t4); grid-column: 1; }
+.hero .lead { font-size: var(--t3); line-height: 1.1; letter-spacing: -0.02em; color: var(--ink-2); max-width: 30ch; grid-column: 1; }
+.hero .hero-side { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; gap: 24px; align-self: end; }
+.hero .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.lines .line { display: block; overflow: hidden; padding-bottom: .1em; margin-bottom: -.1em; }
+.lines [data-line] { display: block; }
+
+.beats { --p: 0; padding: 0 var(--margin) var(--section); display: flex; flex-direction: column; gap: clamp(40px, 5vw, 72px); }
+.beat { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px clamp(32px, 5vw, 96px); align-items: start; }
+.beat .say { display: flex; flex-direction: column; gap: 14px; }
+.beat.is-on h2 { color: var(--white); }
+.beat .frag { background: var(--s1); padding: 18px 20px; max-width: 560px; font-size: var(--t1); }
+.beat .frag pre { color: var(--ink-2); font-size: 13px; }
+.beat .card .ref, .ticket .ref, .attestation .ref { font-size: 13px; font-weight: 500; color: var(--muted); display: block; margin-bottom: 8px; }
+.beat .card p { font-size: 14px; line-height: 1.45; max-width: none; color: var(--ink-2); }
+.ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ticks li { --t: clamp(0, (var(--p) - 3.55 - var(--n) * 0.07) / 0.08, 1); display: grid; grid-template-columns: 16px auto 1fr; gap: 12px; align-items: center; font-size: 14px; opacity: calc(.45 + .55 * var(--t)); }
+.ticks .box { position: relative; width: 16px; height: 16px; border: 1px solid #666; /* taste-skill-ignore: inside a data-ui fragment */ }
+.ticks .box::after { content: ""; position: absolute; inset: 3px; background: var(--white); transform: scale(var(--t)); }
+.ticks .name { font-weight: 500; }
+.ticks .why { color: var(--muted); }
+.attestation dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+.attestation dt { color: var(--muted); }
+.attestation dd { margin: 0; color: var(--ink); word-break: break-all; }
+.attestation dd.sig { color: var(--ink-2); }
+.attestation .state { display: block; margin-top: 12px; font-size: 13px; color: var(--muted); }
+.attestation .state.live { color: var(--ink); }
+
+/* One work item, four states: four fields butted together, the same card further along each time. */
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.strip .field { position: relative; height: 84svh; min-height: 560px; padding: 28px; }
+.strip .field:nth-child(1) { background: #0a0a0a; }
+.strip .field:nth-child(2) { background: #161616; }
+.strip .field:nth-child(3) { background: #232323; }
+.strip .field:nth-child(4) { background: #303030; }
+.strip h2 { position: absolute; top: 28px; left: 28px; right: 28px; font-weight: 700; }
+.strip .ticket-wrap { position: absolute; top: 38%; left: 50%; width: 260px; margin-left: -130px; transform: translateY(-50%); }
+.strip .ticket { background: #000; padding: 16px; display: flex; flex-direction: column; gap: 6px; border: 1px solid #3a3a3a; /* taste-skill-ignore: inside a data-ui fragment */ transition: transform 150ms var(--ease-out); }
+.strip .field:hover .ticket { transform: translateY(-6px); }
+.ticket .asset { font-size: 13px; color: var(--ink); }
+.ticket .state { align-self: flex-start; font-size: 13px; padding: 2px 8px; background: var(--s3); color: var(--ink); margin: 4px 0 8px; }
+.ticket .state.resolved { background: var(--white); color: #000; }
+.ticket .state.rejected { background: var(--s5); }
+.ticket dl { margin: 0; display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.ticket dl div { display: flex; justify-content: space-between; gap: 12px; }
+.ticket dt { color: var(--muted); }
+.ticket dd { margin: 0; color: var(--ink); text-align: right; word-break: break-all; }
+.strip .clause { position: absolute; left: 28px; right: 28px; bottom: 28px; font-size: var(--t3); line-height: 1.1; letter-spacing: -0.02em; max-width: 14ch; color: var(--ink); }
+
+/* Three eyes: three rows on a 5/7 split; the fragments vary in size and shape. */
+.eyes { padding: var(--section) var(--margin); }
+.eyes .lead { font-size: var(--t4); }
+.eyes .row { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4vw, 72px); align-items: start; margin-top: clamp(64px, 8vw, 120px); }
+.eyes .say { display: flex; flex-direction: column; gap: 18px; }
+.pic { display: block; width: 100%; background: var(--s2); overflow: clip; }
+.pic img { width: 100%; height: auto; display: block; }
+@media (prefers-reduced-motion: no-preference) { .pic img { transition: transform 900ms var(--ease-soft); } .pic:hover img { transform: scale(1.02); } }
+.eyes .pair { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: end; }
+.eyes .pic.tall img { aspect-ratio: 390 / 700; object-fit: cover; object-position: top; }
+.eyes .readings { background: var(--s1); padding: 22px; display: flex; flex-direction: column; gap: 18px; align-self: start; }
+.eyes .reading { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: baseline; background: var(--s2); padding: 16px 18px; }
+.eyes .reading .tag { font-size: 13px; font-weight: 500; color: var(--muted); }
+.eyes .reading .when { font-size: 13px; color: var(--muted); }
+.eyes .reading .value { grid-column: 1 / -1; font-size: 40px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; }
+.eyes .reading .value small { font-size: 14px; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.eyes .readings .src { font-size: 13px; color: var(--muted); }
+.eyes .pic.rail img { aspect-ratio: 420 / 620; object-fit: cover; object-position: top; }
+
+/* What the record holds: two-ended rows in one narrow column. */
+.record { padding: var(--section) var(--margin); background: var(--s1); }
+.record .col { width: min(560px, 100%); margin-left: 22%; }
+.record h2 { margin-bottom: 32px; }
+.record .group { margin-top: 40px; }
+.record .gname { display: block; font-size: var(--t2); color: var(--muted); margin-bottom: 8px; }
+.record ul { list-style: none; margin: 0; padding: 0; }
+.record li { display: flex; align-items: baseline; gap: 10px; min-height: 36px; padding: 6px 0; font-size: var(--t2); transition: transform var(--t-hover) var(--ease-out); }
+.record li:hover { transform: translateX(6px); }
+.record .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ink); flex: none; align-self: center; }
+.record .k { color: var(--ink); flex: 1; }
+.record .v { font-size: var(--t1); color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* The close: a sentence with a blank; the blank is the MCP URL and the last words are the button. */
+.close { padding: var(--section) var(--margin); background: var(--s2); }
+.close .sentence { font-size: clamp(24px, 2.5vw, 36px); line-height: 1.3; font-weight: 500; letter-spacing: -0.02em; }
+.close .blank-wrap { display: inline; }
+.close .t { display: inline; }
+.close .blank { font: inherit; letter-spacing: inherit; background: var(--s4); border: 0; color: var(--ink); width: 13.5em; max-width: 100%; height: 1.3em; line-height: 1.3; padding: 0 .3em; margin: 0 .22em; vertical-align: baseline; }
+.close .blank:focus { outline: 2px solid var(--white); outline-offset: 2px; }
+.close .btn.big { font: inherit; letter-spacing: inherit; min-height: 0; height: 1.3em; padding: 0 .4em; margin-left: .22em; vertical-align: baseline; }
+.close .after { margin-top: 28px; color: var(--muted); max-width: 64ch; }
+.close .after code { color: var(--ink); background: var(--s4); }
+
+/* The footer is a board of tiles. */
+.tiles { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: 220px 320px; gap: 8px; padding: 8px 10px 10px; }
+.tile { background: var(--s1); padding: 20px; display: flex; flex-direction: column; justify-content: space-between; font-size: var(--t2); }
+.tile.statement { grid-column: 1 / 5; }
+.tile.statement p { font-size: 22px; line-height: 1.25; letter-spacing: -0.015em; max-width: 22ch; }
+.tile.statement small { font-size: 13px; color: var(--muted); }
+.tile.nav { grid-column: 5 / 8; justify-content: flex-start; gap: 4px; }
+.tile.nav a { color: var(--ink-2); transition: transform var(--t-hover) var(--ease-out); }
+.tile.nav a:hover { transform: translateX(6px); }
+.tile.place { grid-column: 8 / 10; color: var(--ink-2); gap: 2px; justify-content: flex-start; }
+.tile.address { grid-column: 10 / 13; justify-content: flex-end; }
+.tile.address a { font-size: 17px; word-break: break-all; color: var(--ink); }
+.tile.mark { grid-column: 1 / 9; background: var(--white); color: #000; align-items: center; justify-content: center; padding: 0; }
+.tile.mark span { font-size: var(--t5); font-weight: 500; letter-spacing: -0.045em; line-height: 1.1; }
+.tile.go { grid-column: 9 / 13; background: var(--s3); color: var(--ink); position: relative; }
+.tile.go span { font-size: var(--t3); font-weight: 500; letter-spacing: -0.02em; line-height: 1.05; max-width: 10ch; }
+.tile.go svg { align-self: flex-end; transition: transform var(--t-hover) var(--ease-out); }
+.tile.go:hover svg { transform: translateX(8px); }
+
+/* Agent mode: the page as text, in one column. Monospace is allowed here: it is real code and real agent-facing text. */
+.agent-wrap { min-height: calc(100svh - var(--bar)); }
+.agent-doc { max-width: 84ch; margin: 0 auto; padding: 56px var(--margin) 120px; font-family: var(--font-mono); /* taste-skill-ignore: the agent document is real agent-facing text */ font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+.agent-doc .doc-head { display: flex; flex-direction: column; gap: 18px; }
+.agent-doc .doc-head h1 { font-family: var(--font-sans); color: var(--ink); }
+.agent-doc .doc-head p { max-width: 60ch; color: var(--ink-2); font-size: 14px; }
+.agent-doc .connect-block { margin-top: 48px; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+.agent-doc .connect-block h2 { font-size: 17px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.agent-doc pre { background: var(--s1); padding: 14px 16px; width: 100%; overflow: auto; color: var(--ink); font-size: 14px; }
+.agent-doc .doc-body { margin-top: 56px; }
+.agent-doc .doc-body h1 { font-size: 24px; font-weight: 700; color: var(--ink); margin: 0 0 20px; }
+.agent-doc .doc-body h2 { font-size: 18px; font-weight: 700; color: var(--ink); margin: 44px 0 14px; }
+.agent-doc .doc-body h3, .agent-doc .doc-body h4 { font-size: 15px; font-weight: 700; color: var(--ink); margin: 28px 0 10px; }
+.agent-doc .doc-body p { font-size: 15px; max-width: none; color: var(--ink-2); margin: 0 0 14px; }
+.agent-doc .doc-body ul, .agent-doc .doc-body ol { padding-left: 1.4em; margin: 0 0 14px; }
+.agent-doc .doc-body li { margin: 6px 0; }
+.agent-doc .doc-body blockquote { margin: 0 0 18px; padding: 14px 18px; background: var(--s1); }
+.agent-doc .doc-body blockquote p { margin: 0; color: var(--ink); }
+.agent-doc .doc-body pre { margin: 0 0 16px; }
+.agent-doc .doc-body a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.agent-doc .doc-body strong { color: var(--ink); }
+.agent-doc .doc-error, .agent-doc .doc-loading { color: var(--muted); }
+
+/* Motion. Transform and opacity only; the reduced-motion rule in globals.css makes every move instant. */
+@media (prefers-reduced-motion: no-preference) {
+  .js .lines [data-line] { transform: translateY(105%); animation: lineUp 900ms var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 110ms + 80ms); }
+  .js [data-rise] { opacity: 0; transform: translateY(18px); animation: rise var(--t-reveal) var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 90ms + 240ms); }
+  .js [data-reveal] { opacity: 0; transition: opacity 700ms var(--ease-out), transform 900ms var(--ease-out); transition-delay: calc(var(--i, 0) * 80ms); }
+  .js [data-reveal="rise"] { transform: translateY(24px); }
+  .js [data-reveal="slide"] { transform: translateX(-20px); }
+  .js [data-reveal="settle"] { transform: scale(1.03); }
+  .js [data-reveal].is-in { opacity: 1; transform: none; }
+  .site[data-phase="agent"] .agent-wrap { animation: rise 520ms var(--ease-out) both; }
+}
+@keyframes lineUp { to { transform: none; } }
+@keyframes rise { to { opacity: 1; transform: none; } }
+
+/* The switch: human text scatters and fades (400 to 700 ms, staggered), then re-forms in reverse. */
+.human [data-dissolve] { transition: opacity 460ms var(--ease-out), transform 520ms var(--ease-out); transition-delay: calc(var(--i, 0) * 9ms); }
+.site[data-phase="to-agent"] .human [data-dissolve], .site[data-phase="to-human"] .human [data-dissolve] { opacity: 0; transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(.97); }
+.site[data-phase="to-human"] .human [data-dissolve] { transition: none; }
+.site[data-phase="to-agent"] .stage, .site[data-phase="to-human"] .stage { opacity: .12; transition: opacity 600ms var(--ease-out); }
+.site[data-phase="to-human"] .stage { transition: none; }
+.site[data-phase="to-human"] .human-wrap { position: absolute; inset: var(--bar) 0 auto 0; pointer-events: none; }
+.site[data-phase="to-human"] .agent-wrap { opacity: 0; transition: opacity 280ms var(--ease-out); }
+.site[data-phase="to-agent"] .human-wrap { pointer-events: none; }
+.site main { position: relative; }
+
+@media (max-width: 1024px) {
+  .bar { gap: 16px; }
+  .bar .links { display: none; }
+  .stage { height: clamp(260px, 46svh, 520px); }
+  .hero { grid-template-columns: 1fr; padding: 32px 20px 56px; }
+  .hero .hero-side { grid-column: 1; grid-row: auto; }
+  .beats { padding: 0 20px 96px; }
+  .beat { grid-template-columns: 1fr; gap: 16px; }
+  .strip { grid-template-columns: 1fr; }
+  .strip .field { height: auto; min-height: 64svh; padding: 20px; display: flex; flex-direction: column; gap: 24px; }
+  .strip h2, .strip .clause, .strip .ticket-wrap { position: static; transform: none; margin: 0; width: 100%; max-width: 320px; }
+  .strip .clause { order: 1; }
+  .strip h2 { order: 0; }
+  .strip .ticket-wrap { order: 2; }
+  .eyes .row { grid-template-columns: 1fr; gap: 24px; }
+  .record .col { margin-left: 0; }
+  .tiles { grid-template-columns: 1fr 1fr; grid-template-rows: none; gap: 6px; padding: 6px; }
+  .tile.mark { grid-column: 1 / -1; order: 0; height: 160px; }
+  .tile.go { grid-column: 1 / -1; order: 1; min-height: 160px; }
+  .tile.nav { grid-column: auto; order: 2; min-height: 200px; }
+  .tile.address { grid-column: auto; order: 3; min-height: 200px; }
+  .tile.place { grid-column: auto; order: 4; min-height: 160px; }
+  .tile.statement { grid-column: auto; order: 5; min-height: 160px; }
+  .tile.statement p { font-size: 17px; }
+}
+@media (max-width: 480px) {
+  .site { --t3: 26px; --t4: 30px; --t2: 16px; }
+  .bar { padding: 0 16px; }
+  .bar .bar-btn { display: none; }
+  .mode { margin-left: auto; width: 150px; height: 36px; }
+  .stage { height: clamp(200px, 32svh, 300px); }
+  .caps { font-size: 14px; top: 10px; }
+  .lbl { font-size: 13px; padding: 1px 4px; }
+  .lbl.dim { display: none; }
+  .hero { padding: 28px 16px 40px; gap: 16px; }
+  .hero .lead { max-width: none; }
+  .beats { padding: 0 16px 72px; gap: 40px; }
+  .beat .frag { margin: 0 -16px; padding: 14px 16px; }
+  .strip .field { padding: 20px 16px; }
+  .eyes, .record, .close { padding: 72px 16px; }
+  .eyes .pair { grid-template-columns: 1fr; }
+  .eyes .readings { padding: 16px; }
+  .eyes .reading .value { font-size: 36px; }
+  .record li { min-height: 44px; flex-wrap: wrap; }
+  .record .v { width: 100%; text-align: left; padding-left: 22px; }
+  .close .sentence { font-size: 24px; max-width: none; }
+  .close .blank { display: block; width: 100%; margin: .15em 0; font-size: .8em; }
+  .close .btn.big { margin-left: 0; }
+  .tile.mark span { font-size: 64px; }
+  .tile.go span { font-size: var(--t3); }
+  .agent-doc { padding: 32px 16px 96px; font-size: 14px; }
+}

@@ -1,0 +1,104 @@
+{
+  "name": "steward-demo-myer-plant-restart",
+  "suite": "demo-workflow",
+  "description": "The three-minute demo as replayable steps: list sites, resolve two known facts, resolve an unknown fact with budget (dispatch), a wrong-tag reply rejected, the right reply accepted, receipt, offline-verifiable attestation, diff read. Tool steps go through the MCP server; http steps POST straight to the backend's inbound route to play the technician.",
+  "siteId": "myer-plant",
+  "notes": [
+    "Replayable: the unknown step passes maxAgeHours 1e-9 (must be > 0) so a fact written by a previous run is treated as stale and still dispatches; status may be unknown (fresh database) or stale (replay).",
+    "Expectation operators: a literal value means deep equality; {$in: [...]}, {$exists: true}, {$contains: 'text'} (string or array), {$jsonContains: 'text'} (anywhere in the JSON-serialised value), {$gte: n}, {$not: {...}}. Keys use dotted paths; [-1] indexes the last array element; '$' targets the whole result.",
+    "Captured values are substituted as ${name} in later steps."
+  ],
+  "steps": [
+    {
+      "id": "list_sites",
+      "kind": "tool",
+      "tool": "list_sites",
+      "args": {},
+      "expect": { "sites": { "$jsonContains": "\"siteId\":\"myer-plant\"" } }
+    },
+    {
+      "id": "resolve_certificate_known",
+      "kind": "tool",
+      "tool": "resolve",
+      "args": { "siteId": "myer-plant", "assetTag": "P-101", "attribute": "commissioning_certificate" },
+      "expect": { "status": "known", "attestationId": { "$exists": true }, "assetTag": "P-101" },
+      "capture": { "certificateAttestationId": "attestationId" }
+    },
+    {
+      "id": "resolve_valve_known",
+      "kind": "tool",
+      "tool": "resolve",
+      "args": { "siteId": "myer-plant", "assetTag": "V-501", "attribute": "position" },
+      "expect": { "status": "known", "value": "open", "attestationId": { "$exists": true } }
+    },
+    {
+      "id": "resolve_pressure_unknown_no_budget",
+      "kind": "tool",
+      "tool": "resolve",
+      "args": { "siteId": "myer-plant", "assetTag": "P-101", "attribute": "pressure_bar", "maxAgeHours": 1e-9 },
+      "expect": { "status": { "$in": ["unknown", "stale"] }, "nextStep": { "$contains": "budget" } },
+      "note": "No budget: nothing is dispatched. On a fresh database this is unknown; on replay it is stale because maxAgeHours is 1e-9."
+    },
+    {
+      "id": "resolve_pressure_dispatch",
+      "kind": "tool",
+      "tool": "resolve",
+      "args": { "siteId": "myer-plant", "assetTag": "P-101", "attribute": "pressure_bar", "maxAgeHours": 1e-9, "budget": 5 },
+      "expect": { "status": { "$in": ["unknown", "stale"] }, "workItemId": { "$exists": true }, "reference": { "$contains": "MY-P101" } },
+      "capture": { "workItemId": "workItemId", "reference": "reference" }
+    },
+    {
+      "id": "inbound_wrong_tag_rejected",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/inbound/local",
+      "body": { "reference": "${reference}", "body": "Gauge on P-102 reads 2.4 bar", "statedTag": "P-102", "value": 2.4 },
+      "expect": { "routed": true, "verdict": "rejected" },
+      "note": "The technician photographs the sibling pump by mistake. Scope passes, identity fails."
+    },
+    {
+      "id": "receipt_after_rejection",
+      "kind": "tool",
+      "tool": "get_receipt",
+      "args": { "workItemId": "${workItemId}" },
+      "expect": { "state": { "$not": { "$in": ["resolved", "expired"] } }, "verdicts[-1].verdict": "rejected", "verdicts[-1].reasons": { "$jsonContains": "P-102" } }
+    },
+    {
+      "id": "inbound_right_tag_accepted",
+      "kind": "http",
+      "method": "POST",
+      "path": "/api/inbound/local",
+      "body": { "reference": "${reference}", "body": "Gauge on P-101 reads 2.4 bar", "statedTag": "P-101", "value": 2.4 },
+      "expect": { "routed": true, "verdict": "accepted" }
+    },
+    {
+      "id": "receipt_resolved",
+      "kind": "tool",
+      "tool": "get_receipt",
+      "args": { "workItemId": "${workItemId}" },
+      "expect": { "state": "resolved", "attestationId": { "$exists": true }, "receipt.tokensWhileWaiting": 0, "receipt.currency": "USD", "receipt.dispatches": { "$gte": 1 } },
+      "capture": { "pressureAttestationId": "attestationId" }
+    },
+    {
+      "id": "check_signature_valid",
+      "kind": "tool",
+      "tool": "check",
+      "args": { "attestationId": "${pressureAttestationId}" },
+      "expect": { "valid": true, "verdict": "accepted", "assetTag": "P-101", "attribute": "pressure_bar", "value": 2.4, "verifierVersion": { "$exists": true }, "signature": { "$exists": true } }
+    },
+    {
+      "id": "resolve_pressure_now_known",
+      "kind": "tool",
+      "tool": "resolve",
+      "args": { "siteId": "myer-plant", "assetTag": "P-101", "attribute": "pressure_bar" },
+      "expect": { "status": "known", "value": 2.4, "attestationId": "${pressureAttestationId}" }
+    },
+    {
+      "id": "changes_since_zero",
+      "kind": "tool",
+      "tool": "get_changes",
+      "args": { "siteId": "myer-plant", "since": 0, "limit": 500 },
+      "expect": { "version": { "$gte": 1 }, "changes": { "$jsonContains": "\"type\":\"fact\"" }, "$": { "$jsonContains": "\"type\":\"work_item\"" } }
+    }
+  ]
+}

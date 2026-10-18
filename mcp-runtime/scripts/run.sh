@@ -20,5 +20,6 @@ case "$MCP_COMMAND" in
   typecheck) exec node node_modules/typescript/bin/tsc --noEmit "$@" ;;
   test) exec node --import tsx --test tests/*.test.ts "$@" ;;
   demo) exec node --env-file-if-exists=.env --import tsx scripts/multiple-clients.ts "$@" ;;
+  eval) exec node --env-file-if-exists=.env ../evals/run.mjs "$@" ;;
   *) printf 'Unknown MCP command: %s\n' "$MCP_COMMAND" >&2; exit 1 ;;
 esac

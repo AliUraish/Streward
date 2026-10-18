@@ -10,10 +10,27 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from .integrations import ModelAdapter, SupermemoryAdapter
-from .seed import SCENE, seed
-from .store import Store, now, uid
+from .a2a import A2ABus
+from .boards import BoardService
 from .branding import rebrand_seed_pdfs
+from .evalruns import EvalRunner
+from .integrations import ModelAdapter, SupermemoryAdapter
+from .issues import IssueService
+from .memory_store import MemoryStore
+from .missions import MissionEngine
+from .ops import OpsService
+from .people import PeopleService
+from .reality import RealityService
+from .registers import room_for
+from .scenarios import ScenarioEngine
+from .seed import seed, sync_registers
+from .simulate import Simulator
+from .sites import apply_site_shape
+from .store import Store, now, uid
+from .telemetry import Telemetry
+from .viewer import ViewerService
+from .vision import VisionIngest
+from .waits import WaitHub
 
 
 def public(value):
@@ -37,7 +54,9 @@ class PropertyService:
     def __init__(self, data_directory: Path, start_workers: bool = True):
         self.store = Store(data_directory)
         seed(self.store)
+        apply_site_shape(self.store)
         rebrand_seed_pdfs(self.store)
+        self.register_sync = sync_registers(self.store)
         self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="steward-agent")
         self.submit_lock = threading.RLock()
         self.futures = {}
@@ -51,10 +70,35 @@ class PropertyService:
                 if (self.store.directory / "files" / f"{prop['id']}-report.html").exists():
                     self.write_report(prop["id"])
             self.store.meta("steward_report_brand_version", "1")
+        self.telemetry = Telemetry(self)
+        self.memory = MemoryStore(self)
+        self.reality = RealityService(self, start_workers=start_workers)
+        self.issues = IssueService(self)
+        self.people = PeopleService(self)
+        self.waits = WaitHub(self)
+        self.reality.change_listeners.append(self.waits.on_change)
+        self.bus = A2ABus(self)
+        self.ops = OpsService(self)
+        self.viewer = ViewerService(self)
+        self.boards = BoardService(self)
+        self.vision = VisionIngest(self)
+        self.missions = MissionEngine(self)
+        self.scenarios = ScenarioEngine(self)
+        self.simulator = Simulator(self)
+        self.evals = EvalRunner(self)
         if start_workers:
             self.recover_jobs()
+            self.bus.start()
+            self.missions.recover()
+            self.simulator.start()
 
     def close(self):
+        self.simulator.stop()
+        self.scenarios.close()
+        self.missions.close()
+        self.memory.close()
+        self.bus.close()
+        self.reality.close()
         self.executor.shutdown(wait=True)
 
     def require_property(self, property_id: str) -> dict:
@@ -136,7 +180,7 @@ class PropertyService:
         saved_filename = identifier + Path(filename).suffix.lower()
         (self.store.directory / "files" / saved_filename).write_bytes(data)
         document = dict(id=identifier, title=Path(filename).stem.replace("_", " "), filename=filename,
-                        category=category or "Uploaded sources", jurisdiction=self.require_property(property_id)["jurisdiction"],
+                        category=category or "Uploaded sources", jurisdiction=self.require_property(property_id).get("operator", "Demonstration site"),
                         pages=pages, size=len(data), uploadedAt=now(), url=f"/api/documents/{identifier}/file",
                         extractedText=text[:500000], _path=saved_filename, _propertyId=property_id)
         self.store.put("document", document, property_id)
@@ -279,7 +323,7 @@ class PropertyService:
                 "issue", "Asset tag is missing or duplicated in the scene register.")
         if code == "LOC":
             x, y, z = component["position"]
-            room = SCENE["room"]
+            room = room_for(property_id)
             valid = -room["width"] / 2 <= x <= room["width"] / 2 and 0 <= y <= room["height"] and -room["depth"] / 2 <= z <= room["depth"] / 2
             return ("verified", f"Registered origin ({x}, {y}, {z}) is inside the plant-room model bounds.") if valid else (
                 "issue", "Registered component origin falls outside the scene bounds.")
@@ -438,10 +482,10 @@ table{{width:100%;border-collapse:collapse}}th,td{{padding:12px;border:1px solid
         matched = [c for c in components if c["tag"].casefold() in lower or c["id"].casefold() in lower]
         requirements = self.store.all("requirement", property_id)
         if any(term in lower for term in ("inspect", "analyse", "analyze", "run inspection", "start survey", "scan")):
-            portfolio = any(term in lower for term in ("all properties", "portfolio", "three properties"))
+            portfolio = any(term in lower for term in ("all properties", "all sites", "portfolio", "both sites", "three properties"))
             scope = matched[0]["id"] if matched and not portfolio else "all"
             job = self.create_job(property_id, "portfolio" if portfolio else "inspection", scope, message)
-            answer = f"I've queued {'all three property agents' if portfolio else 'the property inspection worker'} ({job['id']}). " \
+            answer = f"I've queued {'every site agent' if portfolio else 'the property inspection worker'} ({job['id']}). " \
                      "It will read the source files, check asset identities and locations, validate attached records, and persist findings and a report. " \
                      "These are local evidence checks; no model vision or physical inspection is being simulated."
         elif lower.startswith("remember ") or lower.startswith("remember:"):

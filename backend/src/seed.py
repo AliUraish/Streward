@@ -9,19 +9,17 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from .registers import register_for, room_for
+from .sites import SITES, property_record
 from .store import Store, now
 
 ROOT = Path(__file__).resolve().parents[2]
-SCENE = json.loads((ROOT / "shared" / "scene.json").read_text())
-PROPERTIES = [
-    ("cedar", "Cedar House", "1840 Cedar Street, San Francisco", "Commissioning"),
-    ("harbor", "Harbor Works", "68 Harbor Way, Oakland", "Fit-out"),
-    ("juniper", "Juniper Residence", "215 Juniper Avenue, San Jose", "Handover"),
-]
+PROPERTIES = [(site["id"], site["name"]) for site in SITES]
+REGISTER_VERSION = "3"
 CHECKS = [
     ("ID", "Equipment identification", "Asset tag must be present and unique in the project scene register."),
     ("LOC", "Model location", "The registered component origin must lie inside the plant-room model bounds."),
-    ("DOC", "Commissioning record", "A machine-readable project commissioning record must reference this property and exact asset tag."),
+    ("DOC", "Commissioning record", "A machine-readable project commissioning record must reference this site and exact asset tag."),
     ("COND", "Recorded condition", "The baseline observation must contain a passing condition result for this exact asset. Fixture evidence is not a physical inspection."),
 ]
 
@@ -66,6 +64,92 @@ def write_pdf(path: Path, title: str, sections: list[tuple[str, list[str]]], pro
     pdf.save()
 
 
+def seed_documents(store: Store, site: dict, components: list[dict], inserted_at: str, overwrite: bool = False) -> list[dict]:
+    """The three seed PDFs (requirements, register, baseline observations) generated from the site's own register."""
+    property_id, name = site["id"], site["name"]
+    room = room_for(property_id)
+    documents = []
+    for suffix, title, category, sections in [
+        ("spec", "Mechanical & Electrical Project Requirements", "Project specifications", [
+            (f"{code} - {check_title}", [description, "", "Applies to the following registered project assets:"] +
+             [f"{component['tag']}  |  {component['name']}" for component in components])
+            for code, check_title, description in CHECKS
+        ]),
+        ("register", "Plant Room Asset Register", "Equipment schedules", [
+            ("Mechanical systems", [f"Site ID: {property_id}", f"Plant room: {room['width']} m x {room['depth']} m x {room['height']} m.", ""] +
+             [f"{c['tag']} - {c['name']}" for c in components if c["system"] == "Mechanical"]),
+            ("Electrical and access systems", [f"Site ID: {property_id}", ""] +
+             [f"{c['tag']} - {c['name']}" for c in components if c["system"] != "Mechanical"]),
+        ]),
+        ("observations", "Baseline Commissioning Observations", "Inspection records", [
+            ("Synthetic baseline - equipment observations", [
+                f"Site ID: {property_id}",
+                "This is synthetic fixture evidence used to demonstrate the local workflow.",
+                "A green state means project evidence checks passed; it is not legal certification.", "",
+            ] + [f"{c['tag']} - baseline: {c['status'].upper()}" for c in components]),
+        ]),
+    ]:
+        doc_id = f"{property_id}-{suffix}"
+        filename = f"{property_id}-{suffix}.pdf"
+        file_path = store.directory / "files" / filename
+        if overwrite or not file_path.exists():
+            write_pdf(file_path, title, sections, name)
+        text = "\n\n".join(heading + "\n" + "\n".join(lines) for heading, lines in sections)
+        body = dict(id=doc_id, title=title, filename=filename, category=category,
+                    jurisdiction="Demo project specification", pages=len(sections), size=file_path.stat().st_size,
+                    uploadedAt=inserted_at, url=f"/api/documents/{doc_id}/file", extractedText=text,
+                    _path=filename, _propertyId=property_id)
+        if overwrite or not store.get("document", doc_id, property_id):
+            existing = store.get("document", doc_id, property_id)
+            if existing:
+                body["uploadedAt"] = existing.get("uploadedAt", inserted_at)
+            store.put("document", body, property_id)
+        documents.append(store.get("document", doc_id, property_id))
+    return documents
+
+
+def seed_component(store: Store, property_id: str, component: dict, documents: list[dict], inserted_at: str) -> None:
+    """Insert one register component with its four project checks and synthetic baseline evidence (insert-if-missing)."""
+    def insert(kind, body):
+        if not store.get(kind, body["id"], property_id):
+            store.put(kind, body, property_id)
+
+    number = next((index for index, c in enumerate(register_for(property_id)) if c["id"] == component["id"]), 0)
+    initial_status = component["status"]
+    component = deepcopy(component)
+    component["requirementCount"] = 4
+    component["verifiedCount"] = 4 if initial_status == "verified" else 2
+    insert("component", component)
+    for check_index, (code, title, description) in enumerate(CHECKS):
+        requirement_id = f"{property_id}-{component['id']}-{code.lower()}"
+        status = "verified" if check_index < 2 or initial_status == "verified" else (
+            "issue" if check_index == 3 and initial_status == "issue" else "pending")
+        evidence = (
+            "Scene register contains a unique project tag." if check_index == 0 else
+            "Registered origin is within the plant-room model bounds." if check_index == 1 else
+            "Synthetic commissioning record references this site and asset." if status == "verified" else
+            "Synthetic baseline records an unresolved condition observation." if status == "issue" else
+            "Required machine-readable record has not been supplied."
+        )
+        insert("requirement", dict(id=requirement_id, code=f"PRJ-{code}-{number + 1:03d}", title=title,
+            description=description, system=component["system"], componentId=component["id"], status=status,
+            sourceId=f"{property_id}-spec", sourceTitle=documents[0]["title"], sourcePage=check_index + 1,
+            evidence=evidence, _check=code))
+        if check_index > 1 and status in ("verified", "issue"):
+            outcome = "fail" if status == "issue" else "pass"
+            evidence_id = f"seed-{requirement_id}"
+            filename = f"{evidence_id}.json"
+            payload = dict(propertyId=property_id, componentId=component["id"], tag=component["tag"],
+                           requirementId=requirement_id, outcome=outcome, synthetic=True,
+                           note="Original synthetic baseline observation for this local demonstration.")
+            if not (store.directory / "files" / filename).exists() or not store.get("evidence", evidence_id, property_id):
+                (store.directory / "files" / filename).write_text(json.dumps(payload, indent=2))
+            insert("evidence", dict(id=evidence_id, componentId=component["id"], requirementId=requirement_id,
+                filename=filename, note=payload["note"], status=status, createdAt=inserted_at,
+                url=f"/api/evidence/{evidence_id}/file", _path=filename, _assessment=payload,
+                _text=json.dumps(payload), _propertyId=property_id))
+
+
 def seed(store: Store):
     if store.meta("seed_version") == "1":
         return
@@ -74,101 +158,103 @@ def seed(store: Store):
         if not store.get(kind, body["id"], property_id):
             store.put(kind, body, property_id)
 
-    for index, (property_id, name, address, phase) in enumerate(PROPERTIES):
+    for site in SITES:
+        property_id, name = site["id"], site["name"]
         inserted_at = now()
-        insert("property", dict(id=property_id, name=name, address=address,
-                                jurisdiction="California / demonstration project", phase=phase,
-                                readiness=0, componentCount=len(SCENE["components"]), openIssues=0,
-                                updatedAt=inserted_at))
-        documents = []
-        for suffix, title, category, sections in [
-            ("spec", "Mechanical & Electrical Project Requirements", "Project specifications", [
-                (f"{code} - {check_title}", [description, "", "Applies to the following registered project assets:"] +
-                 [f"{component['tag']}  |  {component['name']}" for component in SCENE["components"]])
-                for code, check_title, description in CHECKS
-            ]),
-            ("register", "Plant Room Asset Register", "Equipment schedules", [
-                ("Mechanical systems", [f"Property ID: {property_id}", "Plant room: 13 m x 12 m x 4.6 m.", ""] +
-                 [f"{c['tag']} - {c['name']}" for c in SCENE["components"] if c["system"] == "Mechanical"]),
-                ("Electrical and access systems", [f"Property ID: {property_id}", ""] +
-                 [f"{c['tag']} - {c['name']}" for c in SCENE["components"] if c["system"] != "Mechanical"]),
-            ]),
-            ("observations", "Baseline Commissioning Observations", "Inspection records", [
-                ("Synthetic baseline - equipment observations", [
-                    f"Property ID: {property_id}",
-                    "This is synthetic fixture evidence used to demonstrate the local workflow.",
-                    "A green state means project evidence checks passed; it is not legal certification.", "",
-                ] + [f"{c['tag']} - baseline: {c['status'].upper()}" for c in SCENE["components"]]),
-            ]),
-        ]:
-            doc_id = f"{property_id}-{suffix}"
-            filename = f"{property_id}-{suffix}.pdf"
-            file_path = store.directory / "files" / filename
-            if not file_path.exists():
-                write_pdf(file_path, title, sections, name)
-            text = "\n\n".join(heading + "\n" + "\n".join(lines) for heading, lines in sections)
-            body = dict(id=doc_id, title=title, filename=filename, category=category,
-                        jurisdiction="Demo project specification", pages=len(sections), size=file_path.stat().st_size,
-                        uploadedAt=inserted_at, url=f"/api/documents/{doc_id}/file", extractedText=text,
-                        _path=filename, _propertyId=property_id)
-            insert("document", body, property_id)
-            documents.append(body)
-        for number, template in enumerate(SCENE["components"]):
-            component = deepcopy(template)
-            # Each property has its own persisted record, even when the geometry is shared.
-            if property_id == "harbor" and number % 7 == 0:
-                component["status"] = "pending"
-            if property_id == "juniper" and number % 9 == 0:
-                component["status"] = "issue"
-            initial_status = component["status"]
-            component["requirementCount"] = 4
-            component["verifiedCount"] = 4 if initial_status == "verified" else 2
-            insert("component", component, property_id)
-            for check_index, (code, title, description) in enumerate(CHECKS):
-                requirement_id = f"{property_id}-{component['id']}-{code.lower()}"
-                status = "verified" if check_index < 2 or initial_status == "verified" else (
-                    "issue" if check_index == 3 and initial_status == "issue" else "pending")
-                evidence = (
-                    "Scene register contains a unique project tag." if check_index == 0 else
-                    "Registered origin is within the plant-room model bounds." if check_index == 1 else
-                    "Synthetic commissioning record references this property and asset." if status == "verified" else
-                    "Synthetic baseline records an unresolved condition observation." if status == "issue" else
-                    "Required machine-readable record has not been supplied."
-                )
-                insert("requirement", dict(id=requirement_id, code=f"PRJ-{code}-{number + 1:03d}", title=title,
-                    description=description, system=component["system"], componentId=component["id"], status=status,
-                    sourceId=f"{property_id}-spec", sourceTitle=documents[0]["title"], sourcePage=check_index + 1,
-                    evidence=evidence, _check=code), property_id)
-                if check_index > 1 and status in ("verified", "issue"):
-                    outcome = "fail" if status == "issue" else "pass"
-                    evidence_id = f"seed-{requirement_id}"
-                    filename = f"{evidence_id}.json"
-                    payload = dict(propertyId=property_id, componentId=component["id"], tag=component["tag"],
-                                   requirementId=requirement_id, outcome=outcome, synthetic=True,
-                                   note="Original synthetic baseline observation for this local demonstration.")
-                    (store.directory / "files" / filename).write_text(json.dumps(payload, indent=2))
-                    insert("evidence", dict(id=evidence_id, componentId=component["id"], requirementId=requirement_id,
-                        filename=filename, note=payload["note"], status=status, createdAt=inserted_at,
-                        url=f"/api/evidence/{evidence_id}/file", _path=filename, _assessment=payload,
-                        _text=json.dumps(payload), _propertyId=property_id), property_id)
+        components = register_for(property_id)
+        insert("property", property_record(site, len(components), inserted_at))
+        documents = seed_documents(store, site, components, inserted_at)
+        for component in components:
+            seed_component(store, property_id, component, documents, inserted_at)
         insert("memory", dict(id=f"{property_id}-initial-memory", propertyId=property_id,
-            content=f"{name} is an original demonstration property. Baseline observations are synthetic. "
-                    "Use exact asset tags and property IDs when checking evidence; a matching filename alone is insufficient.",
+            content=f"{name} is an original demonstration site. Baseline observations are synthetic. "
+                    "Use exact asset tags and site IDs when checking evidence; a matching filename alone is insufficient.",
             source="Local project initialization", createdAt=inserted_at), property_id)
         insert("chat", dict(id=f"{property_id}-welcome", role="assistant", createdAt=inserted_at,
-            content=f"I'm {name}'s local property agent. I can inspect the project register, trace requirements to source pages, "
+            content=f"I'm {name}'s site agent. I can inspect the project register, trace requirements to source pages, "
                     "check uploaded evidence, remember findings and prepare a report. Local checks are deterministic; "
                     "model-backed synthesis activates when a model provider is configured. What would you like to inspect?",
             sources=[]), property_id)
         if not store.events(property_id):
-            store.event(property_id, f"agent-{property_id}", "project.created", "Property workspace initialized",
-                        "24 original scene objects and 96 project checks loaded with clearly labeled synthetic baseline evidence.")
-    insert("agent", dict(id="portfolio", name="Steward Coordinator", role="Steward portfolio coordinator", status="idle",
-        identity="local://steward/agents/portfolio", lastAction="Ready to compare property readiness and coordinate inspection jobs.",
+            store.event(property_id, f"agent-{property_id}", "project.created", "Site workspace initialized",
+                        "24 original register assets and 96 project checks loaded with clearly labeled synthetic baseline evidence.")
+    insert("agent", dict(id="portfolio", name="Atlas", role="Portfolio coordinator", status="idle",
+        identity="local://steward/agents/portfolio", lastAction="Ready to compare site readiness and coordinate inspection jobs.",
         tools=["list_properties", "get_portfolio", "run_inspection", "get_job", "export_report"]))
-    for property_id, name, _, _ in PROPERTIES:
-        insert("agent", dict(id=f"agent-{property_id}", name=f"Steward {property_id.title()}",
-            role=f"{name} property agent", status="idle", identity=f"local://steward/agents/{property_id}",
+    for property_id, name in PROPERTIES:
+        insert("agent", dict(id=f"agent-{property_id}", name=f"Warden · {name}",
+            role=f"{name} site agent", status="idle", identity=f"local://steward/agents/{property_id}",
             lastAction="Project context loaded. Awaiting an inspection or instruction.",
             tools=["inspect_component", "search_requirements", "search_documents", "assess_evidence", "recall_memory", "save_memory", "export_report"]))
     store.meta("seed_version", "1")
+    store.meta("steward_register_version", REGISTER_VERSION)
+
+
+ARCHIVE_ON_REGISTER_CHANGE = ("component", "requirement", "evidence")
+
+
+def _archive(store: Store, kind: str, record: dict, property_id: str) -> None:
+    with store.lock, store.connect() as db:
+        db.execute("UPDATE records SET kind=?, property_id=? WHERE kind=? AND id=? AND property_id=?",
+                   (f"archived:{kind}", f"archived-register:{property_id}", kind, record["id"], property_id))
+
+
+def sync_registers(store: Store) -> dict:
+    """Bring existing databases onto the per-site contract-3 registers, once (meta `steward_register_version`).
+
+    Components whose ID is still registered are updated in place (name, tag, kind, layout, description; estimated
+    pins replace 2-D pins unless an operator placed the pin). Components no longer registered are archived together
+    with their checks and evidence (kind `archived:<kind>`), and so are facts and work items for tags that left the
+    register; open missions waiting on such assets fail with an explicit reason. New components get their checks and
+    synthetic baseline evidence, and the three seed PDFs are regenerated from the new register."""
+    if store.meta("steward_register_version") == REGISTER_VERSION:
+        return {}
+    counts = dict(updated=0, added=0, archived=0, facts=0, workItems=0, missions=0)
+    moment = now()
+    for site in SITES:
+        property_id = site["id"]
+        if not store.get("property", property_id):
+            continue
+        register = register_for(property_id)
+        wanted = {c["id"]: c for c in register}
+        tags = {c["tag"] for c in register}
+        existing = {c["id"]: c for c in store.all("component", property_id)}
+        for component_id, component in existing.items():
+            if component_id in wanted:
+                continue
+            _archive(store, "component", component, property_id)
+            for kind in ("requirement", "evidence"):
+                for record in store.all(kind, property_id):
+                    if record.get("componentId") == component_id:
+                        _archive(store, kind, record, property_id)
+            counts["archived"] += 1
+        for kind, key in (("fact", "facts"), ("work_item", "workItems")):
+            for record in store.all(kind, property_id):
+                if record.get("assetTag") not in tags:
+                    _archive(store, kind, record, property_id)
+                    counts[key] += 1
+        for mission in store.all("mission", property_id):
+            if mission.get("state") in ("running", "input_required") and any(i.get("assetTag") not in tags for i in mission.get("items", [])):
+                mission.update(state="failed", phase="done", failure="Site register replaced (contract 3); the mission's assets are no longer registered.", updatedAt=moment)
+                store.put("mission", mission, property_id)
+                counts["missions"] += 1
+        documents = seed_documents(store, site, register, moment, overwrite=True)
+        for component_id, template in wanted.items():
+            current = store.get("component", component_id, property_id)
+            if current:
+                placed = current.get("pinSource") == "placed" and isinstance(current.get("pin"), dict) and "z" in current["pin"]
+                current.update({key: template[key] for key in ("tag", "name", "kind", "system", "subsystem", "position", "description")})
+                if not placed:
+                    current.update(pin=template["pin"], pinSource="estimated")
+                store.put("component", current, property_id)
+                counts["updated"] += 1
+            else:
+                seed_component(store, property_id, template, documents, moment)
+                counts["added"] += 1
+        prop = store.get("property", property_id)
+        prop["componentCount"] = len(register)
+        store.put("property", prop)
+        store.event(property_id, f"agent-{property_id}", "register.synced", "Site register updated (contract 3)",
+                    f"{counts['updated']} updated, {counts['added']} added, {counts['archived']} archived; pins are estimated until placed.")
+    store.meta("steward_register_version", REGISTER_VERSION)
+    return counts

@@ -13,10 +13,45 @@ from decimal import Decimal, ROUND_HALF_UP
 import httpx
 
 from .env import env
+from .sites import SITE_IDS, site_env_suffix
+
+# Contract 4 team identities per site (INKBOX_IDENTITY_<PREFIX>_<ROLE>); agents.py holds the full roster.
+TEAM_ENV_PREFIX = {"myer-plant": "MYER", "bristol-pumps": "BRISTOL"}
+TEAM_ROLES = ("MANAGER", "ENGINEER", "COMPLIANCE", "TECHNICIAN")
+
+
+def team_identity_env(property_id: str, role: str = "TECHNICIAN") -> str:
+    return f"INKBOX_IDENTITY_{TEAM_ENV_PREFIX.get(property_id, site_env_suffix(property_id))}_{role}"
 
 
 class ProviderNotConfigured(ValueError):
     pass
+
+
+PHONE_RE = re.compile(r"^\+?[0-9]{7,15}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def clean_env(name: str, default: str = "") -> str:
+    """Environment value with surrounding whitespace, quotes and inline `# comments` removed. Template files
+    sometimes leave a comment as the value; a value that is only a comment counts as unset."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip()
+    if not value or value.startswith("#"):
+        return default
+    value = re.split(r"\s+#", value, maxsplit=1)[0].strip().strip('"').strip("'").strip()
+    return value or default
+
+
+def inkbox_base_url() -> str:
+    value = clean_env("INKBOX_BASE_URL")
+    return value if value.startswith(("https://", "http://localhost", "http://127.0.0.1")) else "https://inkbox.ai"
+
+
+def allowed_recipients() -> set[str]:
+    return {item.strip().casefold() for item in clean_env("INKBOX_ALLOWED_RECIPIENTS").split(",") if item.strip()}
 
 
 class StripeSandbox:
@@ -82,23 +117,27 @@ class InkboxAdapter:
     """SDK transport, with operator-configured identities and an exact recipient allowlist."""
     @staticmethod
     def identity_handle(property_id):
-        return os.getenv(f"INKBOX_IDENTITY_{property_id.upper()}") or os.getenv("INKBOX_IDENTITY", "")
+        """The site identity that sends work-item task cards by email is the site's Field Technician
+        (INKBOX_IDENTITY_<MYER|BRISTOL>_TECHNICIAN; every agent emails from its own identity), with the shared
+        INKBOX_IDENTITY as the fallback. The retired Warden identities are never read."""
+        return clean_env(team_identity_env(property_id)) or clean_env("INKBOX_IDENTITY")
 
     @staticmethod
     def client():
-        key = os.getenv("INKBOX_API_KEY")
+        key = clean_env("INKBOX_API_KEY")
         if not key:
             raise ProviderNotConfigured("Inkbox is not configured. Add INKBOX_API_KEY and a property identity handle.")
         try:
             from inkbox import Inkbox
         except ImportError:
             raise ProviderNotConfigured("Inkbox SDK is missing. Install backend requirements before enabling this integration.")
-        return Inkbox(api_key=key)
+        # base_url is passed explicitly: the SDK would otherwise read INKBOX_BASE_URL raw, and a template comment there breaks it.
+        return Inkbox(api_key=key, base_url=inkbox_base_url())
 
     def resolve_identity(self, client, property_id):
         handle = self.identity_handle(property_id)
         if not handle:
-            raise ProviderNotConfigured(f"Set INKBOX_IDENTITY_{property_id.upper()} to an existing identity handle.")
+            raise ProviderNotConfigured(f"Set {team_identity_env(property_id)} to an existing identity handle.")
         return client.get_identity(handle)
 
     def status(self, property_id):
@@ -124,7 +163,7 @@ class InkboxAdapter:
     def send(self, property_id, to, subject, body_text):
         if env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false").lower() != "true":
             raise ProviderNotConfigured("External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.")
-        allowlist = {email.strip().casefold() for email in os.getenv("INKBOX_ALLOWED_RECIPIENTS", "").split(",") if email.strip()}
+        allowlist = allowed_recipients()
         if not to or any(address.casefold() not in allowlist for address in to):
             raise ValueError("Every recipient must be explicitly listed in INKBOX_ALLOWED_RECIPIENTS.")
         with self.client() as client:
@@ -140,6 +179,244 @@ class InkboxAdapter:
         if is_dataclass(value):
             return json.loads(json.dumps(asdict(value), default=str))
         return {"detail": str(value)}
+
+    # ---- Reality-layer comms surface (SMS, email, iMessage, voice, inbound webhooks) --------------------
+    # Every outbound send is gated by STEWARD_ALLOW_EXTERNAL_MESSAGES=true and an exact entry in
+    # INKBOX_ALLOWED_RECIPIENTS (emails and E.164 phone numbers, comma separated). Nothing is sent otherwise.
+
+    def configured(self, property_id: str) -> bool:
+        return bool(clean_env("INKBOX_API_KEY")) and bool(self.identity_handle(property_id))
+
+    @staticmethod
+    def contractor_phone():
+        r"""E.164-ish phone (^\+?[0-9]{7,15}$) or empty; placeholders and comments never become a recipient."""
+        value = clean_env("INKBOX_CONTRACTOR_PHONE")
+        return value if PHONE_RE.match(value) else ""
+
+    @staticmethod
+    def contractor_email():
+        value = clean_env("INKBOX_CONTRACTOR_EMAIL")
+        return value if EMAIL_RE.match(value) else ""
+
+    @staticmethod
+    def owner_phone():
+        value = clean_env("INKBOX_OWNER_PHONE")
+        return value if PHONE_RE.match(value) else ""
+
+    def dispatch_target(self, property_id: str) -> tuple[str, str, str]:
+        """(channel, recipient, reason). `local` unless the API key, the site identity, the external-messages gate and a
+        validated, allowlisted recipient all exist; the reason says which condition failed."""
+        if not clean_env("INKBOX_API_KEY"):
+            return "local", "", "INKBOX_API_KEY is not set"
+        if not self.identity_handle(property_id):
+            return "local", "", f"no Inkbox identity handle for {property_id} ({team_identity_env(property_id)})"
+        if clean_env("STEWARD_ALLOW_EXTERNAL_MESSAGES", env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false")).lower() != "true":
+            return "local", "", "STEWARD_ALLOW_EXTERNAL_MESSAGES is not true"
+        allowlist = allowed_recipients()
+        phone, email = self.contractor_phone(), self.contractor_email()
+        if phone and phone.casefold() in allowlist:
+            return "sms", phone, "sms to the allowlisted contractor phone"
+        if email and email.casefold() in allowlist:
+            return "email", email, "email to the allowlisted contractor address"
+        raw_phone, raw_email = clean_env("INKBOX_CONTRACTOR_PHONE"), clean_env("INKBOX_CONTRACTOR_EMAIL")
+        if raw_phone and not phone:
+            return "local", "", "INKBOX_CONTRACTOR_PHONE is not a valid phone number (^+?[0-9]{7,15}$)"
+        if raw_email and not email:
+            return "local", "", "INKBOX_CONTRACTOR_EMAIL is not a valid email address"
+        if phone or email:
+            return "local", "", "the contractor recipient is not in INKBOX_ALLOWED_RECIPIENTS"
+        return "local", "", "no INKBOX_CONTRACTOR_PHONE or INKBOX_CONTRACTOR_EMAIL configured"
+
+    @staticmethod
+    def phone_identity_handle(property_id: str) -> str:
+        """Identity that owns the phone number: the shared Steward Dispatch Line (INKBOX_IDENTITY_DISPATCH, contract 4),
+        then the legacy INKBOX_PHONE_IDENTITY. Both field technicians send SMS and place calls through it; the task
+        card names the site. The site identity is the last fallback (it has no number, so the send fails honestly)."""
+        return clean_env("INKBOX_IDENTITY_DISPATCH") or clean_env("INKBOX_PHONE_IDENTITY") or InkboxAdapter.identity_handle(property_id)
+
+    @staticmethod
+    def site_for_handle(handle: str | None, sites=None) -> str | None:
+        """Map an Inkbox identity handle (or mailbox address / phone number) to the site that owns it."""
+        if not handle:
+            return None
+        needle = handle.strip().casefold()
+        for site in sites or SITE_IDS:
+            for role in TEAM_ROLES:
+                own = clean_env(team_identity_env(site, role)).casefold()
+                if own and (needle == own or needle.startswith(own + "@")):
+                    return site
+        return None
+
+    def resolve_phone_identity(self, client, property_id):
+        handle = self.phone_identity_handle(property_id)
+        if not handle:
+            raise ProviderNotConfigured("Set INKBOX_IDENTITY_DISPATCH to the identity that owns the dispatch line's phone number.")
+        return client.get_identity(handle)
+
+    @staticmethod
+    def _gate(recipient: str):
+        if env("STEWARD_ALLOW_EXTERNAL_MESSAGES", "false").lower() != "true":
+            raise ProviderNotConfigured("External messages are disabled. Enable STEWARD_ALLOW_EXTERNAL_MESSAGES and configure INKBOX_ALLOWED_RECIPIENTS before sending.")
+        allowlist = allowed_recipients()
+        if not recipient or recipient.strip().casefold() not in allowlist:
+            raise ValueError("Every recipient must be explicitly listed in INKBOX_ALLOWED_RECIPIENTS.")
+        if not (PHONE_RE.match(recipient.strip()) or EMAIL_RE.match(recipient.strip())):
+            raise ValueError("Recipient must be a phone number (^+?[0-9]{7,15}$) or an email address.")
+
+    def send_sms(self, property_id: str, to: str, body: str, conversation_id: str | None = None, idempotency_key: str | None = None) -> dict:
+        """Send an SMS from the property identity's provisioned number. Returns {id, conversationId, raw}."""
+        self._gate(to)
+        with self.client() as client:
+            identity = self.resolve_phone_identity(client, property_id)
+            if identity.phone_number is None:
+                raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no provisioned phone number; SMS is unavailable. Set INKBOX_PHONE_IDENTITY to the handle that owns the number.")
+            kwargs = dict(text=body[:1600], idempotency_key=idempotency_key)
+            if conversation_id:
+                kwargs["conversation_id"] = conversation_id
+            else:
+                kwargs["to"] = to
+            message = identity.send_text(**kwargs)
+            raw = self.serialize(message)
+            return {"id": str(message.id), "conversationId": str(message.conversation_id) if message.conversation_id else None, "raw": raw}
+
+    def send_email(self, property_id: str, to: str, subject: str, body: str, reference: str, in_reply_to: str | None = None) -> dict:
+        """Send an email with the work-item reference in the subject. Returns {id, threadId, messageId, raw}."""
+        self._gate(to)
+        if reference and reference not in subject:
+            subject = f"[{reference}] {subject}"
+        with self.client() as client:
+            identity = self.resolve_identity(client, property_id)
+            if identity.email_address is None:
+                raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no mailbox; email is unavailable.")
+            message = identity.send_email(to=[to], subject=subject[:300], body_text=body, in_reply_to_message_id=in_reply_to)
+            return {"id": str(message.id), "threadId": str(message.thread_id) if message.thread_id else None,
+                    "messageId": message.message_id, "raw": self.serialize(message)}
+
+    def send_imessage(self, property_id: str, to: str, body: str, conversation_id: str | None = None) -> dict:
+        self._gate(to)
+        with self.client() as client:
+            identity = self.resolve_phone_identity(client, property_id)
+            if not identity.imessage_enabled:
+                raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} does not have iMessage enabled.")
+            kwargs = dict(text=body[:1600])
+            if conversation_id:
+                kwargs["conversation_id"] = conversation_id
+            else:
+                kwargs["to"] = [to]
+            message = identity.send_imessage(**kwargs)
+            raw = self.serialize(message)
+            return {"id": str(getattr(message, "id", raw.get("id", ""))), "conversationId": str(getattr(message, "conversation_id", "") or "") or None, "raw": raw}
+
+    def place_call(self, property_id: str, to: str, script: str) -> dict:
+        """Place a hosted-agent voice call (Inkbox Voice AI reads `script` as its task brief)."""
+        self._gate(to)
+        with self.client() as client:
+            identity = self.resolve_phone_identity(client, property_id)
+            if identity.phone_number is None:
+                raise ProviderNotConfigured(f"Inkbox identity {identity.agent_handle} has no provisioned phone number; voice calls need a dedicated number. Set INKBOX_PHONE_IDENTITY to the handle that owns it.")
+            call = identity.place_call(to_number=to, mode="hosted_agent", reason=script[:2000], on_voicemail="leave_message",
+                                       voicemail_message=script[:1000])
+            return {"id": str(call.id), "status": call.status, "raw": self.serialize(call)}
+
+    def ensure_webhook(self, property_id: str, public_base_url: str, inbound_secret: str) -> dict:
+        """Create (or reuse) the webhook subscription that delivers inbound texts, emails and iMessages to /api/inbound/inkbox."""
+        if not public_base_url.startswith("https://"):
+            raise ValueError("STEWARD_PUBLIC_BASE_URL must be an https:// tunnel URL for Inkbox webhooks.")
+        url = public_base_url.rstrip("/") + "/api/inbound/inkbox"
+        events = ["text.received", "message.received", "imessage.received", "call.ended",
+                  "a2a.task.created", "a2a.task.message", "a2a.task.canceled", "a2a.sent_task.updated"]
+        with self.client() as client:
+            identity = self.resolve_identity(client, property_id)
+            for existing in client.webhooks.subscriptions.list(agent_identity_id=identity.id):
+                if getattr(existing, "url", None) == url:
+                    return {"id": str(existing.id), "url": url, "created": False, "signingKey": None}
+            created = client.webhooks.subscriptions.create(url=url, event_types=events, agent_identity_id=identity.id, auth_token=inbound_secret)
+            return {"id": str(created.id), "url": url, "created": True, "signingKey": getattr(created, "signing_key", None)}
+
+    @staticmethod
+    def verify_signature(raw: bytes, headers) -> bool | None:
+        """True/False when INKBOX_WEBHOOK_SIGNING_KEY is set; None when no signing key is configured."""
+        # One signing key per Inkbox identity: try the shared key and every per-agent key (INKBOX_WEBHOOK_SIGNING_KEY_<AGENT>).
+        secrets_ = [v for k, v in os.environ.items()
+                    if (k == "INKBOX_WEBHOOK_SIGNING_KEY" or k.startswith("INKBOX_WEBHOOK_SIGNING_KEY_")) and v and not v.startswith("#")]
+        if not secrets_:
+            return None
+        from inkbox.signing_keys import verify_webhook
+        plain = dict(headers)
+        for secret in dict.fromkeys(secrets_):
+            try:
+                if verify_webhook(payload=raw, headers=plain, secret=secret):
+                    return True
+            except Exception:  # noqa: BLE001 - a malformed header for one key must not hide a match on another
+                continue
+        return False
+
+    @staticmethod
+    def parse_webhook(payload: dict) -> dict | None:
+        """Normalise an Inkbox webhook (text.received / message.received / imessage.received) to the inbound shape.
+
+        Returns None for lifecycle events (sent/delivered/failed) that carry no inbound content.
+        """
+        event_type = str(payload.get("event_type", ""))
+        data = payload.get("data") or {}
+        event_id = str(payload.get("id") or "")
+        # Receiving identity handles (per-site identities) plus the local number / mailbox, so the inbound
+        # router can scope "sender + open items" to the site that owns the identity.
+        handles = [item.get("agent_handle") for item in (data.get("agent_identities") or []) if isinstance(item, dict) and item.get("agent_handle")]
+        if event_type == "text.received":
+            message = data.get("text_message") or {}
+            media = [dict(url=m.get("url"), contentType=m.get("content_type")) for m in (message.get("media") or []) if m.get("url")]
+            return dict(provider="inkbox", eventId=event_id, channel="sms", providerMessageId=str(message.get("id") or ""),
+                        threadRef=str(message.get("conversation_id") or "") or None, sender=message.get("remote_phone_number") or "",
+                        subject="", body=message.get("text") or "", media=media, receivedAt=message.get("created_at") or payload.get("timestamp"),
+                        identityHandles=handles, localAddress=message.get("local_phone_number") or data.get("recipient_phone_number"))
+        if event_type == "message.received":
+            message = data.get("message") or {}
+            to_handles = [item.get("agent_handle") for item in (data.get("agent_identities") or [])
+                          if isinstance(item, dict) and item.get("bucket") in ("to", "cc") and item.get("agent_handle")]
+            return dict(provider="inkbox", eventId=event_id, channel="email", providerMessageId=str(message.get("id") or ""),
+                        threadRef=str(message.get("thread_id") or "") or None, sender=message.get("from_address") or "",
+                        subject=message.get("subject") or "", body=message.get("body") or message.get("snippet") or "", media=[],
+                        receivedAt=message.get("created_at") or payload.get("timestamp"), rfcMessageId=message.get("message_id"),
+                        hasAttachments=bool(message.get("has_attachments")), mailbox=message.get("email_address"),
+                        identityHandles=to_handles or handles, localAddress=message.get("email_address") or (message.get("to_addresses") or [None])[0])
+        if event_type == "call.ended":
+            call = data.get("call") or {}
+            transcript = data.get("transcript") or {}
+            lines = []
+            for entry in transcript.get("entries") or []:
+                if isinstance(entry, dict) and "marker" not in entry:
+                    speaker = entry.get("party") or entry.get("speaker") or "speaker"
+                    lines.append(f"{speaker}: {entry.get('text') or entry.get('content') or ''}")
+            outcome = data.get("outcome")
+            body = (f"Call outcome: {outcome}. " if outcome else "") + "\n".join(lines)
+            return dict(provider="inkbox", eventId=event_id, channel="call", providerMessageId=str(call.get("id") or ""),
+                        threadRef=str(call.get("id") or "") or None, sender=call.get("remote_phone_number") or "",
+                        subject=f"call {outcome or call.get('status') or 'ended'}", body=body, media=[],
+                        receivedAt=call.get("ended_at") or payload.get("timestamp"), identityHandles=handles,
+                        localAddress=call.get("local_phone_number"), callOutcome=outcome, transcriptUrl=data.get("transcript_url"),
+                        recordingUrl=call.get("recording_url") or data.get("recording_url"),
+                        transcriptEntries=[e for e in (transcript.get("entries") or []) if isinstance(e, dict)],
+                        actionItems=[item.get("action") for item in (data.get("post_call_action_items") or []) if isinstance(item, dict)])
+        if event_type == "imessage.received":
+            message = data.get("message") or {}
+            media = [dict(url=m.get("url"), contentType=m.get("content_type")) for m in (message.get("media") or []) if isinstance(m, dict) and m.get("url")]
+            return dict(provider="inkbox", eventId=event_id, channel="imessage", providerMessageId=str(message.get("id") or ""),
+                        threadRef=str(message.get("conversation_id") or "") or None, sender=message.get("sender_number") or message.get("remote_number") or "",
+                        subject="", body=message.get("content") or "", media=media, receivedAt=message.get("created_at") or payload.get("timestamp"),
+                        identityHandles=handles, localAddress=None)
+        return None
+
+    def fetch_media(self, url: str, limit: int = 10 * 1024 * 1024) -> bytes | None:
+        """Best-effort download of MMS/iMessage media referenced by a webhook. Returns None on any failure."""
+        try:
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                response = client.get(url, headers={"X-API-Key": clean_env("INKBOX_API_KEY")})
+                if response.status_code != 200 or len(response.content) > limit:
+                    return None
+                return response.content
+        except Exception:
+            return None
 
 
 class InsForgeAdapter:

@@ -1,0 +1,52 @@
+# Steward
+
+> Steward is a reality layer for industrial agents. An agent asks for a fact about a physical asset at a plant; Steward answers with a fresh, signed fact, or sends a human to get one and calls the agent back. Three verbs: resolve, attest, check. Every answer is known, stale, unknown or conflict; never a made-up value.
+
+Steward is an MCP server (Streamable HTTP). Hosted endpoint: https://dark-wave-okfom.run.mcp-use.com/mcp. Local: http://127.0.0.1:8002/mcp. Backend REST: /api/... on the same host as STEWARD_BACKEND_URL. Site IDs are `harbor-works` (Harbor Works, fixture twin, the demo site), `myer-plant` (Myer Plant Room, Gaussian-splat capture) and `bristol-pumps` (Bristol Dock Machine Room, Gaussian-splat capture). Each site has 24 tagged assets such as P-101, V-501, TS-801. Work-item references are prefixed HW-, MY- or BR-.
+
+## The three verbs
+
+- resolve(siteId, assetTag, attribute, maxAgeHours?, budget?, callbackUrl?) → {status: known|stale|unknown|conflict, value?, unit?, observedAt?, ageSeconds?, attestationId?, workItemId?, reference?, dispatchedVia?, cost?, nextStep}. With budget > 0 an unknown or stale fact opens a work item and dispatches a technician; you stop and wait (zero tokens). Without budget you get the status and `nextStep: "call resolve again with budget > 0 to dispatch"`.
+- attest(siteId, assetTag, attribute, value, unit?, observedAt?, source{kind, ref}, statedTag?, workItemId?) → {verdict: accepted|rejected|needs_clarification, reasons[], checks[], attestationId?, factId?, nextStep}. Six checks must all pass: scope, identity, geometry, plausibility, time, integrity. Only `accepted` writes a fact and signs an attestation.
+- check(attestationId) → the signed Attestation plus `valid: boolean` after Ed25519 signature re-verification. Trust another agent's proof without redoing the work. Public key: GET /api/attestations/public-key.
+
+Supporting tools: get_changes(siteId, since?, limit?) diff since a version; subscribe(siteId, callbackUrl) A2A callback `{event:'steward.change', change, workItem?}` on every change; get_receipt(workItemId); escalate(workItemId, level 1-4, note?); query_clearance(siteId, from, to, widthM); patrol(siteId, scope?); list_sites().
+
+Resources: steward://guide (how to choose tools and recover), steward://schema (TypeScript types), steward://sites/{siteId}/context.min (≤400 tokens: counts, blockers, live sensors), steward://sites/{siteId}/specs (attribute classes, units, spec ranges per asset kind). Prompt: prove-before-signing(siteId, task).
+
+## Error recovery contract
+
+Every error is `{code, message, recovery}`. Act on `recovery`, do not retry blindly.
+- UNSUPPORTED_ATTRIBUTE: read steward://sites/{siteId}/specs and pick a listed attribute for that asset kind.
+- Invalid siteId: call list_sites and use an exact id.
+- Unknown asset: call list_assets for the site; tags look like P-101.
+- BACKEND_UNAVAILABLE: a read first; do not repeat a write after an uncertain failure, check get_changes for the work item.
+- A `rejected` attest is final for that evidence; read `reasons` (for example "tag plate reads P-102, expected P-101, P-101 is 2 m west of P-102") and submit new evidence against the same workItemId.
+- `needs_clarification` means a second reading or a stated tag is required; it never writes a fact.
+- Work items expire at `deadlineAt`; after that resolve again.
+
+## Freshness
+
+TTL by attribute class: reading 1 h, condition 24 h, document 365 d, identity never. `stale` returns the old value and age; decide whether to spend budget.
+
+## Honesty
+
+Fictional plant, labelled props, rule-based verification. Steward does not certify equipment or replace an engineer's sign-off. Facts carry provenance (`source.kind` ∈ scan|camera|sensor|patrol|human|agent|owner).
+
+## Docs
+
+- docs/INTEGRATIONS.md: sponsors, env vars, switch-on checklist
+- mcp-runtime/README.md: client configuration
+- REALITY-CONTRACT.md: full types and API
+- Markdown of every page: append .md
+
+## Agents and authority
+
+Four agents share the record, each with authority enforced in code, not in prompts. Pass `X-Steward-Actor` (the MCP does this for you; default `operator`).
+
+- `operator` (level 1): the customer's own agent. Starts missions, sets budgets, reads everything. Cannot write facts, dispatch people or decide.
+- `atlas` (level 2): portfolio coordinator. Delegates to site agents over Inkbox A2A, runs cross-site checks, declares restart readiness, asks the owner. Cannot attest.
+- `warden:<siteId>` (level 3): site agent. Resolves, verifies and signs for its own site only. Cannot touch another site or exceed its budget.
+- `runner` (level 4): field agent. Reaches employees and contractors by SMS, email and call, collects evidence. Cannot attest or write facts.
+
+Tools: `start_mission {siteId, goal: "clear_for_restart", budget}` runs Atlas's restart mission; watch it with `get_mission` (poll no faster than every 5 s) or `subscribe`. `list_agents`, `get_transcript {agentId}` and `get_issues {siteId}` show what each agent did and why. An `AUTHORITY_DENIED` error names the agent that may perform the action.

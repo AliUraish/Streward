@@ -1,0 +1,23 @@
+{
+ "siteId": "bristol-pumps",
+ "splatId": "8a8ce192",
+ "source": "https://superspl.at/s?id=8a8ce192",
+ "method": "headless Chrome (SwiftShader WebGL 2) over CDP against the hosted SuperSplat viewer; Esc stops the camera animation, the viewer DOM overlays are hidden, mouse drags and wheel orbit between frames. Frames 3 and 4 come from an earlier pass where the overlays were still visible; the viewer control strip is cropped off (sips centre crop 800 → 690 px).",
+ "at": "2026-10-18T02:50:51.327373Z",
+ "viewport": {
+  "W": 1280,
+  "H": 800
+ },
+ "clip": {
+  "x": 0,
+  "y": 0,
+  "width": 1280,
+  "height": 800
+ },
+ "frames": {
+  "frame-1": "opening view, overlays hidden",
+  "frame-2": "orbit left, overlays hidden",
+  "frame-3": "orbit right (earlier pass, bottom strip cropped)",
+  "frame-4": "lower angle (earlier pass, bottom strip cropped)"
+ }
+}

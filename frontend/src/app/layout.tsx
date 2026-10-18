@@ -1,15 +1,17 @@
-import type { Metadata } from "next";
-import "@fontsource/inter/latin-400.css";
-import "@fontsource/inter/latin-500.css";
-import "@fontsource/inter/latin-600.css";
-import "@fontsource/inter/latin-700.css";
+import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono"; // taste-skill-ignore: Geist Mono is loaded only for tags, references and hashes
+import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Steward — Property intelligence",
-  description: "A spatial inspection workspace for property agents. Inspect components, trace requirements, and act with evidence.",
+  title: "Steward",
+  description: "Agents ask the plant. The plant answers with proof, or sends someone to get it.",
 };
+export const viewport: Viewport = { themeColor: "#000000", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  // taste-skill-ignore: Geist Mono is loaded for real code and the agent document only
+  return <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning><body>{children}<Script id="js-flag" strategy="beforeInteractive">{"document.documentElement.classList.add('js')"}</Script></body>
+  </html>;
 }

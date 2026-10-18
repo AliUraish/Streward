@@ -1,0 +1,62 @@
+{
+  "_about": "Armature has no eval file format (docs.armature.tech/evaluation/eval-cases: cases are created in the dashboard). This file is the hand-conversion of evals/demo-workflow.json: one dashboard eval case per entry, all placed in the suite below. Paste prompt and criteria verbatim; mark criteria 'required' unless noted. Targets: one Claude model in Claude Code (Free plan allows 1 target per case).",
+  "suite": "Steward demo workflow",
+  "mcpServer": {
+    "name": "steward",
+    "url": "https://<slug>.run.mcp-use.com/mcp",
+    "note": "Register in Armature → MCP Setup → Add MCP server with the Manufact URL (not a laptop URL). If STEWARD_MCP_TOKEN is set, add it as a Bearer credential there."
+  },
+  "cases": [
+    {
+      "id": "resolve-known",
+      "prompt": "At the Harbor Works site, find out whether pump P-101 has a valid commissioning certificate on record. Do not spend any budget. Report the status, how old the record is, and the attestation id you were given.",
+      "criteria": [
+        "The agent calls the resolve tool with siteId 'harbor', assetTag 'P-101' and attribute 'commissioning_certificate' (not list_assets guesses or free text).",
+        "The agent reports status 'known' and quotes the attestationId returned by the tool.",
+        "The agent does not call attest, patrol or escalate, and does not pass a budget greater than 0.",
+        "The agent states the age of the record from observedAt or ageSeconds rather than inventing a date."
+      ]
+    },
+    {
+      "id": "resolve-unknown-with-budget",
+      "prompt": "You are clearing Harbor Works for restart. You need the current pressure reading on pump P-101 (attribute pressure_bar). If it is not known, spend up to 2 dollars of budget to have a technician read it, then stop and tell me the work item reference. Do not make up a value.",
+      "criteria": [
+        "The agent first resolves P-101 pressure_bar and observes status 'unknown' (no fact exists for it).",
+        "The agent calls resolve again (or initially) with budget greater than 0 and at most 2, and receives a workItemId and a reference matching ^HW-P101-PRESSURE_BAR-\\d{4}$.",
+        "The agent does not state a numeric pressure value anywhere in its answer.",
+        "The agent does not poll resolve or get_receipt more than three times while waiting; it reports that it is waiting and stops.",
+        {"text": "The agent mentions that a callback or get_changes can be used to learn when the reading arrives.", "required": false}
+      ]
+    },
+    {
+      "id": "inbound-wrong-tag-rejected",
+      "prompt": "A technician has replied to work item reference HW-P101-PRESSURE_BAR-0001 at Harbor Works with a reading of 2.4 bar, but the photo's tag plate reads P-102. Submit this observation with attest (source kind 'human', statedTag 'P-102') and tell me exactly why Steward accepted or rejected it and what the technician should do next.",
+      "criteria": [
+        "The agent calls attest with siteId 'harbor', assetTag 'P-101', attribute 'pressure_bar', value 2.4 and statedTag 'P-102'.",
+        "The agent reports verdict 'rejected' and quotes the identity check reason, which names P-102, P-101 and a distance/direction between them.",
+        "The agent does not record or claim a fact or attestation id for this submission.",
+        "The agent tells the technician to photograph the gauge on P-101 with its own tag plate visible, using the direction given in the reason."
+      ]
+    },
+    {
+      "id": "inbound-right-tag-accepted",
+      "prompt": "The technician has now sent a correct photo for HW-P101-PRESSURE_BAR-0001: tag plate P-101, gauge reading 2.4 bar, taken just now. Submit it with attest (source kind 'human', statedTag 'P-101') and give me the attestation id and the resulting fact.",
+      "criteria": [
+        "The agent calls attest with statedTag 'P-101', value 2.4 and an observedAt within the last few minutes (or omits observedAt).",
+        "The agent reports verdict 'accepted' with all six checks (scope, identity, geometry, plausibility, time, integrity) passed and quotes the attestationId.",
+        "The agent then calls get_receipt or get_changes and reports the work item state as 'resolved'.",
+        "The agent does not claim a payment was made unless the receipt shows cost greater than 0."
+      ]
+    },
+    {
+      "id": "check-signature",
+      "prompt": "Another agent gave you attestation id <paste the id from the previous case> for P-101 pressure at Harbor Works. Verify it without redoing any work and tell me whether it is valid, what it attests, and who signed it.",
+      "criteria": [
+        "The agent calls the check tool with the attestation id and no other write tools.",
+        "The agent reports valid: true and the attested asset tag, attribute, value and observedAt from the record.",
+        "The agent names the verifier version (steward-verify/1) and that the signature is Ed25519 with a server public key, as returned by the tool.",
+        "The agent does not call resolve with a budget or attest during this task."
+      ]
+    }
+  ]
+}

@@ -1,19 +1,24 @@
 {
   "name": "steward-mcp-runtime",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "bash scripts/run.sh dev",
     "start": "bash scripts/run.sh start",
     "build": "bash scripts/run.sh build",
     "typecheck": "bash scripts/run.sh typecheck",
     "test": "bash scripts/run.sh test",
-    "demo": "bash scripts/run.sh demo",
+    "demo": "bash scripts/run.sh eval",
+    "demo:mcp": "bash scripts/run.sh eval",
+    "demo:clients": "bash scripts/run.sh demo",
     "demo:inspection": "bash scripts/run.sh demo --run-inspection"
   },
   "dependencies": {
+    "@armature-tech/mcp-analytics": "0.6.47",
     "@mcp-use/client": "2.4.4",
     "@modelcontextprotocol/client": "2.3.1",
     "mcp-use": "2.10.1",

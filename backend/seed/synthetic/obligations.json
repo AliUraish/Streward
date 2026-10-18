@@ -1,0 +1,274 @@
+{
+  "family": "obligations",
+  "synthetic": true,
+  "generator": "hand-seed",
+  "note": "Dates are relative to the first load (lastDoneDaysAgo, dueInDays). ruleRef points at a labelled demo rule pack entry; never statutory advice.",
+  "records": [
+    {
+      "id": "ob-my-fe1001-monthly",
+      "siteId": "myer-plant",
+      "assetTag": "FE-1001",
+      "title": "Fire extinguisher monthly visual inspection",
+      "ruleRef": "DEMO-RP/FIRE-07 (demo rule pack, not statutory advice)",
+      "frequency": "monthly",
+      "lastDoneDaysAgo": 22,
+      "dueInDays": 8,
+      "documentId": "doc-my-fe1001-tag",
+      "ownerId": "crew-my-safety-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "VIC-AU",
+          "instrument": "Building Regulations 2018",
+          "provision": "Part 15",
+          "keywords": [
+            "essential safety measures",
+            "fire extinguishers",
+            "maintenance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-my-tk201-scheme",
+      "siteId": "myer-plant",
+      "assetTag": "TK-201",
+      "title": "Expansion vessel written scheme of examination",
+      "ruleRef": "DEMO-RP/PRESS-02 (demo rule pack, not statutory advice)",
+      "frequency": "annual",
+      "lastDoneDaysAgo": 140,
+      "dueInDays": 225,
+      "documentId": "doc-my-tk201-scheme",
+      "ownerId": "crew-my-duty-engineer",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "VIC-AU",
+          "instrument": "Occupational Health and Safety Regulations 2017",
+          "provision": "Part 5.1",
+          "keywords": [
+            "pressure equipment",
+            "plant",
+            "inspection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-my-db401-periodic",
+      "siteId": "myer-plant",
+      "assetTag": "DB-401",
+      "title": "Distribution board periodic inspection and test",
+      "ruleRef": "DEMO-RP/ELEC-05 (demo rule pack, not statutory advice)",
+      "frequency": "5-yearly",
+      "lastDoneDaysAgo": 700,
+      "dueInDays": 1125,
+      "documentId": "doc-my-db401-test",
+      "ownerId": "crew-my-facilities-manager",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "VIC-AU",
+          "instrument": "Occupational Health and Safety Regulations 2017",
+          "provision": "Part 5.1",
+          "keywords": [
+            "plant",
+            "maintenance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-my-hotwork-permit",
+      "siteId": "myer-plant",
+      "assetTag": "V-504",
+      "title": "Hot-work permit, supply manifold brazing",
+      "ruleRef": "DEMO-RP/PERMIT-03 (demo rule pack, not statutory advice)",
+      "frequency": "per job",
+      "lastDoneDaysAgo": 1,
+      "dueInDays": 6,
+      "documentId": "doc-my-hotwork-permit",
+      "ownerId": "crew-my-safety-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "VIC-AU",
+          "instrument": "Building Regulations 2018",
+          "provision": "Part 15",
+          "keywords": [
+            "essential safety measures"
+          ]
+        },
+        {
+          "jurisdiction": "VIC-AU",
+          "instrument": "Occupational Health and Safety Regulations 2017",
+          "provision": "Part 5.1",
+          "keywords": [
+            "plant"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-my-contractor-report",
+      "siteId": "myer-plant",
+      "assetTag": "V-504",
+      "title": "Contractor service report on file after each visit",
+      "ruleRef": "DEMO-RP/CONTR-01 (demo rule pack, not statutory advice)",
+      "frequency": "per visit",
+      "lastDoneDaysAgo": 2,
+      "dueInDays": 12,
+      "documentId": "doc-my-contractor-v504",
+      "ownerId": "crew-my-facilities-manager",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "VIC-AU",
+          "instrument": "Occupational Health and Safety Regulations 2017",
+          "provision": "Part 5.1",
+          "keywords": [
+            "plant",
+            "records",
+            "maintenance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-br-pv301-exam",
+      "siteId": "bristol-pumps",
+      "assetTag": "PV-301",
+      "title": "Steam receiver written-scheme examination certificate",
+      "ruleRef": "DEMO-RP/PRESS-01 (demo rule pack, not statutory advice)",
+      "frequency": "14-monthly",
+      "lastDoneDaysAgo": 400,
+      "dueInDays": 25,
+      "documentId": "doc-br-pv301-cert",
+      "ownerId": "crew-br-restoration-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "ENG-UK",
+          "instrument": "Pressure Systems Safety Regulations 2000",
+          "provision": "regulation 9",
+          "keywords": [
+            "periodic examination",
+            "examination"
+          ]
+        },
+        {
+          "jurisdiction": "ENG-UK",
+          "instrument": "Pressure Systems Safety Regulations 2000",
+          "provision": "regulation 8",
+          "keywords": [
+            "written scheme"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-br-steam-demo",
+      "siteId": "bristol-pumps",
+      "assetTag": "SP-102",
+      "title": "Public steam demonstration permit",
+      "ruleRef": "DEMO-RP/PUBLIC-04 (demo rule pack, not statutory advice)",
+      "frequency": "per event",
+      "lastDoneDaysAgo": 30,
+      "dueInDays": 10,
+      "documentId": "doc-br-steam-demo-permit",
+      "ownerId": "crew-br-visitor-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "ENG-UK",
+          "instrument": "Pressure Systems Safety Regulations 2000",
+          "provision": "regulation 9",
+          "keywords": [
+            "examination"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-br-v505-lift",
+      "siteId": "bristol-pumps",
+      "assetTag": "V-505",
+      "title": "Receiver safety valve lift test",
+      "ruleRef": "DEMO-RP/PRESS-03 (demo rule pack, not statutory advice)",
+      "frequency": "annual",
+      "lastDoneDaysAgo": 330,
+      "dueInDays": 35,
+      "documentId": "doc-br-v505-lift",
+      "ownerId": "crew-br-restoration-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "ENG-UK",
+          "instrument": "Pressure Systems Safety Regulations 2000",
+          "provision": "regulation 9",
+          "keywords": [
+            "examination",
+            "protective devices"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-br-fe1001-monthly",
+      "siteId": "bristol-pumps",
+      "assetTag": "FE-1001",
+      "title": "Fire extinguisher monthly visual inspection",
+      "ruleRef": "DEMO-RP/FIRE-07 (demo rule pack, not statutory advice)",
+      "frequency": "monthly",
+      "lastDoneDaysAgo": 15,
+      "dueInDays": 15,
+      "documentId": "doc-br-fe1001-tag",
+      "ownerId": "crew-br-restoration-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "ENG-UK",
+          "instrument": "Health and Safety at Work etc. Act 1974",
+          "provision": "section 2",
+          "keywords": [
+            "general duties",
+            "employers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ob-br-walkway-check",
+      "siteId": "bristol-pumps",
+      "assetTag": "W-1201",
+      "title": "Visitor walkway pre-opening check",
+      "ruleRef": "DEMO-RP/PUBLIC-02 (demo rule pack, not statutory advice)",
+      "frequency": "daily",
+      "lastDoneDaysAgo": 0,
+      "dueInDays": 1,
+      "ownerId": "crew-br-visitor-lead",
+      "synthetic": true,
+      "generator": "hand-seed",
+      "cites": [
+        {
+          "jurisdiction": "ENG-UK",
+          "instrument": "Workplace (Health, Safety and Welfare) Regulations 1992",
+          "provision": "regulation 12",
+          "keywords": [
+            "floors",
+            "traffic routes"
+          ]
+        }
+      ]
+    }
+  ]
+}

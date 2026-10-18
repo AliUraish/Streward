@@ -1,3 +1,3 @@
-import StewardApp from "@/components/steward-app";
+import Site from "@/components/site/site";
 
-export default function Page() { return <StewardApp />; }
+export default function Page() { return <Site />; }
