@@ -737,9 +737,11 @@ export default function SplatViewerImpl(props: SplatViewerProps) {
         </div>
       )}
 
-      <div className={styles.credit} style={safe ? { left: 12 + sl, bottom: 12 + sb } : undefined}>
-        Scan <a href={site.sceneUrl} target="_blank" rel="noreferrer">{site.sceneTitle}</a> by {site.author} on SuperSplat
-      </div>
+      {props.credit !== false && (
+        <div className={styles.credit} style={safe ? { left: 12 + sl, bottom: 12 + sb } : undefined}>
+          Scan <a href={site.sceneUrl} target="_blank" rel="noreferrer">{site.sceneTitle}</a> by {site.author} on SuperSplat
+        </div>
+      )}
       {phase === 'ready' && !fill && (
         <div className={styles.tools} style={safe ? { right: 12 + sr, bottom: 12 + sb } : undefined}>
           <span className={styles.hint}>Drag to orbit · right-drag to pan · scroll to zoom · WASD to fly · double-click to pivot</span>

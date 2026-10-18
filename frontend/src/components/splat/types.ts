@@ -70,6 +70,8 @@ export interface SplatViewerProps {
    * while an eye command drives the camera here, since this renderer is then producing that very view.
    */
   follow?: { position: Vec3Tuple; target: Vec3Tuple; fov?: number | null; nonce: string } | null;
+  /** Draw the capture credit in the corner (default true); a page that credits the captures elsewhere turns it off. */
+  credit?: boolean;
   /** The latest eye frame (eye mode), for a HUD showing what the agent sees. */
   onFrame?(meta: SplatEyeFrameMeta): void;
 }

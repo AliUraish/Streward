@@ -27,7 +27,7 @@ import time
 
 from .agents import DIRECTOR, OPERATOR, authorize, display_name, engineer_id, manager_id, parse_actor
 from .compliance_alerts import (BAD_STATUSES, ComplianceAlertService, categorize, cite_short, due_in_days, place_of, plural, primary_regulation,
-                                state_phrase)
+                                query, state_phrase)
 from .env import env
 from .errors import RealityError
 from .sites import SITE_BY_ID
@@ -101,11 +101,10 @@ class PatrolService:
         """A walkthrough left `running` by an earlier backend process has no thread any more: mark it failed, so the site can
         be walked again and the autoplayer does not wait on it. Its queued alerts are marked failed too."""
         count = 0
-        for patrol in self.store.all("patrol"):
-            if patrol.get("state") == "running":
-                patrol.update(state="failed", finishedAt=now(), currentAssetTag=None, error="Interrupted by a backend restart; walk the site again.")
-                self._save(patrol)
-                count += 1
+        for patrol in self.running():
+            patrol.update(state="failed", finishedAt=now(), currentAssetTag=None, error="Interrupted by a backend restart; walk the site again.")
+            self._save(patrol)
+            count += 1
         return count + self.alerts.recover()
 
     def close(self) -> None:
@@ -126,12 +125,11 @@ class PatrolService:
     def list(self, site_id: str | None = None, limit: int = 50) -> list[dict]:
         if site_id:
             self.service.require_property(site_id)
-        records = self.store.all("patrol", site_id) if site_id else self.store.all("patrol")
-        return sorted(records, key=lambda r: r["startedAt"], reverse=True)[:max(1, int(limit))]
+        return query(self.store, "patrol", order="json_extract(body, '$.startedAt') DESC", limit=max(1, int(limit)), property_id=site_id or None)
 
     def running(self, site_id: str | None = None) -> list[dict]:
-        records = self.store.all("patrol", site_id) if site_id else self.store.all("patrol")
-        return sorted((r for r in records if r.get("state") == "running"), key=lambda r: r["startedAt"], reverse=True)
+        return query(self.store, "patrol", "json_extract(body, '$.state') = 'running'", order="json_extract(body, '$.startedAt') DESC",
+                     property_id=site_id or None)
 
     def active(self, patrol: dict) -> bool:
         """The walkthrough, or one of the compliance alerts it started, is still playing."""
@@ -394,7 +392,7 @@ class PatrolService:
             self._save(patrol)
         self._change(patrol, f"Walkthrough completed. {summary}", "completed", stop=len(labels), stops=len(patrol["route"]),
                      alerts=len(patrol["alertIds"]) or None)
-        self.report(patrol)
+        self.report(patrol, queued)
         self.service.ops.note(patrol["agentId"], None)
         self.prune_labels(site)
         for alert_id in queued:
@@ -403,18 +401,22 @@ class PatrolService:
             self.alerts.run(alert_id, realtime)
         return self.get(patrol_id)
 
-    def report(self, patrol: dict) -> dict | None:
+    def report(self, patrol: dict, new_alert_ids: list[str] | None = None) -> dict | None:
         """The walker's message to the Site Manager (the director when the manager walked), acknowledged by the recipient."""
         site, walker = patrol["siteId"], patrol["agentId"]
         recipient = manager_id(site) if walker != manager_id(site) else DIRECTOR
         alerts = [a for a in (self.store.get("owner_alert", alert_id) for alert_id in patrol.get("alertIds") or []) if a]
-        tags = sorted({a["assetTag"] for a in alerts if a.get("assetTag")})
-        text = patrol["summary"] + (f" Compliance is taking {', '.join(tags)} to the owner." if tags else "")
+        fresh_ids = set(new_alert_ids or [])
+        new = sorted({a["assetTag"] for a in alerts if a.get("assetTag") and a["id"] in fresh_ids})
+        known = sorted({a["assetTag"] for a in alerts if a.get("assetTag") and a["id"] not in fresh_ids} - set(new))
+        text = (patrol["summary"] + (f" Compliance is taking {', '.join(new)} to the owner." if new else "")
+                + (f" Compliance already has {', '.join(known)} in hand from an earlier walk." if known else ""))
+        ack = ("Thanks. I'll take the decision when Compliance calls." if new else "Thanks. Compliance already has it in hand." if known else
+               "Thanks. Nothing for the owner from this walk.")
         try:
             conversation = self.service.conversations.message(walker, recipient, f"Walkthrough of {patrol['place']}", text, site_ids=[site],
                                                               data=dict(patrolId=patrol["id"]), synthetic=True)
-            self.service.conversations.answer(conversation["id"], recipient, "Thanks. I'll take the decision when Compliance calls." if tags else
-                                              "Thanks. Nothing for the owner from this walk.")
+            self.service.conversations.answer(conversation["id"], recipient, ack)
         except RealityError:
             return None
         with self.lock:

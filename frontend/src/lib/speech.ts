@@ -32,8 +32,9 @@ const JAPANESE = /[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]/;
 export const hasJapanese = (text: string) => JAPANESE.test(text);
 const langOf = (v: SpeechSynthesisVoice) => v.lang.replace(/_/g, "-").toLowerCase();
 const keyOf = (v: SpeechSynthesisVoice) => v.voiceURI || `${v.name}|${v.lang}`;
+/* Robotic voices rank below any other English voice, accent or not: they are used only when nothing better is free. */
 const quality = (v: SpeechSynthesisVoice) => (/natural|neural/i.test(v.name) ? 6 : 0) + (/premium/i.test(v.name) ? 5 : 0) + (/enhanced/i.test(v.name) ? 4 : 0)
-  + (/google/i.test(v.name) ? 3 : 0) + (v.localService === false ? 1 : 0) - (ROBOTIC.test(v.name) ? 4 : 0);
+  + (/google/i.test(v.name) ? 3 : 0) + (v.localService === false ? 1 : 0) - (ROBOTIC.test(v.name) ? 9 : 0);
 const localeOf = (id: string) => id.startsWith("myer-") ? "en-au" : id.startsWith("bristol-") ? "en-gb" : "en-us";
 const NEAR: Record<string, string[]> = { "en-au": ["en-nz", "en-gb", "en-ie", "en-za"], "en-gb": ["en-ie", "en-au", "en-nz", "en-za"], "en-us": ["en-ca", "en-gb", "en-au", "en-ie"] };
 /* How well a voice suits a locale: its own accent first, then the nearest, then any English. */
@@ -43,8 +44,8 @@ const ROLE_TUNE: Record<string, { pitch: number; rate: number }> = {
   compliance: { pitch: 1.05, rate: 0.99 }, technician: { pitch: 1.1, rate: 1.06 },
 };
 const roleOfId = (id: string) => id === "director" ? "director" : id.match(/-(manager|engineer|compliance|technician)$/)?.[1] ?? "";
-const ORDER = ["compliance", "engineer", "manager"].flatMap(r => ["myer", "bristol", "tomioka"].map(s => `${s}-${r}`))
-  .concat(["director", "myer-technician", "bristol-technician", "tomioka-technician", "operator", "dispatch"]);
+const ORDER = ["director", ...["compliance", "engineer", "manager"].flatMap(r => ["myer", "bristol", "tomioka"].map(s => `${s}-${r}`)),
+  "myer-technician", "bristol-technician", "tomioka-technician", "operator", "dispatch"];
 const offsetOf = (id: string) => ((hash(id) % 5) - 2) * 0.07;
 interface Assigned { voice: SpeechSynthesisVoice; shared: boolean }
 let table: { sig: string; map: Map<string, Assigned>; ja: SpeechSynthesisVoice[] } | null = null;
@@ -90,7 +91,9 @@ function chunks(text: string): string[] {
   return out.map(s => s.trim()).filter(Boolean);
 }
 /* Speak one line in the agent's voice. Resolves true when it was spoken through, false when it was cancelled, failed or
-   the browser cannot speak; a watchdog moves on if the browser never reports the end. */
+   the browser cannot speak; a watchdog moves on (and clears a stuck queue) if the browser never reports the end. The
+   utterance being spoken is held here, since some browsers drop the end event of one that was garbage collected. */
+let speaking: SpeechSynthesisUtterance | null = null;
 export async function speakOne(agentId: string, text: string, cancelled: () => boolean = () => false): Promise<boolean> {
   if (!speechAvailable() || !text.trim()) return false;
   const synth = window.speechSynthesis;
@@ -103,9 +106,10 @@ export async function speakOne(agentId: string, text: string, cancelled: () => b
       if (pick.voice) u.voice = pick.voice;
       u.lang = pick.lang; u.pitch = pick.pitch; u.rate = pick.rate;
       let settled = false; let watch = 0;
-      const finish = (v: boolean) => { if (settled) return; settled = true; window.clearTimeout(watch); resolve(v); };
-      watch = window.setTimeout(() => finish(false), 4_000 + part.length * 110);
+      const finish = (v: boolean) => { if (settled) return; settled = true; window.clearTimeout(watch); if (speaking === u) speaking = null; resolve(v); };
+      watch = window.setTimeout(() => { if (speaking === u) synth.cancel(); finish(false); }, 4_000 + part.length * 110);
       u.onend = () => finish(true); u.onerror = () => finish(false);
+      speaking = u;
       synth.speak(u);
     });
     if (!ok) return false;

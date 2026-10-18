@@ -31,6 +31,8 @@ from .supa_routes import decorate_feed, install as install_supabase, signed_fram
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_ROOT / ".env")
 load_dotenv(BACKEND_ROOT.parent / ".env")
+# Hosted (Render): settings can arrive as a secret file instead of a repo .env; a missing file is a no-op.
+load_dotenv(Path(os.environ.get("STEWARD_ENV_FILE", "/etc/secrets/steward.env")))
 sanitize_environment()
 
 
@@ -398,6 +400,8 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     app = FastAPI(title="Steward API", version="0.1.0", lifespan=lifespan,
                   description="Steward: the agent teams that run the sites, their evidence workflows and the tools agents use.")
     allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8001", "http://127.0.0.1:8001"]
+    # Hosted dashboards (for example https://steward-web.onrender.com) are added by STEWARD_ALLOWED_ORIGINS, comma separated.
+    allowed_origins += [o.strip().rstrip("/") for o in (env("STEWARD_ALLOWED_ORIGINS") or "").split(",") if o.strip().startswith("https://")]
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST", "PUT", "OPTIONS"],
                        allow_headers=["Content-Type", "Authorization", "MCP-Protocol-Version", "X-Steward-Actor", "X-Steward-Tool"])
 

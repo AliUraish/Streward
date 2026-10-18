@@ -25,11 +25,16 @@ two again); then fewer than `STEWARD_OWNER_ALERTS_PER_DAY` (default 3) live aler
 same obligation. Otherwise the email and the call are recorded `dry_run` (or `capped`) with their full content (subject,
 HTML and text, attachment names and sizes, the call brief), so the dashboard shows exactly what would go out. Owner
 addresses are stored masked. Text is written from the records by templates; no model is called.
+
+One alert per obligation per 24 h: a later walkthrough reuses the alert while it plays, once it reached the owner or hit
+the cap, and while live messaging is still off; an alert that was only a dry run gives way once every gate holds (so
+switching live messaging on and walking the site really emails and calls), and a failed one is never reused.
 """
 from __future__ import annotations
 
 import base64
 import html as html_lib
+import json
 import re
 import threading
 from datetime import date as date_cls, datetime, timedelta, timezone
@@ -208,6 +213,21 @@ PRACTICE = {
     ("bristol-pumps", "structure"): "We close the area, photograph the defect every week, and agree a temporary support with the conservation officer "
                                     "that fixes nothing permanently to the 1907 fabric.",
 }
+
+
+def query(store, kind: str, where: str = "", params: tuple = (), order: str = "", limit: int | None = None, property_id: str | None = None) -> list[dict]:
+    """Records of one kind filtered in SQLite (json_extract), so busy checks and listings stay cheap as walkthroughs pile up."""
+    sql, args = "SELECT body FROM records WHERE kind=?", [kind]
+    if property_id is not None:
+        sql, args = sql + " AND property_id=?", args + [property_id]
+    if where:
+        sql, args = sql + f" AND ({where})", args + list(params)
+    if order:
+        sql += f" ORDER BY {order}"
+    if limit:
+        sql, args = sql + " LIMIT ?", args + [int(limit)]
+    with store.connect() as db:
+        return [json.loads(row["body"]) for row in db.execute(sql, args).fetchall()]
 
 
 def flag(name: str, default: str = "false") -> bool:
@@ -499,13 +519,12 @@ class ComplianceAlertService:
 
     def recover(self) -> int:
         """An alert left queued or running by an earlier backend process has no thread any more: mark it failed so the
-        autoplayer does not wait on it (the next walkthrough after 24 h raises a fresh one)."""
+        autoplayer does not wait on it (a failed alert is not reused: the next walkthrough raises a fresh one)."""
         count = 0
-        for alert in self.store.all("owner_alert"):
-            if alert.get("state") in ("queued", "running"):
-                alert.update(state="failed", finishedAt=now(), error="Interrupted by a backend restart.")
-                self._save(alert)
-                count += 1
+        for alert in self.active():
+            alert.update(state="failed", finishedAt=now(), error="Interrupted by a backend restart.")
+            self._save(alert)
+            count += 1
         return count
 
     def close(self) -> None:
@@ -522,11 +541,10 @@ class ComplianceAlertService:
     def list(self, site_id: str | None = None, limit: int = 50) -> list[dict]:
         if site_id:
             self.service.require_property(site_id)
-        records = self.store.all("owner_alert", site_id) if site_id else self.store.all("owner_alert")
-        return sorted(records, key=lambda r: r["at"], reverse=True)[:max(1, int(limit))]
+        return query(self.store, "owner_alert", order="json_extract(body, '$.at') DESC", limit=max(1, int(limit)), property_id=site_id or None)
 
     def active(self) -> list[dict]:
-        return [a for a in self.store.all("owner_alert") if a.get("state") in ("queued", "running")]
+        return query(self.store, "owner_alert", "json_extract(body, '$.state') IN ('queued', 'running')")
 
     def _save(self, alert: dict) -> dict:
         alert["updatedAt"] = now()
@@ -550,8 +568,8 @@ class ComplianceAlertService:
     def recent(self, obligation_id: str, hours: float = DEDUPE_HOURS) -> dict | None:
         """The latest alert for this obligation raised in the last `hours` that did not fail (later walkthroughs reuse it)."""
         cutoff = utcnow() - timedelta(hours=hours)
-        matches = [a for a in self.store.all("owner_alert") if a.get("obligationId") == obligation_id and a.get("state") != "failed"
-                   and (parse_time(a.get("at")) or cutoff) > cutoff]
+        matches = [a for a in query(self.store, "owner_alert", "json_extract(body, '$.obligationId') = ?", (obligation_id,))
+                   if a.get("state") != "failed" and (parse_time(a.get("at")) or cutoff) > cutoff]
         return max(matches, key=lambda a: a["at"]) if matches else None
 
     def would_send(self, site_id: str, origin: str) -> bool:
@@ -697,6 +715,8 @@ class ComplianceAlertService:
             existing["evidenceFrameIds"] = list(dict.fromkeys((existing.get("evidenceFrameIds") or []) + frames))
             existing["regulationIds"] = list(dict.fromkeys((existing.get("regulationIds") or []) + list(alert.get("regulationIds") or [])))
             existing.update(alertId=alert["id"], labelId=alert.get("labelId"), patrolId=alert.get("patrolId"))
+            if {"high": 0, "medium": 1, "low": 2}.get(alert["severity"], 3) < {"high": 0, "medium": 1, "low": 2}.get(existing.get("severity"), 3):
+                existing["severity"] = alert["severity"]  # overdue by more than 7 days: high (never lowered here)
             issue = issues._save(existing, f"Walkthrough evidence attached to {existing['id']}: {alert['title']}.", alert["walker"])
             verb = "reused"
         else:
@@ -841,7 +861,8 @@ class ComplianceAlertService:
     def cap_reason(self, alert: dict) -> str | None:
         """The daily cap (live alerts in the last 24 h) and one live alert per obligation per 24 h."""
         cutoff = utcnow() - timedelta(hours=DEDUPE_HOURS)
-        live = [a for a in self.store.all("owner_alert") if a["id"] != alert["id"] and a.get("liveAt") and (parse_time(a["liveAt"]) or cutoff) > cutoff]
+        live = [a for a in query(self.store, "owner_alert", "json_extract(body, '$.liveAt') IS NOT NULL")
+                if a["id"] != alert["id"] and (parse_time(a["liveAt"]) or cutoff) > cutoff]
         if any(a.get("obligationId") == alert["obligationId"] for a in live):
             return "the owner was already alerted about this obligation in the last 24 h (one alert per obligation per 24 h)"
         cap = per_day()
@@ -903,8 +924,8 @@ class ComplianceAlertService:
     def evidence_text(self, alert: dict, c: dict, label: dict | None, refs: list[dict]) -> str:
         site = alert["siteId"]
         obligation = self.store.get("obligation", alert["obligationId"], site) or {}
-        attestations = sorted((a for a in self.store.all("attestation", site) if a.get("assetTag") == alert.get("assetTag")),
-                              key=lambda a: a.get("signedAt") or a.get("observedAt") or "", reverse=True)[:3]
+        attestations = query(self.store, "attestation", "json_extract(body, '$.assetTag') = ?", (alert.get("assetTag") or "",), order="rowid DESC",
+                             limit=3, property_id=site)
         lines = [f"Steward compliance evidence {alert['id']}", "",
                  f"Site: {c['site_name']} ({site})",
                  f"Asset: {c['tag']} ({c['asset']})",

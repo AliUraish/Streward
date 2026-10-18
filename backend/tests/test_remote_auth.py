@@ -48,3 +48,16 @@ def test_health_and_the_signed_webhook_stay_reachable_through_the_tunnel(client)
 def test_remote_gate_can_be_opened_explicitly(client, monkeypatch):
     monkeypatch.setenv("STEWARD_ALLOW_REMOTE_UNAUTHENTICATED", "true")
     assert client.get("/api/properties", headers=TUNNEL).status_code == 200
+
+
+def test_hosted_dashboard_origin_can_write_when_listed(tmp_path, monkeypatch):
+    monkeypatch.setenv("STEWARD_MODEL_PROVIDER", "local")
+    monkeypatch.setenv("STEWARD_BACKEND_TOKEN", "test-remote-token")
+    monkeypatch.setenv("STEWARD_ALLOWED_ORIGINS", "https://steward-web.example.com, http://insecure.example.com")
+    headers = {"origin": "https://steward-web.example.com", "x-forwarded-host": "steward-web.example.com", "Authorization": "Bearer test-remote-token"}
+    with TestClient(create_app(tmp_path / "data", start_workers=False)) as hosted:
+        body = {"action": "look"}
+        assert hosted.post("/api/eye/myer-plant/act", json=body, headers=headers).status_code != 403  # listed https origin passes the write guard
+        other = dict(headers, origin="http://insecure.example.com")
+        assert hosted.post("/api/eye/myer-plant/act", json=body, headers=other).status_code == 403  # plain http origins are never added
+        assert hosted.post("/api/eye/myer-plant/act", json=body, headers=dict(headers, Authorization="Bearer nope")).status_code == 401

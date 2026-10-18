@@ -55,8 +55,7 @@
 
 /* ---- Walkthrough line (Environment page and mission view) ----------------------------------------------------- */
 .walk7 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
-.walk7 .walk-line { display: flex; align-items: baseline; flex-wrap: wrap; min-width: 0; font-size: var(--f-t); line-height: 1.45; color: var(--ink-2); }
-.walk7 .walk-line > .sig { align-self: center; }
+.walk7 .walk-line { display: block; min-width: 0; font-size: var(--f-t); line-height: 1.45; color: var(--ink-2); }
 .walk7 .walk-line strong { font-weight: 500; color: #ffffff; }
 .walk7 .walk-line code { font-family: var(--font-mono); /* taste-skill-ignore: asset tags */ font-size: .92em; color: #ffffff; }
 .walk7 .walk-tally { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--f-s); color: var(--muted); }
@@ -76,7 +75,7 @@
 
 /* In the mission view: one line under the top bar, between the HUD columns. */
 .mission-host .walk7.hud { position: absolute; top: 52px; left: 404px; right: 348px; z-index: 6; margin: 0; gap: 6px 12px; padding: 6px 8px 6px 12px; min-height: 40px; background: rgba(10, 10, 10, .9); pointer-events: auto; }
-.walk7.hud .walk-line { font-size: 14px; }
+.walk7.hud .walk-line { flex-basis: 100%; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .walk7.hud .walk-tally { display: none; }
 .walk7.hud .b3.small { min-height: 28px; }
 .walk7.hud .follow7 { height: 28px; }

@@ -111,8 +111,8 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
       <Reveal className={`viewer3 ${mission ? "mission-on" : ""}`}>
         <div className={`mission-host ${mission ? "on" : ""}`} ref={hostRef} role={mission ? "dialog" : undefined} aria-modal={mission ? true : undefined} aria-label={mission ? `Mission view, ${site.name}` : undefined}>
           <div className={`vw-box ${editMode ? "editing" : ""}`}>
-            <ViewerSlot key={siteId} siteId={siteId} pins={shownPins} focus={focus} follow={follow} editMode={mission ? false : editMode} eye={{ siteId, rendererId: `dashboard-${siteId}`, showOverlay: true }}
-              fill={mission} safeArea={mission ? (hudHidden ? { top: 48 } : { top: 100, left: 392, right: 344, bottom: 56 }) : undefined} onFrame={() => eye.reload()}
+            <ViewerSlot key={siteId} siteId={siteId} pins={shownPins} focus={focus} follow={follow} credit={false} editMode={mission ? false : editMode} eye={{ siteId, rendererId: `dashboard-${siteId}`, showOverlay: true }}
+              fill={mission} safeArea={mission ? (hudHidden ? { top: 48 } : { top: 136, left: 392, right: 344, bottom: 56 }) : undefined} onFrame={() => eye.reload()}
               onPinClick={mission ? tag => focusOn(tag) : openAsset} onPlacePin={p => setPending(p)} renderCard={renderCard} className="fill" />
           </div>
           {mission ? <MissionHud siteId={siteId} frames={frames} issues={issues.data ?? []} hidden={hudHidden} now={tick} renderers={eye.data?.renderers ? eye.data.renderers.filter(r => !r.stale).length : undefined} onFocus={tag => focusOn(tag)} onHide={() => setHudHidden(v => !v)} onExit={closeMission} /> : null}
