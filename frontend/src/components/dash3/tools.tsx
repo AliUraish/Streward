@@ -24,7 +24,7 @@ const order = (a: ForgedTool, b: ForgedTool) => (a.status === "retired" ? 1 : 0)
 export default function ToolsPage({ siteId }: { siteId?: SiteId3 }) {
   const site = siteId ? site3(siteId) : null;
   const remote = useTools(siteId);
-  const [filter, setFilter] = useState<string>("all");
+  const filter: string = "all";
   const [open, setOpen] = useState<string | null>(null);
   /* While GET /api/tools is missing: the contract's planned tools for this page's sites. */
   const fallback = useMemo(() => remote.readiness === "not_ready" ? CONTRACT_TOOLS.filter(t => !siteId || t.siteId === siteId) : null, [remote.readiness, siteId]);
@@ -37,13 +37,11 @@ export default function ToolsPage({ siteId }: { siteId?: SiteId3 }) {
   const published = all.filter(t => t.status === "published").length;
   return <div className="page3">
     <PageHead id="tools" title="Tools">
-      {!siteId ? <div className="tabs3" role="tablist" aria-label="Site">{[{ id: "all", short: "All sites" }, ...SITES3].map(s => <button key={s.id} type="button" role="tab" aria-selected={filter === s.id} className={filter === s.id ? "on" : ""} onClick={() => setFilter(s.id)}>{s.short}</button>)}</div> : null}
     </PageHead>
 
-    <AskForTool siteId={siteId} onTool={t => { setOpen(t.id); remote.reload(); }} />
 
     {fallback ? <p className="note3">The tool register is not available yet, so this shows the planned {fallback.length === 1 ? "tool" : "tools"}: not yet built, validated, tested, approved or used. <button type="button" className="retry" onClick={remote.reload}>Retry</button></p> : null}
-    <State remote={source} what="forged tools" isEmpty={() => shown.length === 0} empty={site ? `No forged tools at ${site.short} yet. Ask the team for one above.` : "No forged tools yet. Ask a team for one above."}>
+    <State remote={source} what="forged tools" isEmpty={() => shown.length === 0} empty={site ? `No tools built at ${site.short} yet. When an agent lacks a tool, the site's team builds and approves one.` : "No tools built yet. When an agent lacks a tool, the site's team builds and approves one."}>
       {() => <div className="tools3">
         <Reveal as="nav" className="tool-list" aria-label="Forged tools">
           <p className="meta tl-count">{all.length} tool{all.length === 1 ? "" : "s"}{remote.data ? `, ${published} published` : ""}</p>
@@ -292,7 +290,6 @@ function ToolDetail({ tool, onChanged }: { tool: ForgedTool; onChanged: () => vo
 
     {t.history?.length ? <section className="tv-sec" aria-label="History"><h3>History</h3><ul className="rows3 plain">{t.history.slice(-8).map((h, i) => <li key={`${h.at}-${i}`}><span className="r1"><strong>{statusWord[h.status] ?? words(h.status)}</strong>{h.by ? <span className="sev">by the {agentName(h.by)}</span> : null}</span>{h.note ? <span className="r2">{h.note}</span> : null}<span className="r3">{when(h.at)}</span></li>)}</ul></section> : null}
 
-    <ToolActions tool={t} run={run} />
   </Reveal>;
 }
 
@@ -328,7 +325,7 @@ export function AgentTools({ agentId, siteId }: { agentId: string; siteId?: Site
   const fallback = remote.readiness === "not_ready" ? CONTRACT_TOOLS : null;
   const mine = (remote.data ?? fallback ?? []).filter(t => t.createdBy === agentId).sort(order);
   const source: Remote<ForgedTool[]> = fallback ? { ...remote, data: fallback, readiness: "ready" } : remote;
-  const href = (t: ForgedTool) => `/app/${t.siteId}/tools?id=${encodeURIComponent(t.id)}`;
+  const href = (t: ForgedTool) => `/app/tools?siteId=${encodeURIComponent(t.siteId)}&id=${encodeURIComponent(t.id)}`;
   return <>
     <div className="p-head"><h3>Forged tools</h3><span className="meta">{fallback ? "planned" : `${mine.length} built`}</span></div>
     <State remote={source} what="forged tools" isEmpty={() => mine.length === 0} empty="This agent has not built a tool yet.">

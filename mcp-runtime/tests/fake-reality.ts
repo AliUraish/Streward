@@ -204,6 +204,8 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
     tokenOverride: new Map<string, number>(),
     /** Tool Forge (contract 6): forged tool definitions by id, and the requests that asked for them. */
     tools: new Map<string, Json>(), toolRequests: [] as Json[], backgroundReads: 0,
+    /** Site tours (the Site Inspector's guided walks) by id; tourMs is how long a fixture tour stays running. */
+    tours: new Map<string, Json>(), tourMs: 300,
     /** Answer GET /api/waits immediately (no long-poll) to exercise the MCP's re-ask path. */
     noLongPoll: false,
     timers: new Set<NodeJS.Timeout>(),
@@ -1350,6 +1352,54 @@ export async function fakeRealityBackend(options: { seed?: boolean; stepMs?: num
         return out.status < 300 ? send(out.status, out.body) : (() => { const e = out.body as Json; return fail(out.status, String(e.detail), String(e.code), String(e.recovery)); })();
       }
       // ---- the agent eye (contract 4 §2) ----
+      // ---- the agent environment and site tours (owner, Oct 18) ----
+      const env = url.pathname.match(new RegExp(`^/api/agent-environment/(${SITE_PATTERN})$`));
+      if (env) {
+        const id = env[1]!;
+        const frames = ['SP-102', 'P-103'].filter(tag => registers[id]!.some(c => c.tag === tag)).map(tag => eyeAct(id, 'go_to', { assetTag: tag }, 'bristol-engineer').body as Json)
+          .concat(id === 'bristol-pumps' ? [] : [eyeAct(id, 'look', {}, `${id.split('-')[0]}-engineer`).body as Json]);
+        const view = {
+          siteId: id, siteName: SITE_NAMES[id], at: now(),
+          summary: { compliancePercent: 71.4, openIssues: 3, overdue: 1, blocked: 1, employeesCheckedIn: 5, crewOnShift: 4 },
+          walk: { state: 'running', agentId: 'bristol-engineer', agentName: 'Site Engineer · Bristol', stopIndex: 2, stops: 10, assetTag: 'P-103', assetName: 'Electric drainage pump (duty)', moving: true, startedAt: now() },
+          eye: { frames: frames.map((f, index) => ({ id: String(f.frameId), url: String(f.frameUrl), assetTag: index === 0 ? 'SP-102' : 'P-103', at: String(f.at), actorName: 'Site Engineer · Bristol',
+                                                      labels: index === 0 ? [{ assetTag: 'SP-102', verdict: 'bad', color: 'blue', title: 'Looks bad', reasons: ['Steam pipework examination overdue by 6 days'], mark: { x: 0.42, y: 0.55, note: 'drain valve' } }] : [] })) },
+          labels: [{ assetTag: 'SP-102', assetName: 'No. 2 steam pumping engine (1907)', verdict: 'bad', color: 'blue', title: 'Looks bad', reasons: ['Steam pipework examination overdue by 6 days'], regulationIds: ['eng-pssr-2000-reg-9-6'], frameUrl: String(frames[0]?.frameUrl ?? ''), at: now() }],
+          readings: [{ key: 'pressure_bar:PV-301', label: 'Receiver pressure', assetTag: 'PV-301', unit: 'bar', value: 2.6, previous: 2.5, delta: 0.1, trend: 'up', state: 'normal', spec: { min: 1.5, max: 3.5 } }],
+          obligations: [{ id: 'ob-br-sp102', title: 'Steam pipework examination', assetTag: 'SP-102', status: 'overdue', dueAt: now(), daysOverdue: 6, dueInDays: -6, blockedReason: null, regulationIds: ['eng-pssr-2000-reg-9-6'] }],
+          issues: [{ id: 'iss-br-1', kind: 'compliance_overdue', severity: 'medium', assetTag: 'SP-102', summary: 'Steam pipework examination overdue by 6 days.', at: now() }],
+          inspection: null, tours: [...state.tours.values()].filter(t => t.siteId === id).slice(-3).map(t => ({ id: t.id, state: t.state, requesterName: t.requesterName, stops: (t.stops as Json[]).length, findings: (t.findings as Json[]).length, summary: t.summary })),
+          logs: [{ at: now(), type: 'patrol', summary: 'Site Engineer · Bristol started a walkthrough of the pump house.' }],
+          tools: [{ name: 'get_environment', purpose: 'This view.' }, { name: 'request_site_tour', purpose: 'A guided tour with pictures.' }],
+          markdown: `# ${SITE_NAMES[id]} (${id}): what the agents see\n\nNow: compliance 71.4 % (1 overdue, 1 blocked), 3 open issues.`,
+        };
+        return send(200, view);
+      }
+      if (url.pathname === '/api/site-tours' && request.method === 'POST') {
+        const id = String(body.siteId || '');
+        if (!(SITE_IDS as readonly string[]).includes(id)) return fail(404, `Unknown site ${id}.`, 'NOT_FOUND', 'Call list_sites.');
+        const running = [...state.tours.values()].find(t => t.siteId === id && t.state === 'running');
+        if (running) return send(202, running);
+        const focus = Array.isArray(body.focus) ? body.focus.map(String) : [];
+        const route = [...focus, ...registers[id]!.map(c => c.tag)].filter((tag, index, all) => all.indexOf(tag) === index).slice(0, Number(body.maxStops ?? 5));
+        const tour: Json = { id: nextId('tour'), siteId: id, siteName: SITE_NAMES[id], requester: body.requester ?? who, requesterName: String(body.requester ?? who).replace(/^mcp:/, '') + ' over MCP', actor: who,
+                             guide: 'site-inspector', guideName: 'Site Inspector', state: 'running', route, stops: [], findings: [], summary: null, startedAt: now(), finishedAt: null };
+        state.tours.set(String(tour.id), tour);
+        later(state.tourMs, () => {
+          const stops = route.map((tag, index) => {
+            const f = eyeAct(id, 'go_to', { assetTag: tag }, `${id.split('-')[0]}-engineer`).body as Json;  // the fixture's eye authority table predates the inspector
+            const bad = index === 0;
+            return { n: index + 1, assetTag: tag, assetName: registers[id]!.find(c => c.tag === tag)?.name ?? null, verdict: bad ? 'bad' : 'good', color: bad ? 'blue' : 'green', title: bad ? 'Looks bad' : 'Looks good',
+                     reasons: bad ? ['Steam pipework examination overdue by 6 days'] : ['No open issues'], observation: null, frameId: f.frameId, frameUrl: f.frameUrl, eyeNote: null, at: now() };
+          });
+          const findings = stops.filter(s => s.verdict === 'bad');
+          Object.assign(tour, { stops, findings, state: 'completed', finishedAt: now(), summary: `Site Inspector toured ${SITE_NAMES[id]} for ${String(tour.requesterName)}: ${stops.length} stops, ${findings.length} look bad: ${findings.map(s => s.assetTag).join(', ')}.` });
+          change('site_tour', id, String(tour.id), String(tour.summary), undefined, { status: 'completed' });
+        });
+        return send(202, tour);
+      }
+      const tour = url.pathname.match(/^\/api\/site-tours\/([^/]+)$/);
+      if (tour) { const record = state.tours.get(decodeURIComponent(tour[1]!)); return record ? send(200, record) : fail(404, 'Site tour not found.', 'NOT_FOUND', 'Ask for one with request_site_tour.'); }
       const ef = url.pathname.match(/^\/api\/eye\/frames\/([^/]+)\.jpg$/);
       if (ef) { if (!state.frames.has(decodeURIComponent(ef[1]!))) return fail(404, 'Frame not found.', 'NOT_FOUND', 'Use a frameUrl from an eye act.'); response.statusCode = 200; response.setHeader('Content-Type', 'image/jpeg'); response.end(Buffer.from(FIXTURE_JPEG_B64, 'base64')); return; }
       const ea = url.pathname.match(new RegExp(`^/api/eye/(${SITE_PATTERN})/(act|feed)$`));

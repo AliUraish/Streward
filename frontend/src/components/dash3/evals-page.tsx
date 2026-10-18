@@ -13,6 +13,7 @@ import type { EvalRun } from "@/lib/types-2";
 import type { AgentConfig, EvalMetrics3, LoopStep, TokenPoint } from "@/lib/types-3";
 import { BarChart, ColumnChart, LineChart } from "./charts";
 import TokensChart from "./tokens-chart";
+import UsageLive from "./usage-live";
 import { Btn, DemoTag, PageHead, Reveal, State, ago, errorText, n, when, words } from "./ui3";
 
 const ARMATURE_URL = process.env.NEXT_PUBLIC_ARMATURE_URL;
@@ -86,7 +87,8 @@ export default function EvalsPage() {
   const budget = Number(f?.configs?.[target]?.maxTokensPerMission ?? loopCfg.data?.config.maxTokensPerMission) || f?.loop?.budget || null;
   const metrics = useEvalMetrics();
   return <div className="page3">
-    <PageHead id="evals" title="Evals" />
+    <PageHead id="evals" title="Evals" sub="Model usage and the latest tool calls, live; then the eval suites and the self-optimisation loop." />
+    <UsageLive />
     <EvalMetricsBlock remote={metrics} />
     <div className="ev3">
       <Reveal className="suites3">
@@ -101,7 +103,6 @@ export default function EvalsPage() {
               <span className="r2">{s.what}</span>
               <span className="r3">{r ? `${ago(r.startedAt)}` : ""}</span>
             </button>
-            <Btn small arrow disabled={Boolean(busy)} onClick={() => run(s.id)}>{busy === s.id ? "Starting" : "Run"}</Btn>
           </li>;
         })}</ul>
       </Reveal>

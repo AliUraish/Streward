@@ -21,7 +21,7 @@ function stepHref(r: ChainRow, siteId: SiteId3): { href: string; label: string }
     case "chat": return { href: `/app/conversations?id=${enc(r.ref)}`, label: "Read the chat" };
     case "outbox": return { href: `/app/notifications#ob-${enc(r.ref)}`, label: "The email" };
     case "call": return { href: `/app/conversations?call=${enc(r.ref)}`, label: "The call" };
-    case "window": return { href: `/app/${siteId}/maintenance`, label: "Maintenance" };
+    case "window": return { href: `/app/${siteId}#maintenance`, label: "Maintenance" };
   }
 }
 const stateWord = (s: string) => (s === "completed" ? "done" : s === "failed" ? "stopped" : "in progress");
@@ -58,17 +58,17 @@ function Finding({ i }: { i: Inspection }) {
   </div>;
 }
 
-export function LatestInspection({ siteId, compact, i = 1 }: { siteId: SiteId3; compact?: boolean; i?: number }) {
+export function LatestInspection({ siteId, compact, i = 1, title = "Latest inspection" }: { siteId: SiteId3; compact?: boolean; i?: number; title?: string }) {
   const list = useInspections(siteId, 5);
   const [view, setView] = useViewMode(`steward.inspections.view`);
   const hid = `insp-${siteId}-h`;
   const latest = list.data?.[0] ?? null;
   const agent = !compact && view === "agent";
   return <Reveal as="section" className={`p3 insp10 ${compact ? "compact" : ""}`} i={i} aria-labelledby={hid} id={compact ? undefined : `inspections-${siteId}`}>
-    <div className="p-head"><h2 id={hid}>Latest inspection</h2>
+    <div className="p-head"><h2 id={hid}>{title}</h2>
       <span className="insp-tools">
         {latest ? <span className="meta">{agentName(latest.inspectorId)}, {stateWord(latest.state)}, {ago(latest.startedAt)}</span> : null}
-        {compact ? <Link className="lnk" href={`/app/${siteId}/compliance#${hid}`}>Compliance</Link> : view ? <ViewSwitch small agent={agent} onChange={a => setView(a ? "agent" : "human")} label="Agent mode for the inspection" /> : null}
+        {compact ? <Link className="lnk" href={`/app/${siteId}#compliance`}>Compliance</Link> : view ? <ViewSwitch small agent={agent} onChange={a => setView(a ? "agent" : "human")} label="Agent mode for the inspection" /> : null}
       </span>
     </div>
     <State remote={list} what="inspections" isEmpty={l => l.length === 0} empty={`No inspection at ${site3(siteId).short} yet; the Site Inspector visits each site in turn.`}>

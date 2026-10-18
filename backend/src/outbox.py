@@ -18,6 +18,10 @@ with its full content, not paced. Pacing is persisted in the store, so a restart
 `queued` at startup. With the workers off (tests, one-off scripts) the outbox sends at enqueue, unpaced, unless
 `STEWARD_OUTBOX_PACE_INLINE=true`; `tick(moment)` is the worker's pass.
 
+Live sequence (demo_sequence.py): items enqueued inside `with outbox.paced_as(run_id)` carry `pace: run_id`. The run spaces them
+itself (STEWARD_LIVE_SEQUENCE_GAP_SECONDS), so here they skip the boot grace and the lane gaps (a call still waits for a free line;
+the daily caps still apply), and while a run is active every other person-facing item waits so nothing interleaves.
+
 Records: `outbox_item` (the public record; addresses only masked) and `outbox_payload` (the body, HTML and attachments needed to
 send later). A producer can ask for its own record to follow the item (`refs.record = {kind, id, propertyId, field}`): when the
 item settles, the outbox writes `{mode, providerRef, reason, outboxId, at}` into that record (into `field` when given).
@@ -26,9 +30,11 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextvars
 import json
 import re
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from .agents import DISPATCH, OPERATOR, OWNER, agent_key, display_name, email_for, handle_for, is_known
@@ -128,6 +134,9 @@ def lane_of(item: dict) -> str:
     return item.get("channel") or "email"
 
 
+_PACE: contextvars.ContextVar[str | None] = contextvars.ContextVar("steward_outbox_pace", default=None)
+
+
 class Outbox:
     def __init__(self, service):
         self.service = service
@@ -185,6 +194,22 @@ class Outbox:
             self.store.put(ITEM_KIND, item, "")
 
     # ---- enqueue ------------------------------------------------------------------------------------------------------
+
+    @contextmanager
+    def paced_as(self, run_id: str):
+        """Items enqueued inside this block belong to the live sequence run `run_id` (see the module docstring)."""
+        token = _PACE.set(run_id)
+        try:
+            yield
+        finally:
+            _PACE.reset(token)
+
+    def _sequence_active(self) -> bool:
+        sequence = getattr(self.service, "sequence", None)
+        try:
+            return bool(sequence is not None and sequence.active())
+        except Exception:  # the outbox never depends on the sequence working
+            return False
 
     def email(self, *, sender: str, to_role: str, subject: str, text: str, html: str | None = None,
               attachments: list[dict] | None = None, cc: list[str] | None = None, site_id: str | None = None,
@@ -392,6 +417,12 @@ class Outbox:
             return not_before, False
         if not paced or lane not in PACED_LANES:
             return None, False
+        if item.get("pace"):  # a live sequence item: the run spaces it; only a busy line holds a call
+            if lane == "call" and self._line(moment)[0]:
+                return moment + timedelta(seconds=TICK_SECONDS), True
+            return None, False
+        if self._sequence_active():  # everything else waits while a live sequence runs
+            return moment + timedelta(seconds=TICK_SECONDS), False
         grace_end = self.booted_at + timedelta(seconds=setting("boot_grace"))
         if moment < grace_end:
             return grace_end, True
@@ -691,7 +722,7 @@ class Outbox:
                     fromAddress=email_for(sender) if channel in ("email", "internal_email") else None, siteId=site, refs=clean_refs,
                     priority=max(0, min(int(priority if priority is not None else 5), 9)), dedupeKey=dedupe_key, idempotencyKey=idempotency_key,
                     status="queued", reason=None, enqueuedAt=now(), notBefore=not_before, earliestAt=None, sentAt=None, settledAt=None,
-                    providerRef=None, attempts=0, **fields)
+                    providerRef=None, attempts=0, pace=_PACE.get(), **fields)
 
     def _enqueue(self, item: dict, payload: dict, blockers: list[str]) -> dict:
         self.store.put(PAYLOAD_KIND, payload, "")
@@ -702,6 +733,8 @@ class Outbox:
         self._change(item)
         if not self.paced():
             self.tick()  # workers off: send now, unpaced
+        elif item.get("pace"):
+            self._wake.set()  # a live sequence item goes on the next pass, not up to TICK_SECONDS later
         return self.get(item["id"])
 
     def _voice_record(self, call_id: str | None) -> dict | None:

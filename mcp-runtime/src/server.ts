@@ -8,6 +8,7 @@ import { createTelemetry, estimateTokens, noopTelemetry, type TelemetrySink } fr
 import { DISPATCH_WRITE, IMAGE_TOKENS, InputRequired, LOCAL_WRITE, MISSION_WRITE, READ_ONLY, WithContent, WithText, type Annotations, type CallContext, type RequestContextLike, type ToolExtras, type ToolFn } from './tooling.js';
 import { registerFactoryTools, siteOverview } from './factory.js';
 import { registerEyeTools } from './eye.js';
+import { registerEnvironmentTools } from './environment.js';
 import { registerOps4Tools } from './ops4.js';
 import { registerOwnerTools } from './owner.js';
 import { registerForgeTools } from './forge.js';
@@ -26,6 +27,7 @@ export const SCHEMA_URI = 'steward://schema';
 export const AGENTS_URI = 'steward://agents';
 export const CONTEXT_MIN_TEMPLATE = 'steward://sites/{siteId}/context.min';
 export const SPECS_TEMPLATE = 'steward://sites/{siteId}/specs';
+export const ENVIRONMENT_TEMPLATE = 'steward://sites/{siteId}/environment';
 export { OVERVIEW_TEMPLATE };
 /** Eval-harness header (only with STEWARD_MCP_ALLOW_ACT_AS=true on a loopback MCP): act as another agent for this request. */
 export const ACT_AS_HEADER = 'x-steward-act-as';
@@ -57,6 +59,9 @@ Sites: myer-plant (Myer Plant Room, Kenneth Myer Building, Melbourne; reference 
 
 ## The agent eye (how to explore)
 The 3-D scan is an interface for agents; people watching the Environment page see the camera move. Start with eye_look to see the current view. Use eye_go_to(assetTag) to fly to a tagged asset (its tag should then be in visibleTags, not occluded). Adjust with small steps: eye_move 0.3 to 1 m, eye_turn 10 to 45 degrees; check visibleTags after each step. eye_orbit(assetTag, frames) circles an asset (at most 8 images per result). eye_mark(x, y, note) flags what you see at a screen point (0..1) as an annotation and maybe an issue candidate. Each frame is ~350 image tokens and up to ~20 s while a renderer draws it; do not loop eye_look to watch for change, use wait_for. Authority: engineer, manager, director or the owner's agent.
+
+## The site as its agents see it, and site tours
+get_environment(siteId) returns the site the way its agents see it: the walk in progress, the latest eye frames as images with what the agents marked in them (green looks good, blue looks bad), the labels per asset, live readings, obligations that are blocked or overdue, open issues, the latest inspection and the recent log. request_site_tour(siteId, focus?, maxStops?) asks the Site Inspector to walk the site with the agent eye and send you the pictures of what is wrong; it waits up to about 100 s, and get_site_tour(tourId) reads a tour later.
 
 ## The three verbs
 | verb | what it does | cost |
@@ -510,6 +515,8 @@ export function createStewardServer(options: ServerOptions | RuntimeConfig = {})
   registerFactoryTools({ tool, backend, config, siteId, agentId, inScope, agentInScope });
   // Addendum 4: the agent eye, metrics, conversations, regulations, the fix workflow, maintenance, notifications.
   registerEyeTools({ tool, backend, config, siteId });
+  // The site as its agents see it (get_environment) and the Site Inspector's tours with pictures of what is wrong.
+  registerEnvironmentTools({ tool, backend, config, siteId });
   registerOps4Tools({ tool, backend, config, siteId, agentId, inScope, agentInScope });
   // The owner's notifications page in agent mode: what the owner was last sent or prepared, and the compliance snapshot behind it.
   registerOwnerTools({ tool, backend, config, siteId, inScope });
@@ -570,6 +577,14 @@ export function createStewardServer(options: ServerOptions | RuntimeConfig = {})
     try {
       const specs = await backend.json(backend.propertyPath(site, 'specs'), SpecsSchema);
       return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(specs) }] };
+    } catch (error) { resourceError(error); }
+  });
+
+  server.resourceTemplate({ name: 'site-environment', title: 'The site as its agents see it', uriTemplate: ENVIRONMENT_TEMPLATE, mimeType: 'text/markdown', description: 'The site the way its agents see it, as markdown: the walk in progress, the latest eye frames with what the agents marked in them (frame URLs; get_environment returns them as images), labels per asset, live readings, obligations that are blocked or overdue, open issues, the latest inspection, site tours and the recent log.', complete: { siteId: config.allowedProperties } }, async (uri, params) => {
+    const site = templateSite(params.siteId);
+    try {
+      const raw = await backend.json(`/api/agent-environment/${encodeURIComponent(site)}`, z.object({ markdown: z.string() }).passthrough());
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: raw.markdown }] };
     } catch (error) { resourceError(error); }
   });
 

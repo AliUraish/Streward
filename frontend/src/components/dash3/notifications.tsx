@@ -8,6 +8,7 @@
    is waiting to reach you and when it goes out, what was sent, and what the daily limit held. The page's own Human ·
    Agent switch (remembered on this device, or ?mode=agent) shows the feed as an agent reads it: the Markdown of
    ?format=md, the same items as JSON lines, the outbox as text, and the MCP tools that return them. */
+import type { SiteId3 } from "@/lib/types-3";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
@@ -19,13 +20,12 @@ import { clock, outboxText, outboxPath, type OutboxItem, type OutboxStatus } fro
 import { useOutbox, useOutboxStatus } from "@/lib/hooks-10";
 import { readinessOf, type Remote } from "@/lib/reality";
 import { SITES3, isSite3, site3 } from "@/lib/sites-3";
+import { useMode } from "@/lib/mode-11";
 import { OutboxSection } from "./outbox";
 import { Btn, LinkedText, Reveal, State, ago, when } from "./ui3";
 import s from "./notifications.module.css";
 
-type View = "human" | "agent";
 type Feed = Remote<{ key: string; items: OwnerNotification[] }>;
-const VIEW_KEY = "steward.notifications.view";
 const PAGE = 50;
 const MAX = 200;
 const enc = encodeURIComponent;
@@ -59,16 +59,16 @@ function linksOf(n: OwnerNotification, issue: IssueAt | null | undefined): ItemL
   if (n.links.issueId) {
     const at = issue?.siteId && isSite3(issue.siteId) ? issue.siteId : site;
     const tag = issue?.assetTag ?? n.assetTag;
-    if (at) out.push({ href: `/app/${at}/environment${tag ? `?asset=${enc(tag)}` : ""}`, label: tag ? `Open the issue on ${tag}` : "Open the issue" });
+    if (at) out.push({ href: `/app/${at}${tag ? `?asset=${enc(tag)}` : ""}`, label: tag ? `Open the issue on ${tag}` : "Open the issue" });
   }
   if (n.links.conversationId) out.push({ href: `/app/conversations?id=${enc(n.links.conversationId)}`, label: "Read the conversation" });
-  if (n.links.windowId && site) out.push({ href: `/app/${site}/maintenance`, label: "Open the maintenance window" });
-  if (n.links.patrolId && site) out.push({ href: `/app/${site}/environment`, label: "Open the walkthrough" });
-  if (n.links.alertId && site) out.push({ href: `/app/${site}/compliance#oa-${site}-h`, label: "Open the alert" });
+  if (n.links.windowId && site) out.push({ href: `/app/${site}#maintenance`, label: "Open the maintenance window" });
+  if (n.links.patrolId && site) out.push({ href: `/app/${site}`, label: "Open the walkthrough" });
+  if (n.links.alertId && site) out.push({ href: `/app/${site}#compliance`, label: "Open the alert" });
   if (n.links.phoneCallId) out.push({ href: `/app/conversations?call=${enc(n.links.phoneCallId)}`, label: "Read the call" });
   if (n.links.outboxId) out.push({ href: `/app/notifications#ob-${enc(n.links.outboxId)}`, label: "See it in the outbox" });
-  if (n.links.inspectionId && site) out.push({ href: `/app/${site}/compliance#insp-${site}-h`, label: "Open the inspection" });
-  if (n.links.caseId && site) out.push({ href: `/app/${site}/employees`, label: "Open the employee log" });
+  if (n.links.inspectionId && site) out.push({ href: `/app/${site}#compliance`, label: "Open the inspection" });
+  if (n.links.caseId && site) out.push({ href: `/app/${site}#employees`, label: "Open the employee log" });
   return out;
 }
 
@@ -171,10 +171,11 @@ function AgentPane({ filters, feed, items, current, outbox, outboxStatus }: { fi
   </>;
 }
 
-export default function NotificationsPage() {
+/* `siteId`: the environment's own Notifications page (/app/<site>/notifications): only that site, no site filter. */
+export default function NotificationsPage({ siteId }: { siteId?: SiteId3 } = {}) {
   /* The one Human · Agent switch in the top bar (mode-11.ts) decides the view. */
   const [view] = useMode();
-  const [site, setSite] = useState("");
+  const [site, setSite] = useState<string>(siteId ?? "");
   const [kind, setKind] = useState("");
   const [limit, setLimit] = useState(PAGE);
   /* The last visit before this one: anything newer is new. */
@@ -184,9 +185,9 @@ export default function NotificationsPage() {
     setSince(readNotificationsSeen());
     const p = new URLSearchParams(window.location.search);
     const s0 = p.get("site") ?? p.get("siteId"); const k0 = p.get("kind");
-    if (isSite3(s0)) setSite(s0);
+    if (isSite3(s0) && !siteId) setSite(s0);
     if (k0) setKind(k0);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const agent = view === "agent";
 
   const filters = useMemo<NotificationFilters>(() => ({ limit, siteId: site || undefined, kind: kind || undefined }), [limit, site, kind]);
@@ -299,13 +300,11 @@ export default function NotificationsPage() {
         <p className={s.hSub}>What is waiting to reach you, what Steward last sent you by email, call and text, and what last happened at the three sites, newest first.</p>
         <div className={`tools ${s.hActions}`}>
           <a className="b3 quiet" href={snapshotPath(site || undefined)} download onClick={download} aria-busy={pdfBusy || undefined}><span>{pdfBusy ? "Preparing the PDF" : "Download compliance snapshot"}</span></a>
-          <Btn arrow onClick={sendNow} aria-busy={sending || undefined}>{sending ? "Preparing the snapshot" : "Send me a snapshot now"}</Btn>
         </div>
       </> : null}
     </Reveal>
     <div className={s.status}>{[pdfError, sendError].map((m, i) => m ? <p key={i} className={m.fail ? "err3" : "note3"} role={m.fail ? "alert" : undefined}>{m.text}</p> : null)}</div>
     <Reveal className={s.bar} i={1}>
-      <div className={`tabs3 ${s.sites}`} role="group" aria-label="Filter by site">{[{ id: "", short: "All sites" }, ...SITES3].map(x => <button key={x.id || "all"} type="button" aria-pressed={site === x.id} className={site === x.id ? "on" : ""} onClick={() => { setSite(x.id); setLimit(PAGE); }}>{x.short}</button>)}</div>
       <label className={`fld ${s.kind}`}>Kind
         <select value={kind} onChange={ev => { setKind(ev.target.value); setLimit(PAGE); }}>
           <option value="">All kinds</option>

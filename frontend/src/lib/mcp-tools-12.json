@@ -1,0 +1,387 @@
+[
+ {
+  "name": "list_sites",
+  "about": "Start here: the three sites with their ids, places and what each one runs",
+  "readOnly": true
+ },
+ {
+  "name": "resolve",
+  "about": "Ask the site for one attribute of one asset",
+  "readOnly": false
+ },
+ {
+  "name": "attest",
+  "about": "Contribute an observation you made about an asset",
+  "readOnly": false
+ },
+ {
+  "name": "check",
+  "about": "Verify another agent's proof",
+  "readOnly": true
+ },
+ {
+  "name": "get_changes",
+  "about": "Diff read: every change on a site after a version (facts, work items, attestations, dispatches, escalations, owner decisions) plus the work items still waiting",
+  "readOnly": true
+ },
+ {
+  "name": "subscribe",
+  "about": "Register a callback URL for a site",
+  "readOnly": false
+ },
+ {
+  "name": "get_receipt",
+  "about": "Read one work item by workItemId: state (open, dispatched, waiting, needs_clarification, escalated, resolved, rejected, expired), reference, dispatches sent, ve",
+  "readOnly": true
+ },
+ {
+  "name": "escalate",
+  "about": "Push a waiting work item up the ladder: level 1 re-sends on the same thread, 2 emails, 3 places a call (recorded with providerRef null when voice is not configu",
+  "readOnly": false
+ },
+ {
+  "name": "query_clearance",
+  "about": "Geometry read: is a corridor of widthM metres between two floor points [x, z] free of equipment footprints on this site? Returns clear, the first blocking asset",
+  "readOnly": true
+ },
+ {
+  "name": "patrol",
+  "about": "Run a patrol over the site (scope \"all\" or an exact component ID, tag, system or subsystem from list_components)",
+  "readOnly": false
+ },
+ {
+  "name": "start_mission",
+  "about": "Hand a whole site clearance to Steward's own agents",
+  "readOnly": false
+ },
+ {
+  "name": "get_mission",
+  "about": "Read one mission by missionId: state (running, input_required, completed, failed), steps (each with agentId, summary and taskId / workItemId / attestationId ref",
+  "readOnly": true
+ },
+ {
+  "name": "list_missions",
+  "about": "List missions, newest first, optionally for one site: id, siteId, state, budget, requester, step count",
+  "readOnly": true
+ },
+ {
+  "name": "list_agents",
+  "about": "The agents and their live state: operator (level 1, the owner's agent, you), director (2, Operations Director, all three sites), and per site a manager (3), an ",
+  "readOnly": true
+ },
+ {
+  "name": "get_transcript",
+  "about": "What one agent said and heard, oldest first: a2a tasks between agents (text plus the structured steward data part), sms / email / imessage / call exchanges with",
+  "readOnly": true
+ },
+ {
+  "name": "get_issues",
+  "about": "Reality-layer issues on a site (prefer list_issues for the addendum-3 issue register): open work items in needs_clarification / escalated / expired (overdue, es",
+  "readOnly": true
+ },
+ {
+  "name": "list_evals",
+  "about": "Eval runs recorded by the backend, newest first: suite name, startedAt, finishedAt, passed and failed counts",
+  "readOnly": true
+ },
+ {
+  "name": "get_eval",
+  "about": "One eval run with its step table: name, target (tool or HTTP route), PASS/FAIL, ms and detail",
+  "readOnly": true
+ },
+ {
+  "name": "list_properties",
+  "about": "Alias of list_sites with propertyId naming",
+  "readOnly": true
+ },
+ {
+  "name": "get_property_context",
+  "about": "Get compact current property context, evidence counts, resident workers and any active job",
+  "readOnly": true
+ },
+ {
+  "name": "list_components",
+  "about": "List real model assets, stable component IDs/tags, world coordinates, current evidence status and exact available inspection scopes",
+  "readOnly": true
+ },
+ {
+  "name": "inspect_component",
+  "about": "Read one asset\u2019s current project requirements, evidence files and source-page citations",
+  "readOnly": true
+ },
+ {
+  "name": "search_requirements",
+  "about": "Search source-linked project requirements by text, exact system and evidence status",
+  "readOnly": true
+ },
+ {
+  "name": "search_documents",
+  "about": "Search extracted source text and document metadata",
+  "readOnly": true
+ },
+ {
+  "name": "run_inspection",
+  "about": "MUTATES LOCAL RECORDS",
+  "readOnly": false
+ },
+ {
+  "name": "get_job",
+  "about": "Read actual persisted inspection/patrol progress",
+  "readOnly": true
+ },
+ {
+  "name": "get_activity",
+  "about": "Read the property\u2019s append-only worker/tool events after a numeric cursor",
+  "readOnly": true
+ },
+ {
+  "name": "recall_memory",
+  "about": "Retrieve recent source-linked local memories for this property",
+  "readOnly": true
+ },
+ {
+  "name": "export_report",
+  "about": "Read the actual current evidence-report summary and return local HTML/JSON download URLs",
+  "readOnly": true
+ },
+ {
+  "name": "get_integrations",
+  "about": "Read truthful provider configuration status (Inkbox, Supabase, Stripe, Armature...)",
+  "readOnly": true
+ },
+ {
+  "name": "get_scene",
+  "about": "The 3-D scene of one site: the scanned environment (scan URL: a SOG meta.json, or for Tomioka a streamed level-of-detail lod-meta.json, scanFormat says which; S",
+  "readOnly": true
+ },
+ {
+  "name": "focus_view",
+  "about": "Move the dashboard's 3-D camera: appends a viewer command (focus, orbit, highlight or reset) to the site's viewer stream; every open dashboard viewer executes i",
+  "readOnly": false
+ },
+ {
+  "name": "capture_view",
+  "about": "URLs of the latest 16-frame orbit capture of one asset (256\u00d7256 frames rendered from the scan by the vision pipeline)",
+  "readOnly": true
+ },
+ {
+  "name": "show_factory",
+  "about": "Show a site's scan inside this chat (a factory, or the Tomioka silk mill): an interactive 3-D view (PlayCanvas, the SOG scan from its hosted origin, streamed in",
+  "readOnly": true
+ },
+ {
+  "name": "get_overview",
+  "about": "Every site (Myer, Bristol, Tomioka) at a glance in under ~600 tokens: open issues by severity, compliance counts (ok / due_soon / overdue / blocked), crew on sh",
+  "readOnly": true
+ },
+ {
+  "name": "get_agent_activity",
+  "about": "One agent right now: current task, why, what it waits on, its last actions (tool calls with estimated tokens), tokens this hour from Steward telemetry, memory h",
+  "readOnly": true
+ },
+ {
+  "name": "get_board_meeting",
+  "about": "A meeting the agents held about an issue (the director or a site's manager convenes the agents concerned): the ordered transcript (each agent's view), the resol",
+  "readOnly": true
+ },
+ {
+  "name": "get_memory",
+  "about": "What an agent remembers: recall from its Supermemory container (steward-<agentId>) when live recall is enabled on the backend, else the local mirror",
+  "readOnly": true
+ },
+ {
+  "name": "list_issues",
+  "about": "Issues on one site from the per-site register (open by default): id, assetTag, kind, severity (high/medium/low), summary, status, assignee, and the obligation o",
+  "readOnly": true
+ },
+ {
+  "name": "get_issue",
+  "about": "One issue in full: severity, summary, status, asset, assignee, the record behind it, and whatever the backend attaches (readings, documents, board meeting ids)",
+  "readOnly": true
+ },
+ {
+  "name": "inspect_valves",
+  "about": "Start the valve inspection pipeline for a site: capture a 16-frame orbit of every valve from the scan, score each clip with V-JEPA 2 (an embedding anomaly score",
+  "readOnly": false
+ },
+ {
+  "name": "get_inspection",
+  "about": "Latest valve inspection for a site: per valve fixed, not fixed or uncertain, with the anomaly score, threshold, model and frame count",
+  "readOnly": true
+ },
+ {
+  "name": "list_crew",
+  "about": "The people on one site: name, role, shift and whether on shift now, certifications with expiry, and the issue kinds each owns",
+  "readOnly": true
+ },
+ {
+  "name": "who_is_responsible",
+  "about": "Who owns an issue kind on a site (from the crew ownership table): the crew member, which agent would reach them (the site's field technician through the Steward",
+  "readOnly": true
+ },
+ {
+  "name": "list_obligations",
+  "about": "Compliance obligations on a site: title, rule reference, frequency, last done, due date and status",
+  "readOnly": true
+ },
+ {
+  "name": "get_document",
+  "about": "Read one document (certificate, permit, contractor report): metadata, the PDF URL and its extracted text",
+  "readOnly": true
+ },
+ {
+  "name": "request_document",
+  "about": "Ask for a document an obligation needs (a renewed certificate, a permit): the site's compliance officer sends the request notice to the obligation owner",
+  "readOnly": false
+ },
+ {
+  "name": "assign_issue",
+  "about": "Assign an issue to a crew member of its site (the site's own manager or the director; the backend checks authority and refuses anyone else, another site's manag",
+  "readOnly": false
+ },
+ {
+  "name": "wait_for",
+  "about": "Wait for something to happen without spending tokens",
+  "readOnly": true
+ },
+ {
+  "name": "decide",
+  "about": "Ask a human to choose between options about an issue",
+  "readOnly": false
+ },
+ {
+  "name": "get_eval_findings",
+  "about": "The director's view of agent quality: per-agent tokens and failures from Steward telemetry (every MCP tool call is recorded with its acting agent and estimated ",
+  "readOnly": true
+ },
+ {
+  "name": "reconfigure_agent",
+  "about": "Change one agent's runtime settings (the Operations Director only; any other actor gets AUTHORITY_DENIED before anything is written): documentCache, pollStrateg",
+  "readOnly": false
+ },
+ {
+  "name": "eye_look",
+  "about": "Look at the plant through the agent eye: renders the site's 3-D scan from the eye's current pose and returns the frame as an image, plus the camera pose and the",
+  "readOnly": true
+ },
+ {
+  "name": "eye_move",
+  "about": "Move the agent eye's camera without turning it: forward, back, left, right, up or down by meters (0.1 to 5)",
+  "readOnly": false
+ },
+ {
+  "name": "eye_turn",
+  "about": "Turn the agent eye's camera in place: yawDeg rotates around the vertical axis, pitchDeg tilts up or down (check the returned pose for the direction)",
+  "readOnly": false
+ },
+ {
+  "name": "eye_go_to",
+  "about": "Fly the agent eye to a tagged asset and frame it (the fastest way to look at something you know by tag)",
+  "readOnly": false
+ },
+ {
+  "name": "eye_orbit",
+  "about": "Circle a tagged asset with the agent eye and return a ring of frames (4 to 16) as images, so you can inspect every side: handwheels, gauges, leaks, corrosion, l",
+  "readOnly": false
+ },
+ {
+  "name": "eye_mark",
+  "about": "Flag what you see: a screen point (x, y from 0 to 1 on the latest eye frame, 0,0 top-left) and a short note",
+  "readOnly": false
+ },
+ {
+  "name": "get_environment",
+  "about": "See a site the way its agents see it: the walk in progress (who is walking, which stop, which asset), the latest agent-eye frames as images with what the agents",
+  "readOnly": true
+ },
+ {
+  "name": "request_site_tour",
+  "about": "Ask the Site Inspector to give you a tour of a site: it walks up to maxStops assets with the agent eye (your focus assets first, then blocked and overdue obliga",
+  "readOnly": false
+ },
+ {
+  "name": "get_site_tour",
+  "about": "Read a site tour by tourId: every stop (looks good or looks bad, with the reasons), the inspector's summary and the pictures of what is wrong as images (at most",
+  "readOnly": true
+ },
+ {
+  "name": "get_portfolio_summary",
+  "about": "Every site (the two factories and the Tomioka silk mill) and the portfolio average in one small answer: average pressure, average flow, uptime percent, open iss",
+  "readOnly": true
+ },
+ {
+  "name": "get_metrics",
+  "about": "Time series for one site over the last hours (1 to 168): pressure_bar, flow_m3h, temperature_c, level_pct, vibration_mms, power_kw, humidity_pct, checked_in, cr",
+  "readOnly": true
+ },
+ {
+  "name": "list_conversations",
+  "about": "Agent calls, meetings and messages, newest first, summary first: kind, participants, sites, headline, how many decisions and actions, who wrote the summary (cla",
+  "readOnly": true
+ },
+ {
+  "name": "get_conversation",
+  "about": "One agent call or meeting: headline, points, decisions and actions (owner, task, due) first; the transcript only when you pass includeTranscript (it can be long",
+  "readOnly": true
+ },
+ {
+  "name": "list_regulations",
+  "about": "The regulations a site's obligations cite, from official government sources cached with attribution: Bristol (England) Pressure Systems Safety Regulations 2000,",
+  "readOnly": true
+ },
+ {
+  "name": "explain_compliance_issue",
+  "about": "Explain one compliance issue the way the compliance page does: what is wrong (issue, asset, obligation, due date), why it is a problem (the regulation, provisio",
+  "readOnly": true
+ },
+ {
+  "name": "request_fix",
+  "about": "Ask the agents to fix an issue (the owner's agent only)",
+  "readOnly": false
+ },
+ {
+  "name": "list_maintenance",
+  "about": "Maintenance windows for a site (or every site): date, scope, examiner, status proposed / approved / done, the sites sharing it and the conversation that agreed ",
+  "readOnly": true
+ },
+ {
+  "name": "propose_maintenance_window",
+  "about": "Propose a maintenance window (a site manager for their own site, or the director; cross-site windows need the director's approval)",
+  "readOnly": false
+ },
+ {
+  "name": "list_notifications",
+  "about": "Notifications sent when a fix workflow finishes or a manager posts a resolution: to whom (site roster, other agents), channel, text and the issue",
+  "readOnly": true
+ },
+ {
+  "name": "get_owner_notifications",
+  "about": "What the owner was last sent or prepared and what last happened, newest first: owner alerts (the compliance officer's email with the file and the evidence, and ",
+  "readOnly": true
+ },
+ {
+  "name": "get_compliance_snapshot",
+  "about": "The compliance snapshot behind the owner's digest, as data, with the URL of its PDF (a black-and-white report of a few pages): per site the compliance percent; ",
+  "readOnly": true
+ },
+ {
+  "name": "request_tool",
+  "about": "Ask a site's agent team to build a tool you need when no existing tool answers your task (Tool Forge)",
+  "readOnly": false
+ },
+ {
+  "name": "list_forged_tools",
+  "about": "The tools Steward's agents built for themselves (Tool Forge): forge_<name>, status (draft, validated, tested, approved, published, rejected, retired), site, who",
+  "readOnly": true
+ },
+ {
+  "name": "call_forged_tool",
+  "about": "Call a published forged tool by toolId (from list_forged_tools) with its arguments; the same as calling forge_<name> directly, for clients that do not re-list t",
+  "readOnly": false
+ },
+ {
+  "name": "forge_pump_spec_breaches",
+  "about": "Built by Site Engineer \u00b7 Myer on 2026-10-18 because get_metrics returns raw series and who_is_responsible takes one issue kind; nothing counts breaches per asse",
+  "readOnly": true
+ }
+]

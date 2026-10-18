@@ -467,7 +467,8 @@ class InkboxAdapter:
             if html:
                 kwargs["body_html"] = html
             if attachments:
-                kwargs["attachments"] = [self.attachment(item) for item in attachments]
+                # Inline pictures (content_id) need an HTML body to sit in; without one they go as plain attachments.
+                kwargs["attachments"] = [self.attachment(item if html else {k: v for k, v in item.items() if k != "content_id"}) for item in attachments]
             if idempotency_key:
                 kwargs["idempotency_key"] = idempotency_key
             message = identity.send_email(**kwargs)

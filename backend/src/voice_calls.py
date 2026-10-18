@@ -558,7 +558,9 @@ class VoiceCalls:
             return None
         outcome = self.read_outcome(record)
         retry = None
-        if record["status"] in ("voicemail", "no_answer") and int(record.get("attempt") or 1) <= self.retries() and not record.get("callbackOf"):
+        no_retry = bool((record.get("context") or {}).get("noRetry"))  # a live sequence call is not tried again later
+        if (record["status"] in ("voicemail", "no_answer") and int(record.get("attempt") or 1) <= self.retries() and not record.get("callbackOf")
+                and not no_retry):
             when = utcnow() + timedelta(minutes=self.retry_minutes())
             outcome["decision"] = ("Left a voicemail" if record["status"] == "voicemail" else "No answer") + f"; calling again at {stamp(when)[11:16]} UTC"
             try:

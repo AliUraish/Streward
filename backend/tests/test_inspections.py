@@ -33,6 +33,12 @@ def jpeg_bytes() -> bytes:
 
 JPEG = jpeg_bytes()
 
+def same_picture(data: bytes) -> bool:
+    """The attached frame is the labelled copy of the frame (labels are drawn on a copy): a JPEG of the same size."""
+    from PIL import Image
+    return data[:2] == b"\xff\xd8" and Image.open(io.BytesIO(data)).size == Image.open(io.BytesIO(JPEG)).size
+
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -157,7 +163,7 @@ def test_the_evidence_goes_to_the_manager_and_the_owner_email_copies_counsel(cli
     assert owner["subject"].startswith("[Bristol Dock Pump House] Compliance: Sump suction valve V-504") and owner["subject"].endswith("(blocked)")
     by_name = {a["filename"]: a for a in owner["attachments"]}
     frame = by_name["evidence-v-504-1.jpg"]
-    assert frame["content_id"] and f"cid:{frame['content_id']}" in owner["html"] and base64.b64decode(frame["content_base64"]) == JPEG
+    assert frame["content_id"] and f"cid:{frame['content_id']}" in owner["html"] and same_picture(base64.b64decode(frame["content_base64"]))
     assert base64.b64decode(by_name[f"evidence-{inspection['id']}.txt"]["content_base64"]).decode().startswith(f"Steward inspection evidence {inspection['id']}")
     assert not [n for n in by_name if n.lower().startswith(("vic_", "vba_"))]
     assert "Compliance Counsel" in owner["html"] and "Avon Pump & Valve Ltd" in owner["text"] and owner["dedupeKey"] == f"inspection:{inspection['id']}:owner"

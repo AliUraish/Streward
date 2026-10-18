@@ -37,6 +37,7 @@ counts, the chats running now and the last error.
 """
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import math
@@ -52,6 +53,9 @@ from .providers import clean_env
 from .sites import SITE_BY_ID
 from .store import now
 from .walks import FALLBACK_BETA, PRICES
+
+# Live sequence (demo_sequence.py): a chat thread can set its own turn pace instead of STEWARD_CHAT_TURN_SECONDS.
+TURN_OVERRIDE: contextvars.ContextVar[float | None] = contextvars.ContextVar("steward_chat_turn_seconds", default=None)
 
 DEFAULT_MODEL = "claude-opus-5-5"
 EFFORT = "low"
@@ -462,7 +466,8 @@ class ChatWriter:
     def _pace(self, realtime: bool, last: float | None) -> None:
         if not realtime or last is None:
             return
-        delay = self.turn_seconds() - (time.monotonic() - last)
+        override = TURN_OVERRIDE.get()
+        delay = (self.turn_seconds() if override is None else override) - (time.monotonic() - last)
         if delay > 0:
             self._stop.wait(delay)
 

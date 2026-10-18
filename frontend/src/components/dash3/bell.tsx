@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import type { OwnerNotification } from "@/lib/api-8";
 import { markNotificationsSeen, useOwnerNotifications, useUnreadNotifications } from "@/lib/hooks-8";
 import { rn, site3 } from "@/lib/sites-3";
 import { isSite3 } from "@/lib/sites-3";
@@ -34,6 +35,19 @@ export default function NotificationsBell() {
   </div>;
 }
 
+/* Where an item leads: its call, chat, booking, inspection or employee log, else the notifications page. */
+function hrefOf(n: OwnerNotification): string {
+  const site = n.siteId && isSite3(n.siteId) ? n.siteId : null;
+  const l = n.links;
+  if (l.phoneCallId) return `/app/conversations?call=${encodeURIComponent(l.phoneCallId)}`;
+  if (l.conversationId) return `/app/conversations?id=${encodeURIComponent(l.conversationId)}`;
+  if (site && l.windowId) return `/app/${site}#maintenance`;
+  if (site && (l.inspectionId || l.alertId)) return `/app/${site}#compliance`;
+  if (site && l.caseId) return `/app/${site}#employees`;
+  if (site && (l.issueId || l.patrolId)) return `/app/${site}`;
+  return "/app/notifications";
+}
+
 function BellList({ onSeen }: { onSeen: (iso: string | null | undefined) => void }) {
   const feed = useOwnerNotifications({ limit: 6 });
   const items = feed.data?.items ?? [];
@@ -43,7 +57,7 @@ function BellList({ onSeen }: { onSeen: (iso: string | null | undefined) => void
     {feed.readiness === "loading" && !feed.data ? <p className="bell-note">Loading.</p>
       : !feed.data ? <p className="bell-note">Not available yet.</p>
         : !items.length ? <p className="bell-note">Nothing yet.</p>
-          : <ul>{items.map(i => <li key={i.id}><Link href={`/app/notifications?item=${encodeURIComponent(i.id)}`}>
+          : <ul>{items.map(i => <li key={i.id}><Link href={hrefOf(i)}>
             <span className="bt">{rn(i.title)}</span>
             {i.summary ? <span className="bs">{rn(i.summary)}</span> : null}
             <span className="bm">{i.siteId && isSite3(i.siteId) ? `${site3(i.siteId).short} · ` : ""}{i.mode === "queued" ? "waiting to go out" : ago(i.at)}</span>

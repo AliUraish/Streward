@@ -8,8 +8,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Remote } from "@/lib/reality";
 import { meetingAsConversation } from "@/lib/api-3";
 import { useBoardMeetings, useConversations } from "@/lib/hooks-3";
-import { SITES3, agentName, siteList } from "@/lib/sites-3";
-import type { Conversation } from "@/lib/types-3";
+import { agentName, siteList } from "@/lib/sites-3";
+import type { Conversation, SiteId3 } from "@/lib/types-3";
 import { PhoneCallsPanel } from "./phone-calls";
 import { PageHead, Reveal, State, SynthTag, ago, when } from "./ui3";
 import "./dash10.css";
@@ -19,10 +19,11 @@ const KIND: Record<string, string> = { call: "Chat", meeting: "Meeting", message
 export const convTitle = (c: Conversation) => c.summary?.headline || (c.kind === "message" ? `${agentName(c.participants[0])} to ${c.participants.slice(1).map(agentName).join(", ") || "the team"}` : c.title) || "Conversation";
 type Tab = "chats" | "messages" | "phone";
 
-export default function ConversationsPage() {
+/* `siteId`: the environment's own Conversations page (/app/<site>/conversations, owner, Oct 18): only that site, no site picker. */
+export default function ConversationsPage({ siteId }: { siteId?: SiteId3 } = {}) {
   const remote = useConversations();
   const meetings = useBoardMeetings();
-  const [site, setSite] = useState<string>("all");
+  const site: string = siteId ?? "all";
   const [tab, setTab] = useState<Tab>("chats");
   const [open, setOpen] = useState<string | null>(null);
   const [call, setCall] = useState<string | null>(null);
@@ -33,7 +34,7 @@ export default function ConversationsPage() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const id = q.get("id"); const callId = q.get("call");
-    if (callId) { setTab("phone"); setCall(callId); } else if (id) setOpen(id);
+    if (callId) { setTab("phone"); setCall(callId); } else if (id) setOpen(id); else if (q.get("tab") === "calls" || q.get("tab") === "phone") setTab("phone");
   }, []);
   useEffect(() => { if (tab !== "phone" && !open && shown.length) setOpen(shown[0].id); }, [shown, open, tab]);
   const current = shown.find(c => c.id === open) ?? list.find(c => c.id === open) ?? null;
@@ -43,7 +44,6 @@ export default function ConversationsPage() {
   return <div className="page3">
     <PageHead id="conversations" title="Conversations">
       <div className="tabs3" role="tablist" aria-label="Kinds">{tabBtn("chats", "Chats and meetings")}{tabBtn("messages", "With messages")}{tabBtn("phone", "Phone calls")}</div>
-      <div className="tabs3" role="tablist" aria-label="Site">{[{ id: "all", short: "All sites" }, ...SITES3].map(s => <button key={s.id} type="button" role="tab" aria-selected={site === s.id} className={site === s.id ? "on" : ""} onClick={() => setSite(s.id)}>{s.short}</button>)}</div>
     </PageHead>
     {tab === "phone" ? <PhoneCallsPanel siteId={site === "all" ? undefined : site} openId={call} onOpen={openCall} />
       : <State remote={source} what="conversations" isEmpty={() => shown.length === 0} empty="No chats or meetings yet.">

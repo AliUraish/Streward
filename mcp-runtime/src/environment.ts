@@ -29,6 +29,8 @@ const MAX_TOUR_IMAGES = 4;
 /** The tour waits about as long as one cold eye call (eye tools allow 105 s); progress notifications keep the call alive. */
 const TOUR_WAIT_MS = 100_000;
 const TOUR_POLL_MS = 2_000;
+/** STEWARD_MCP_TOUR_WAIT_MS shortens the wait (tests); it never exceeds the default. */
+const tourWaitMs = () => { const value = Number(process.env.STEWARD_MCP_TOUR_WAIT_MS); return Number.isFinite(value) && value > 0 ? Math.min(value, TOUR_WAIT_MS) : TOUR_WAIT_MS; };
 
 const MarkSchema = z.object({ x: z.number().nullable(), y: z.number().nullable(), note: z.string().nullable() });
 const FrameLabelSchema = z.object({ assetTag: z.string(), verdict: z.string().nullable(), color: z.string().nullable(), title: z.string().nullable(), reasons: z.array(z.string()), mark: MarkSchema.nullable() });
@@ -141,11 +143,12 @@ export function registerEnvironmentTools({ tool, backend, config, siteId }: Envi
 
   async function waitForTour(id: string, ctx: RequestContextLike): Promise<Json> {
     const started = Date.now();
+    const limit = tourWaitMs();
     let raw = obj(await backend.json(`/api/site-tours/${encodeURIComponent(id)}`, ANY));
-    while (str(raw.state) === 'running' && Date.now() - started < TOUR_WAIT_MS) {
+    while (str(raw.state) === 'running' && Date.now() - started < limit) {
       const done = arr(raw.stops).length; const total = strings(raw.route).length;
       void ctx.reportProgress?.(done, total || undefined, `Site Inspector: stop ${Math.min(done + 1, total || done + 1)} of ${total || '?'}`).catch(() => false);
-      await new Promise(resolve => setTimeout(resolve, TOUR_POLL_MS));
+      await new Promise(resolve => setTimeout(resolve, Math.min(TOUR_POLL_MS, limit)));
       if (ctx.signal?.aborted) break;
       raw = obj(await backend.json(`/api/site-tours/${encodeURIComponent(id)}`, ANY));
     }

@@ -1180,6 +1180,15 @@ def create_app(data_directory: Path | None = None, start_workers=True):
             return RedirectResponse(signed, status_code=307, headers={"Cache-Control": "private, max-age=300"})
         return FileResponse(path, media_type="image/jpeg", headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=86400"})
 
+    @app.get("/api/eye/frames/{frame_id}/labelled.jpg")
+    def eye_frame_labelled(frame_id: str, request: Request):
+        """The frame with its labels burned in (frame_labels.py): the asset tags in view and, for every judgement made on it,
+        a ring at the asset, its verdict and the reason, so an agent that only gets the picture knows what the issue is."""
+        from .frame_labels import labelled
+        data, count = labelled(service(request), frame_id)
+        return Response(content=data, media_type="image/jpeg", headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=30",
+                                                                        "X-Steward-Labels": str(count)})
+
     @app.post("/api/eye/{property_id}/act")
     async def eye_act(property_id: str, body: ActRequest, request: Request):
         actor = request.headers.get("x-steward-actor") or OPERATOR
@@ -1713,6 +1722,7 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     # Contract 8: the outbox and phone calls, the employees' badge log, and the inspection chain (read-only for people).
     from .routes_attendance import router as attendance_router
     from .routes_chats import router as chats_router
+    from .routes_sequence import router as sequence_router
     from .routes_inspections import router as inspections_router
     from .routes_outbox import router as outbox_router
     from .routes_agent_environment import router as agent_environment_router
@@ -1721,6 +1731,9 @@ def create_app(data_directory: Path | None = None, start_workers=True):
     app.include_router(attendance_router)
     app.include_router(inspections_router)
     app.include_router(chats_router)
+    from .routes_usage import router as usage_router
+    app.include_router(usage_router)
+    app.include_router(sequence_router)
     app.include_router(agent_environment_router)
     app.include_router(site_tours_router)
     return app

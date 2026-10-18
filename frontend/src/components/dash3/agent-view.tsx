@@ -100,13 +100,15 @@ export default function AgentView() {
 export function EyePanel({ siteId, frames, readiness, renderers }: { siteId: SiteId3; frames: EyeFrame[]; readiness: string; renderers: number | null }) {
   const s = site3(siteId);
   const live = useLive(siteId);
-  const online = live.presence?.rendererOnline ?? (renderers === null ? null : renderers > 0);
+  const reported = live.presence?.rendererOnline ?? (renderers === null ? null : renderers > 0);
   const f = useMemo(() => [...frames].sort((a, b) => b.at.localeCompare(a.at))[0] ?? null, [frames]);
   const pos = f?.camera?.position;
   /* Moving or still: the site's walk says whether its engineer is walking, and a frame from the last 25 s means the camera
      just moved; agents and people read the same line. */
   const walk = useWalk(siteId, 3_000).data;
   const fresh = f ? Date.now() - new Date(f.at).getTime() < 25_000 : false;
+  /* A frame from the last 25 s means the eye is rendering, whatever the presence list says (headless renderers do not always report). */
+  const online = fresh ? true : reported;
   const moving = Boolean(walk?.walking) || fresh;
   const motion = moving
     ? `moving${walk?.walking && walk.stop && walk.of ? ` · ${walk.stop}/${walk.of}` : ""}${walk?.assetTag ? ` · ${walk.assetTag}` : ""}`
@@ -118,7 +120,7 @@ export function EyePanel({ siteId, frames, readiness, renderers }: { siteId: Sit
     <div className="frame">
       <img key={f?.id ?? "thumbnail"} className={f ? "fresh" : ""} src={src} onError={() => { if (f && src === f.frameUrl) setBroken(f.frameUrl); }} alt={f && src === f.frameUrl ? `${s.name}: the frame ${agentName(f.actor)} last rendered` : `${s.name}: the capture's thumbnail; ${f ? "the latest frame did not load" : "the eye has not looked yet"}`} />
       {f ? <div className="hud">{f.visiblePins.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1).map(p => <span key={p.assetTag} className={`pin ${p.occluded ? "occluded" : ""}`} style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}><i aria-hidden="true" />{p.assetTag}{typeof p.distance === "number" ? <small>{p.distance.toFixed(1)} m</small> : null}</span>)}</div> : null}
-      <div className="hud-top"><strong>{s.short}</strong><span className={`mv ${moving ? "on" : ""}`} aria-label={`Camera ${motion}`}>{motion}</span>{online !== null ? <span className={`ren ${online ? "on" : ""}`}>{online ? "eye online" : "eye offline"}</span> : null}{f ? <span>{agentName(f.actor)}: {actionText(f)}</span> : <span>{readiness === "ready" ? "The eye has not looked yet" : readiness === "loading" ? "Connecting to the eye" : "Eye feed not available yet"}</span>}</div>
+      <div className="hud-top"><strong>{s.short}</strong><span className={`mv ${moving ? "on" : ""}`} aria-label={`Camera ${motion}`}>{motion}</span>{online !== null ? <span className={`ren ${online ? "on" : ""}`}>{online ? "eye online" : "eye idle"}</span> : null}{f ? <span>{agentName(f.actor)}: {actionText(f)}</span> : <span>{readiness === "ready" ? "The eye has not looked yet" : readiness === "loading" ? "Connecting to the eye" : "Eye feed not available yet"}</span>}</div>
       <div className="hud-bottom">{f ? <><span>{pos && pos.length >= 3 ? `pos ${pos.slice(0, 3).map(v => Number(v).toFixed(1)).join(", ")}` : ""}{f.camera?.fov ? ` · fov ${Math.round(f.camera.fov)}` : ""}</span><span>{ago(f.at)} · {f.visiblePins.filter(p => !p.occluded).length} tags in view</span></> : <span>{s.place}</span>}</div>
     </div>
   </figure>;

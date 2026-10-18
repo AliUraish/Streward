@@ -42,7 +42,8 @@ export const bandState = (v: number | undefined | null, spec?: { min?: number | 
   v === undefined || v === null || !spec ? "normal" : spec.max != null && v > spec.max ? "high" : spec.min != null && v < spec.min ? "low" : "normal";
 
 /* `embedded`: the environment page's "Today" tab, under the agent's window, so no title and no picture of the site. */
-export default function FactoryOverview({ siteId, embedded }: { siteId: SiteId3; embedded?: boolean }) {
+/* `metricsOnly`: the latest metrics on an environment's Today page (owner, Oct 18): the live figures and the last 24 hours. */
+export default function FactoryOverview({ siteId, embedded, metricsOnly }: { siteId: SiteId3; embedded?: boolean; metricsOnly?: boolean }) {
   const site = site3(siteId);
   const { overview, agents } = useShared();
   const summary = useMetricsSummary();
@@ -59,12 +60,12 @@ export default function FactoryOverview({ siteId, embedded }: { siteId: SiteId3;
   const kpis = [...site.kpis.filter(k => !["compliancePct", "crewOnShift", "agentActionsToday"].includes(k)), "openIssues", "compliancePct", "crewOnShift", "agentActionsToday"] as typeof site.kpis;
   const defs = metricDefsFor(siteId);
   const kpiPanel = <Reveal as="section" className="p3 fo-kpis" i={1} aria-labelledby="kpi-h">
-        <div className="p-head"><h2 id="kpi-h">Today at {site.short}</h2>{liveSite ? <span className="meta">live, every 5 s</span> : null}</div>
+        <div className="p-head"><h2 id="kpi-h">{metricsOnly ? "Latest metrics" : `Today at ${site.short}`}</h2>{liveSite ? <span className="meta">live, every 5 s</span> : null}</div>
         <Kpis s={withFigures(summary.data?.sites.find(s => s.siteId === siteId) ?? null, metrics.data?.series, siteId)} live={liveSite?.kpis ?? null} liveAt={live.data?.at} remote={(metrics.data && !summary.data ? metrics : summary) as Remote<unknown>} only={kpis} missingText="No figures yet." />
       </Reveal>;
-  const metricsHref = embedded ? "#metrics" : `/app/${siteId}#metrics`;
+  const metricsHref = `/app/${siteId}/metrics`;
   return <div className="page3">
-    {embedded ? kpiPanel : <>
+    {embedded || metricsOnly ? kpiPanel : <>
       <PageHead id="factory" title={<SiteTitle site={site} />} sub={`${site.about}.`}>
         <Link className="b3 small" href={`/app/${siteId}`}><span>Open the agent eye</span><span className="arrow" aria-hidden="true">→</span></Link>
       </PageHead>
@@ -94,7 +95,7 @@ export default function FactoryOverview({ siteId, embedded }: { siteId: SiteId3;
         </li>;
       })}</ul> : <State remote={metrics} what="metrics">{() => null}</State>}
     </Reveal>
-    <div className="fo-grid">
+    {metricsOnly ? null : <div className="fo-grid">
       <Reveal as="section" className="p3" i={2} aria-labelledby="iss-h">
         <div className="p-head"><h2 id="iss-h">Open issues</h2><span className="meta">{issues.data ? open.length : ""}</span></div>
         <State remote={issues} what="issues" isEmpty={() => open.length === 0} empty="No open issues on this site.">
@@ -105,8 +106,9 @@ export default function FactoryOverview({ siteId, embedded }: { siteId: SiteId3;
         </State>
       </Reveal>
       <div className="fo-side">
-        <LatestInspection siteId={siteId} compact i={3} />
-        <OwnerAlerts siteId={siteId} limit={3} i={3} />
+        {/* On the environment page the sidebar carries the latest inspection; owner contact runs through the inspection chain. */}
+        {embedded ? null : <LatestInspection siteId={siteId} compact i={3} />}
+        {embedded ? null : <OwnerAlerts siteId={siteId} limit={3} i={3} />}
         <Reveal as="section" className="p3" i={3} aria-labelledby="team-h">
           <div className="p-head"><h2 id="team-h">Team</h2><Link className="lnk" href={embedded ? "#team" : `/app/${siteId}#team`}>Team and chats</Link></div>
           {!rows.some(r => r.known) ? <p className="note3"><NotYet remote={overview.readiness === "ready" ? agents as Remote<unknown> : overview as Remote<unknown>} what="agent status" /></p> : null}
@@ -128,6 +130,6 @@ export default function FactoryOverview({ siteId, embedded }: { siteId: SiteId3;
           </State>
         </Reveal>
       </div>
-    </div>
+    </div>}
   </div>;
 }

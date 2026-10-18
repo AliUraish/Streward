@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api3 } from "@/lib/api-3";
 import { usePoll } from "@/lib/hooks-3";
 import { AGENTS3, SITES3, agentById, isSite3, site3, teamOf } from "@/lib/sites-3";
-import type { MemoryEntry } from "@/lib/types-3";
+import type { MemoryEntry, SiteId3 } from "@/lib/types-3";
 import { Btn, LinkedText, PageHead, Reveal, State, ago, when, words } from "./ui3";
 import s from "./memory.module.css";
 
@@ -65,12 +65,13 @@ function useIssueTargets(ids: string[]): ReadonlyMap<string, IssueAt | null> {
 function issueHref(e: MemoryEntry, at: IssueAt | null | undefined, tag: string | null): string | null {
   const siteId = at?.siteId ?? e.siteId;
   if (!siteId || !isSite3(siteId)) return null;
-  return `/app/${siteId}/environment${tag ? `?asset=${encodeURIComponent(tag)}` : ""}`;
+  return `/app/${siteId}${tag ? `?asset=${encodeURIComponent(tag)}` : ""}`;
 }
 const count = (n: number) => `${n} ${n === 1 ? "memory" : "memories"}`;
 
-export default function MemoryPage() {
-  const [site, setSite] = useState("");
+/* `siteId`: the environment's own Memory page (/app/<site>/memory): only that site's agents, no site filter. */
+export default function MemoryPage({ siteId }: { siteId?: SiteId3 } = {}) {
+  const [site, setSite] = useState<string>(siteId ?? "");
   const [agent, setAgent] = useState("");
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
@@ -80,7 +81,7 @@ export default function MemoryPage() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const s0 = p.get("site"); const a0 = p.get("agent"); const q0 = p.get("q");
-    if (isSite3(s0)) setSite(s0);
+    if (isSite3(s0) && !siteId) setSite(s0);
     if (a0 && agentById(a0)) setAgent(a0);
     if (q0) { setText(q0); setQuery(q0.trim()); }
   }, []);
@@ -118,18 +119,12 @@ export default function MemoryPage() {
     setSaid(entries.length ? count(entries.length) : empty);
   }, [current, key, entries.length, empty]);
 
-  function pickSite(id: string) {
-    setSite(id); setLimit(PAGE);
-    const a = agentById(agent);
-    if (id && a?.siteId && a.siteId !== id) setAgent("");
-  }
   const across = AGENTS3.filter(a => !a.siteId);
   const heading = agent ? agentById(agent)?.name ?? "Agent" : site ? site3(site).name : "All sites";
   const pending = text.trim() !== query || (data !== null && !current);
 
   return <div className="page3">
     <PageHead id="memory" title="Memory">
-      <div className="tabs3" role="group" aria-label="Filter by site">{[{ id: "", short: "All sites" }, ...SITES3].map(x => <button key={x.id || "all"} type="button" aria-pressed={site === x.id} className={site === x.id ? "on" : ""} onClick={() => pickSite(x.id)}>{x.short}</button>)}</div>
     </PageHead>
     <Reveal as="section" className="p3" i={1} aria-labelledby="mem-list-h">
       <form className={s.bar} role="search" aria-label="Search memories" onSubmit={ev => { ev.preventDefault(); setQuery(text.trim()); setLimit(PAGE); }}>

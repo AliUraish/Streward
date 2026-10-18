@@ -1,8 +1,9 @@
 "use client";
 
 /* /app/[site]/compliance: compliance issues with what is wrong, why (the regulation, its provision and our summary),
-   who is responsible and "Ask the agents to fix it" followed through its six steps; obligations; the regulations with
-   their cached official PDFs; documents, notices, agent document emails and notifications. */
+   who is responsible and the agent that has taken it on (owner, Oct 18: the agents decide what to do, so there is no
+   "fix it" button; the fix workflow's steps show as they run); obligations; the regulations with their cached official
+   PDFs; documents, notices, agent document emails and notifications. */
 import { useEffect, useMemo, useState } from "react";
 import { api3, normaliseFix } from "@/lib/api-3";
 import { useCrew, useDocumentEmails, useDocuments3, useIssue, useIssues3, useNotices, useNotifications, useObligations, useRegulationsWithComparison } from "@/lib/hooks-3";
@@ -61,7 +62,7 @@ export default function CompliancePage({ siteId }: { siteId: SiteId3 }) {
       <div className="p-head"><h2 id="ci-h">Compliance issues</h2><DemoTag /></div>
       <State remote={issues} what="issues" isEmpty={() => compIssues.length === 0} empty="No compliance issues on this site.">
         {() => <>
-          <ul className="ci-list">{(allIssues ? compIssues : compIssues.slice(0, 6)).map(i => <ComplianceIssue key={i.id} issue={i} regs={regsForIssue(i, regs)} comparisons={comparisonForIssue(i, comparisons)} crew={crew.data ?? []} officerName={officer?.name ?? "Compliance Officer"} onPdf={openPdf} />)}</ul>
+          <ul className="ci-list">{(allIssues ? compIssues : compIssues.slice(0, 6)).map(i => <ComplianceIssue key={i.id} siteId={siteId} issue={i} regs={regsForIssue(i, regs)} comparisons={comparisonForIssue(i, comparisons)} crew={crew.data ?? []} officerName={officer?.name ?? "Compliance Officer"} onPdf={openPdf} />)}</ul>
           {compIssues.length > 6 ? <div className="row-actions"><Btn quiet small onClick={() => setAllIssues(!allIssues)}>{allIssues ? "Show the first six" : `Show all ${compIssues.length}`}</Btn></div> : null}
         </>}
       </State>
@@ -191,11 +192,16 @@ function RegulationView({ reg, comparison }: { reg: Regulation | null; compariso
   </article>;
 }
 
-/* One compliance issue: what, why, who, and the fix workflow's six steps, live. */
-function ComplianceIssue({ issue, regs, comparisons, crew, officerName, onPdf }: { issue: Issue3; regs: Regulation[]; comparisons: Regulation[]; crew: CrewMember[]; officerName: string; onPdf: (id: string) => void }) {
+const COMPLIANCE_KINDS = new Set(["inspection_overdue", "certificate_expired", "walkway_closure", "permit_blocked", "alteration_permit", "visitor_route"]);
+function takerOf(siteId: SiteId3, kind: string): string {
+  if (kind === "agent_efficiency") return agentName("director");
+  const role = kind.startsWith("compliance") || COMPLIANCE_KINDS.has(kind) ? "compliance" : "engineer";
+  return teamOf(siteId).find(a => a.team === role)?.name ?? agentName(role);
+}
+
+/* One compliance issue: what, why, who has taken it on, and the fix workflow's steps as the agents run them. */
+function ComplianceIssue({ siteId, issue, regs, comparisons, crew, officerName, onPdf }: { siteId: SiteId3; issue: Issue3; regs: Regulation[]; comparisons: Regulation[]; crew: CrewMember[]; officerName: string; onPdf: (id: string) => void }) {
   const [fix, setFix] = useState<FixRun | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   const running = Boolean(fix && !["done", "completed", "resolved", "failed"].includes(fix.state));
   const live = useIssue(fix ? issue.id : null, running);
   const latest: Issue3 = live.data ?? issue;
@@ -211,12 +217,9 @@ function ComplianceIssue({ issue, regs, comparisons, crew, officerName, onPdf }:
   const whys: WhyRef[] = whyOf(latest).length ? whyOf(latest) : regs.map(r => ({ regulationId: r.id, instrument: r.instrument, provision: r.provision, title: r.title, summary: r.summary, officialUrl: r.officialUrl, servePdf: r.servePdf, pageHint: r.pageHint }));
   const crewWho = crew.find(c => c.id === (latest.assigneeId ?? latest.ownerId ?? latest.assignedTo));
   const who = crewWho ? { name: crewWho.name, role: crewWho.role } : latest.responsible?.owner?.name ? { name: latest.responsible.owner.name, role: latest.responsible.owner.role ?? "" } : null;
-  async function start() {
-    setBusy(true); setError("");
-    try { setFix(await api3.fixIssue(issue.id)); live.reload(); }
-    catch (e) { setError(errorText(e)); }
-    finally { setBusy(false); }
-  }
+  /* The agent that has taken the issue on (people.agent_for_kind): compliance kinds to the site's Compliance Officer, agent
+     efficiency to the Operations Director, everything else to the Site Engineer. */
+  const taker = takerOf(siteId, latest.kind);
   const resolved = latest.status === "resolved";
   return <li className={`ci ${resolved ? "done" : ""}`}>
     <div className="ci-what">
@@ -236,8 +239,7 @@ function ComplianceIssue({ issue, regs, comparisons, crew, officerName, onPdf }:
         : <span className="r3">No California comparison on record for this issue.</span>}
     </div>
     <div className="ci-fix">
-      <Btn small arrow disabled={busy || running || resolved} onClick={start}>{resolved ? "Fixed" : running ? "The agents are on it" : busy ? "Starting" : "Ask the agents to fix it"}</Btn>
-      {error ? <p className="err3" role="alert">{error}</p> : null}
+      <p className="ci-taker"><span className={`sig ${resolved ? "ok" : running ? "warn" : "off"}`} aria-hidden="true" /><strong>{taker}</strong>{resolved ? " closed it." : running ? " is on it now." : " has taken it on and decides the next step."}</p>
       {steps ? <ol className="fix-steps" aria-label="Fix workflow">{steps.steps.map(s => <li key={s.key} className={s.state}>
         <span className={`sig ${s.state === "done" ? "ok" : s.state === "running" ? "warn" : s.state === "failed" ? "bad" : "off"}`} aria-hidden="true" />
         <strong>{s.title}</strong><span className="r3">{s.summary ?? (s.state === "running" ? "in progress" : s.state === "done" ? "done" : "waiting")}{s.at ? `, ${ago(s.at)}` : ""}</span>

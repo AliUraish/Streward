@@ -48,7 +48,7 @@ test('addendum 3 tools: scene, viewer, captures, overview, issues, people, compl
     await client.connect(harness(listener.url));
     const call = async (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: args }) as Promise<CallToolResult>;
     const tools = (await client.listTools()).tools;
-    assert.equal(tools.length, 75);
+    assert.equal(tools.length, 78);
     for (const name of [...C3_TOOLS, ...C4_TOOLS]) {
       const tool = tools.find(t => t.name === name);
       assert(tool, name);

@@ -23,7 +23,9 @@ const RANK: Record<PinSeverity, number> = { none: 0, low: 1, medium: 2, high: 3 
 export const isOpenIssue = (i: Issue3) => !i.status || !["resolved", "closed"].includes(i.status);
 export const valveWord: Record<ValveResult["status"], string> = { fixed: "fixed", not_fixed: "not fixed", uncertain: "uncertain" };
 
-export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
+/* `compact`: the 3-D scan beside the agent's view on an environment's Today page (owner, Oct 18): only the viewer, with its pins,
+   the camera following the walk and the mission view; no title, side panels or strips. */
+export default function EnvironmentPage({ siteId, compact }: { siteId: SiteId3; compact?: boolean }) {
   const site = site3(siteId);
   /* Contract 7: the walk now (every 3 s) and the label it left on each asset (every 5 s). While the engineer walks,
      the eye feed is read faster and the view follows its camera unless that is turned off. */
@@ -107,10 +109,10 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
 
   const drawerAsset = drawer ? assets.find(a => tagOf(a) === drawer) : undefined;
   return <div className="page3">
-    <PageHead id="environment" title="Environment" />
-    <Reveal className="eye-now"><OperatingAgent frame={lastFrame} readiness={eye.readiness} retry={eye.reload} /><WalkthroughBar siteId={siteId} walk={walk} labels={labels} follow={followWalk} onFollow={setFollowWalk} /></Reveal>
+    {compact ? null : <PageHead id="environment" title="Environment" />}
+    {compact ? null : <Reveal className="eye-now"><OperatingAgent frame={lastFrame} readiness={eye.readiness} retry={eye.reload} /><WalkthroughBar siteId={siteId} walk={walk} labels={labels} follow={followWalk} onFollow={setFollowWalk} /></Reveal>}
 
-    <div className="fac3">
+    <div className={`fac3 ${compact ? "compact12" : ""}`}>
       <Reveal className={`viewer3 ${mission ? "mission-on" : ""}`}>
         <div className={`mission-host ${mission ? "on" : ""}`} ref={hostRef} role={mission ? "dialog" : undefined} aria-modal={mission ? true : undefined} aria-label={mission ? `Mission view, ${site.name}` : undefined}>
           <div className={`vw-box ${editMode ? "editing" : ""}`}>
@@ -128,7 +130,7 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
         </div>
       </Reveal>
 
-      <div className="fac-side">
+      {compact ? null : <div className="fac-side">
         <Reveal className="p3 place3" i={1}>
           <div className="p-head"><h3>Place pins</h3><OperatorTag /></div>
           <PlacePins siteId={siteId} assets={assets} editMode={editMode} setEditMode={m => { setEditMode(m); if (!m) setPending(null); }} pending={pending} clear={() => setPending(null)} onSaved={tag => { scene.reload(); toast(`Pin saved for ${tag}`); focusOn(tag, "highlight"); }} sceneReady={scene.readiness === "ready"} />
@@ -144,20 +146,20 @@ export default function EnvironmentPage({ siteId }: { siteId: SiteId3 }) {
             </li>)}</ul>}
           </State>
         </Reveal>
-      </div>
+      </div>}
     </div>
 
-    <EyeStrip frames={frames} readiness={eye.readiness} retry={eye.reload} />
-    <CaptureStrip siteId={siteId} results={vision.data?.results ?? []} />
+    {compact ? null : <EyeStrip frames={frames} readiness={eye.readiness} retry={eye.reload} />}
+    {compact ? null : <CaptureStrip siteId={siteId} results={vision.data?.results ?? []} />}
 
-    {site.valves || (vision.data?.results.length ?? 0) > 0 ? <Reveal className="p3 valves3">
+    {!compact && (site.valves || (vision.data?.results.length ?? 0) > 0) ? <Reveal className="p3 valves3">
       <div className="p-head"><h3>Valve inspection</h3><span className="meta">{vision.data?.ranAt ? new Date(vision.data.ranAt).toLocaleString() : ""}</span></div>
       <State remote={vision} what="the valve inspection" isEmpty={v => v.results.length === 0} empty="No valve inspection results for this site yet.">
         {v => <ValveTable results={v.results} onOpen={openAsset} />}
       </State>
     </Reveal> : null}
 
-    <p className="credit3 wide">3-D captures: {SITES3.map(s => s.author).join(", ")} (SuperSplat)</p>
+    {compact ? null : <p className="credit3 wide">3-D captures: {SITES3.map(s => s.author).join(", ")} (SuperSplat)</p>}
 
     {drawer ? <AssetDrawer siteId={siteId} tag={drawer} asset={drawerAsset} issues={(issues.data ?? []).filter(i => i.assetTag === drawer)} obligations={obligations} valve={vision.data?.results.find(v => v.assetTag === drawer) ?? null} onClose={() => setDrawer(null)} onFocus={a => focusOn(drawer, a)} /> : null}
   </div>;

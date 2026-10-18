@@ -36,6 +36,12 @@ def jpeg_bytes() -> bytes:
 
 JPEG = jpeg_bytes()
 
+def same_picture(data: bytes) -> bool:
+    """The attached frame is the labelled copy of the frame (labels are drawn on a copy): a JPEG of the same size."""
+    from PIL import Image
+    return data[:2] == b"\xff\xd8" and Image.open(io.BytesIO(data)).size == Image.open(io.BytesIO(JPEG)).size
+
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -171,7 +177,8 @@ def test_alert_workflow_steps_conversations_and_owner_contact_through_the_inspec
     assert "Shall we book the competent-person examiner for" in email["html"] and email["fromAgent"] == "bristol-compliance"
     assert "Open Government Licence v3.0" in email["html"] and "Shall we book" in email["text"]
     files = {a["filename"]: a for a in email["attachments"]}
-    assert files["evidence-pv-301-1.jpg"] == dict(filename="evidence-pv-301-1.jpg", contentType="image/jpeg", size=len(JPEG), inline=True, kind="frame")
+    assert files["evidence-pv-301-1.jpg"] == dict(filename="evidence-pv-301-1.jpg", contentType="image/jpeg", size=files["evidence-pv-301-1.jpg"]["size"], inline=True, kind="frame")
+    assert files["evidence-pv-301-1.jpg"]["size"] > 0  # the labelled copy of the frame
     assert files["uksi_2000_128.pdf"]["size"] == (PDF_ROOT / "regulations" / "uksi_2000_128.pdf").stat().st_size and not files["uksi_2000_128.pdf"]["inline"]
     assert files[f"evidence-{alert['id']}.txt"]["contentType"] == "text/plain"
     call = alert["call"]
@@ -214,7 +221,7 @@ def test_owner_alert_hands_its_email_and_call_over_only_when_every_gate_holds(cl
     by_name = {a["filename"]: a for a in item["attachments"]}
     frame = by_name["evidence-pv-301-1.jpg"]
     assert frame["content_type"] == "image/jpeg" and frame["content_id"] and f"cid:{frame['content_id']}" in item["html"]
-    assert base64.b64decode(frame["content_base64"]) == JPEG
+    assert same_picture(base64.b64decode(frame["content_base64"]))
     assert base64.b64decode(by_name["uksi_2000_128.pdf"]["content_base64"])[:4] == b"%PDF"
     assert base64.b64decode(by_name[f"evidence-{bristol['id']}.txt"]["content_base64"]).decode().startswith(f"Steward compliance evidence {bristol['id']}")
     [call] = owner_live.voice_calls.calls

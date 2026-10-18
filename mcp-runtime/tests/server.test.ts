@@ -107,13 +107,13 @@ test('real mcp-use and official clients interoperate, preserve scope, reject bad
     await official.connect(new StreamableHTTPClientTransport(new URL(listener.url), { requestInit: { headers: HARNESS } }));
     const connection = await mcpUse.connect('steward');
     const [officialTools, useTools] = await Promise.all([official.listTools(), connection.listTools()]);
-    assert.equal(officialTools.tools.length, 75, '70 tools plus Tool Forge (request_tool, list_forged_tools, call_forged_tool) and the owner tools (get_owner_notifications, get_compliance_snapshot); the eval harness sees list_scenarios and start_scenario, everyone else 73');
+    assert.equal(officialTools.tools.length, 78, '70 tools plus Tool Forge (request_tool, list_forged_tools, call_forged_tool), the owner tools (get_owner_notifications, get_compliance_snapshot) and the environment tools (get_environment, request_site_tour, get_site_tour); the eval harness sees list_scenarios and start_scenario, everyone else 76');
     assert.deepEqual(officialTools.tools.map(tool => tool.name).sort(), useTools.map(tool => tool.name).sort());
     for (const tool of officialTools.tools) {
       assert(tool.description && tool.description.length > 40);
       assert(tool.inputSchema && tool.outputSchema);
       const mutating = ['run_inspection', 'patrol', 'resolve', 'attest', 'subscribe', 'escalate', 'start_mission', 'focus_view', 'inspect_valves', 'request_document', 'start_scenario', 'assign_issue', 'decide', 'reconfigure_agent',
-        'eye_move', 'eye_turn', 'eye_go_to', 'eye_orbit', 'eye_mark', 'request_fix', 'propose_maintenance_window', 'request_tool', 'call_forged_tool'];
+        'eye_move', 'eye_turn', 'eye_go_to', 'eye_orbit', 'eye_mark', 'request_fix', 'propose_maintenance_window', 'request_tool', 'call_forged_tool', 'request_site_tour'];
       const leavesSystem = ['resolve', 'escalate', 'start_mission', 'request_document', 'start_scenario', 'decide', 'request_fix'];
       assert.equal(tool.annotations?.openWorldHint, leavesSystem.includes(tool.name), tool.name);
       assert.equal(tool.annotations?.readOnlyHint, !mutating.includes(tool.name), tool.name);

@@ -28,123 +28,20 @@ PROMPTS = BACKEND / "seed" / "synthetic" / "_prompts"
 MODEL = "claude-opus-5-5"
 sys.path.insert(0, str(BACKEND))
 
-from src.forge import OPS, TRANSFORMS  # noqa: E402  (the allow-list the backend enforces)
+# The prompt, the closed schema and the draft → definition mapping live in the backend now (live drafting runs there on its own,
+# REALITY-CONTRACT-6.md + the Oct 18 automatic pipeline); this script keeps the dry-run and the by-hand --live path.
+from src.forge_drafter import (FIELD_TYPES, SYSTEM, catalog_text, draft_schema, examples, request_body as _request_body,  # noqa: E402,F401
+                               to_definition)
 
-FIELD_TYPES = ["string", "number", "integer", "boolean", "string_or_null", "number_or_null", "rows"]
-SYSTEM = (
-    "You are a Steward site agent building a missing tool for yourself. Steward runs industrial and heritage sites from their 3D scans; "
-    "agents call tools that read the site's records. You write a DECLARATIVE recipe only: a list of steps, each one allow-listed op "
-    "(a Steward read or act) or a pure transform, with string arguments that are literals or templates. No code. Every op runs as you, "
-    "at your own site only; never name a site in an argument. Prefer read ops; a step that acts (eye moves, dispatch, raising issues, "
-    "moving the dashboard camera) makes the tool need the Operations Director's approval. Keep it to the fewest steps that answer the "
-    "task exactly, and write the description for another agent: when to call it, what it costs, what to do next."
-)
-
-
-def _row(props: dict, required: list[str]) -> dict:
-    return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
-
-
-NAME_VALUE = _row({"name": {"type": "string"}, "value": {"type": "string"}}, ["name", "value"])
-FIELD = _row({"name": {"type": "string"}, "type": {"type": "string", "enum": FIELD_TYPES}}, ["name", "type"])
-# Closed schema: every object sets additionalProperties false and every property is required (0 optional properties, within
-# the structured-output limit of 24); nullable values use a type list. No numeric or string constraints (not supported).
-DRAFT_SCHEMA = _row({
-    "name": {"type": "string"},
-    "description": {"type": "string"},
-    "gap": {"type": "string"},
-    "consideredTools": {"type": "array", "items": _row({"name": {"type": "string"}, "whyNot": {"type": "string"}}, ["name", "whyNot"])},
-    "inputs": {"type": "array", "items": _row({"name": {"type": "string"}, "type": {"type": "string", "enum": ["integer", "number", "string", "boolean"]},
-                                               "description": {"type": "string"}, "defaultValue": {"type": ["string", "null"]},
-                                               "required": {"type": "boolean"}}, ["name", "type", "description", "defaultValue", "required"])},
-    "steps": {"type": "array", "items": _row({"id": {"type": "string"}, "op": {"type": "string", "enum": sorted(OPS) + sorted(TRANSFORMS)},
-                                              "args": {"type": "array", "items": NAME_VALUE}}, ["id", "op", "args"])},
-    "outputShape": {"type": "string", "enum": ["list", "object"]},
-    "outputFields": {"type": "array", "items": FIELD},
-    "rowFields": {"type": "array", "items": FIELD},
-    "outputTemplate": {"type": "string"},
-    "testInput": {"type": "array", "items": NAME_VALUE},
-}, ["name", "description", "gap", "consideredTools", "inputs", "steps", "outputShape", "outputFields", "rowFields", "outputTemplate", "testInput"])
+DRAFT_SCHEMA = draft_schema()
 
 
 def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.casefold()).strip("-")[:48] or "task"
 
 
-def catalog_text() -> str:
-    lines = ["Ops (kind, args; required args first):"]
-    for op, (kind, _action, args, required, returns) in OPS.items():
-        lines.append(f"- {op} [{kind}] args {list(required)} + optional {[a for a in args if a not in required]} -> {returns}")
-    lines.append("Pure transforms: filter {from, where}; map {from, <field>: template or 'if: <condition>'}; group_count {from, by, max?, min?, sum?} -> "
-                 "[{<by>, count, first, max?, min?, sum?}]; sort {from, by, order: asc|desc}; take {from, count}; "
-                 "join_on {left, right, on: 'leftField=rightField', as, mode: inner|left}; concat {<any name>: list template, ...}.")
-    lines.append("Templates: {{input.<name>}}, {{steps.<id>[.<field>]}} (earlier steps only), {{item.<field>}} inside per-item arguments "
-                 "(map fields, filter where); pseudo-fields length, empty, first, last. A value that is exactly one template keeps its type.")
-    lines.append("Conditions: '<field> <op> <value>' terms joined by all 'and' or all 'or'; ops == != > >= < <= in contains exists missing; "
-                 "values: numbers, 'quoted text', true/false/null, [a, b], item.<field>.")
-    lines.append("outputTemplate: '{{steps.<id>}}' for a list, or a JSON text such as '{\"items\": {{steps.x}}, \"ready\": {{steps.y.empty}}}'.")
-    return "\n".join(lines)
-
-
-def examples() -> str:
-    seed = json.loads((BACKEND / "seed" / "synthetic" / "forged_tools.json").read_text())
-    return json.dumps([{k: r[k] for k in ("name", "task", "why", "description", "inputSchema", "steps", "output")} for r in seed["records"]],
-                      ensure_ascii=False, indent=1)
-
-
 def request_body(site: str, agent: str, task: str) -> dict:
-    prompt = (f"Site: {site}. You are {agent}. Task you were given and could not answer with your current tools:\n{task}\n\n"
-              f"{catalog_text()}\n\nTwo tools other agents built (the definition shape the backend stores; your answer uses the "
-              f"structured fields of the schema instead):\n{examples()}\n\n"
-              "Return the draft: a snake_case name, the description, the gap (why no existing tool answers the task), the tools you "
-              "considered with why not, the inputs, the steps, the output shape and fields, the output template and a test input.")
-    return dict(model=MODEL, max_tokens=16000, system=SYSTEM, messages=[{"role": "user", "content": prompt}],
-                output_config={"effort": "high", "format": {"type": "json_schema", "schema": DRAFT_SCHEMA}},
-                betas=["server-side-fallback-2026-07-01"], fallbacks="default")
-
-
-def _field_schema(kind: str, rows: dict | None = None) -> dict:
-    if kind == "string_or_null":
-        return {"type": ["string", "null"]}
-    if kind == "number_or_null":
-        return {"type": ["number", "null"]}
-    if kind == "rows":
-        return {"type": "array", "items": rows or _row({}, [])}
-    return {"type": kind}
-
-
-def _typed(value: str | None, kind: str):
-    if value is None:
-        return None
-    if kind == "integer":
-        return int(float(value))
-    if kind == "number":
-        return float(value)
-    if kind == "boolean":
-        return str(value).strip().lower() == "true"
-    return value
-
-
-def to_definition(draft: dict, task: str) -> dict:
-    """The structured draft → the ForgedTool definition the backend validates."""
-    properties, required = {}, []
-    for spec in draft["inputs"]:
-        prop = {"type": spec["type"], "description": spec["description"]}
-        if spec.get("defaultValue") is not None:
-            prop["default"] = _typed(spec["defaultValue"], spec["type"])
-        properties[spec["name"]] = prop
-        if spec.get("required"):
-            required.append(spec["name"])
-    rows = _row({f["name"]: _field_schema(f["type"]) for f in draft["rowFields"]}, [f["name"] for f in draft["rowFields"]])
-    fields = _row({f["name"]: _field_schema(f["type"], rows) for f in draft["outputFields"]}, [f["name"] for f in draft["outputFields"]])
-    schema = {"type": "array", "items": fields} if draft["outputShape"] == "list" else fields
-    types = {spec["name"]: spec["type"] for spec in draft["inputs"]}
-    return dict(name=draft["name"], description=draft["description"],
-                why=dict(gap=draft["gap"], consideredTools=draft["consideredTools"], task=task),
-                inputSchema={"type": "object", "properties": properties, "required": required, "additionalProperties": False},
-                steps=[dict(id=s["id"], op=s["op"], args={a["name"]: a["value"] for a in s["args"]}) for s in draft["steps"]],
-                output=dict(template=draft["outputTemplate"], schema=schema),
-                test=dict(input={t["name"]: _typed(t["value"], types.get(t["name"], "string")) for t in draft["testInput"]}))
+    return _request_body(site, agent, task, effort="high", model=MODEL)
 
 
 def write_dry_run(name: str, body: dict, context: dict) -> Path:

@@ -48,6 +48,7 @@ from .voice_calls import VoiceCalls
 from .chat_writer import ChatWriter
 from .attendance import AttendanceService
 from .inspections import InspectionService
+from .demo_sequence import LiveSequence
 from .agent_environment import AgentEnvironment
 from .site_tours import SiteTourService
 
@@ -134,6 +135,8 @@ class PropertyService:
         # The agent environment (one read of a site as an agent sees it) and the Site Inspector's tours for any agent or MCP client.
         self.agent_environment = AgentEnvironment(self)
         self.site_tours = SiteTourService(self)
+        # The owner's two-minute live sequence (demo_sequence.py): off unless STEWARD_LIVE_SEQUENCE=auto or POST /api/live-sequence.
+        self.sequence = LiveSequence(self)
         if start_workers:
             self.recover_jobs()
             self.bus.start()
@@ -149,8 +152,10 @@ class PropertyService:
             self.voice_calls.start()
             self.attendance.start()
             self.inspections.start()
+            self.sequence.start()
 
     def close(self):
+        self.sequence.close()
         self.site_tours.close()
         self.chats.close()
         self.inspections.close()

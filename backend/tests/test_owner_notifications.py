@@ -37,6 +37,12 @@ def jpeg_bytes() -> bytes:
 
 JPEG = jpeg_bytes()
 
+def same_picture(data: bytes) -> bool:
+    """The attached frame is the labelled copy of the frame (labels are drawn on a copy): a JPEG of the same size."""
+    from PIL import Image
+    return data[:2] == b"\xff\xd8" and Image.open(io.BytesIO(data)).size == Image.open(io.BytesIO(JPEG)).size
+
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -461,7 +467,7 @@ def test_agents_report_from_their_own_identities_only_with_news_and_inside_the_c
                                                                                                     "(PV-301: pressure vessel examination overdue by 6 days)")
     frames = [a for a in engineer["attachments"] if a["content_type"] == "image/jpeg"]
     assert frames and all(a.get("content_id") and f"cid:{a['content_id']}" in engineer["html"] for a in frames)
-    assert base64.b64decode(frames[0]["content_base64"]) == JPEG
+    assert same_picture(base64.b64decode(frames[0]["content_base64"]))
     # the same agents have nothing new, and the walk again is capped for the engineer today (1 a day)
     walk(client, BR, ["PV-301"])
     third = owner.tick(t1 + timedelta(minutes=100))

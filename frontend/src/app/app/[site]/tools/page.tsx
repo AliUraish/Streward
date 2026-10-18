@@ -1,7 +1,12 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import ToolsPage from "@/components/dash3/tools";
+import { isSite3 } from "@/lib/sites-3";
 
-/* The tools live on the one Tools page for all three sites. */
+/* The environment's own Tools page (owner, Oct 18): the same page as /app/tools, showing only this site. */
+export const metadata: Metadata = { title: "Tools" };
 export default async function Page({ params }: { params: Promise<{ site: string }> }) {
   const { site } = await params;
-  redirect(`/app/tools?siteId=${encodeURIComponent(site)}`);
+  if (!isSite3(site)) notFound();
+  return <ToolsPage siteId={site} />;
 }

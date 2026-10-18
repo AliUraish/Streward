@@ -13,27 +13,25 @@ Working doc for the hackathon demo video (submission Oct 18 2026, 10:00). Ali ex
 
 Board style decision: blackboard (dark) matches the dashboard's dark UI; the same scene renders as a whiteboard with `KHAN_THEME=light` if the final look needs it.
 
-## Proposed structure (adjust after the recording)
+## Proposed structure (rewritten Oct 18 against the live dashboard)
 
-| # | Section | Visual | Board or screen |
+| # | Section | Screen | Board |
 | --- | --- | --- | --- |
-| 1 | Hook: the problem. An agent asks "is P-101 commissioned?" and today gets a made-up answer. | Board | Board: a box "agent", an arrow to "plant", a "?" and the word "guess" crossed out. |
-| 2 | What Steward is: a reality layer. Three verbs: resolve, attest, check. Four answer states: known, stale, unknown, conflict. | Board | Board: three verbs as three ovals, the four states listed under resolve. |
-| 3 | Who the agents are: Operator, Atlas, Warden, Runner. Authority is enforced in code. | Board | Board: a four-level ladder, one line per level of what it may and may not do. |
-| 4 | Live demo: `start_mission clear_for_restart` from Claude Code through the Manufact-hosted MCP. | Screen | Screen, with a small caption strip per step. |
-| 5 | Inkbox: Runner texts the technician the task card, wrong photo rejected, right photo accepted, escalation call. | Screen + board | Draw-over-UI: ring the SMS thread and the rejection reason "tag plate reads P-102, expected P-101". |
-| 6 | Verification: six checks (scope, identity, geometry, plausibility, time, integrity), Ed25519 signature, `check` returns `valid: true`. | Board | Board: six checkboxes ticked one by one, then a signature line. |
-| 7 | Supabase: `select verify_ledger();` returns ok over 6,000+ signed rows; an UPDATE on `attestations` is refused by the append-only trigger; Storage shows the walkthrough frames. | Screen | Draw-over-UI: ring `ok: true`, the red refusal, and the `signature` / `prev_hash` / `row_hash` columns. |
-| 8 | Manufact: Sessions replay of `initialize` / `tools/list` / `tools/call`, publish score. | Screen | Draw-over-UI: ring the session and the tool call. |
-| 9 | Armature: scored session, eval suite "Steward demo workflow" with judge marks. | Screen | Draw-over-UI: ring the score. |
-| 10 | Close: honesty line (fictional plant, rule-based verification, no certification) and the one-line pitch. | Board | Board: the pitch written big. |
+| 1 | Hook: an agent asks "is the sump about to overflow?" and gets a guess. | Home page hero. | Board 1. |
+| 2 | What Steward is: three scanned factories, three verbs, four states. | Overview page, three site cards. | Board 2. |
+| 3 | The agent eye: walkthrough, green and blue labels. | Bristol Environment page, "Agent's view" and "3-D scan". | Board 3. |
+| 4 | The team: 17 agents, authority in code and Postgres. | Agents map. | Board 4. |
+| 5 | Live: Claude Code on the hosted MCP, `get_overview`, `eye_go_to bristol-pumps SU-201`, start the Bristol sump scenario. | Terminal plus dashboard. | Captions only. |
+| 6 | The meeting and the dispatch SMS; wrong photo rejected, right photo accepted. | Conversations page, phone. | Board 5 after the acceptance. |
+| 7 | Compliance page: the regulation, the PDF, "Ask the agents to fix it". | Bristol Compliance tab. | Draw-over: ring the regulation and the button. |
+| 8 | Inspection chain: owner email with the lawyer in CC, contractor call transcript, booking. | Notifications and Phone calls. | Board 6. |
+| 9 | wait_for and tokens avoided. | Evals page. | Board 7. |
+| 10 | Tool Forge (optional). | Tools page. | Board 8. |
+| 11 | Self-optimisation (optional). | Evals before/after. | Board 9. |
+| 12 | Sponsors: Inkbox console, Manufact sessions, Supabase tables, Armature sessions and evals. | Each dashboard. | One board each. |
+| 13 | Close. | Home page footer. | Close board. |
 
-Per-sponsor "how we used it" boards (one each, 15 to 25 s), to insert where Ali mentions the product:
-
-- **Inkbox**: one identity, three channels (SMS, email, call), signed webhook back, tunnel as the public URL. Draw: identity in the middle, channels fanning out to a phone, webhook arrow back, tunnel arrow to the laptop.
-- **Manufact**: laptop backend, tunnel, hosted MCP on Manufact, Claude Code client. Draw: four boxes left to right with the gateway in the middle labelled "Sessions, Analytics, Publish checks".
-- **Supabase**: an append-only, hash-chained ledger whose Ed25519 signatures Postgres verifies itself (pgsodium); every agent a Supabase Auth user under row-level security; Inkbox replies through an Edge Function into a pgmq queue; eye frames in private Storage behind signed URLs; private Realtime channels for the live HUD. Draw: signed reading into a chain of blocks with a padlock; three boxes underneath (Auth + RLS, Edge Function + queue, Storage); a browser labelled Realtime HUD.
-- **Armature**: SDK wraps the MCP, sessions scored, eval suite runs a tester agent. Draw: the MCP box wrapped by a ring labelled "analytics", a tester agent arrow in, a 0 to 5 score out.
+Facts the boards rely on (checked Oct 18 on the running app): sites myer-plant, bristol-pumps, tomioka-mill; 17 agents plus the Dispatch Line; 76 MCP tools; hosted MCP at dark-wave-okfom.run.mcp-use.com; tunnel steward-atlas.inkboxwire.com; six checks scope, identity, geometry, plausibility, time, integrity; Evals page shows 362.8 min held by wait_for and 268,450 tokens avoided; efficiency eval 7.7x fewer tokens; published forged tool forge_pump_spec_breaches.
 
 ## Length target
 

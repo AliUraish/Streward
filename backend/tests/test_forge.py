@@ -20,6 +20,7 @@ ROW = lambda props: {"type": "object", "properties": props, "required": list(pro
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("STEWARD_MODEL_PROVIDER", "local")
     monkeypatch.setenv("STEWARD_A2A_TRANSPORT", "local")
+    monkeypatch.setenv("STEWARD_FORGE_AUTO", "false")  # these tests walk the lifecycle by hand; test_forge_auto.py covers the pipeline
     with TestClient(create_app(tmp_path / "data", start_workers=False)) as client:
         yield client
 

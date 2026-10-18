@@ -46,7 +46,7 @@ function followWords(f: CallFollowUp, c: PhoneCall): { text: string; href: strin
     case "email_file": return { text: `Email to ${who}${cc}${f.topic ? `: ${f.topic}` : ""}`, href: "/app/notifications#outbox", label: "Outbox" };
     case "book_slot": {
       const slot = optionLabel(c, c.outcome?.chosenOptionId) ?? f.details;
-      return { text: `Booked${slot ? `: ${slot}` : ""}`, href: c.siteId && isSite3(c.siteId) ? `/app/${c.siteId}/maintenance` : null, label: "Maintenance" };
+      return { text: `Booked${slot ? `: ${slot}` : ""}`, href: c.siteId && isSite3(c.siteId) ? `/app/${c.siteId}#maintenance` : null, label: "Maintenance" };
     }
     case "counsel_call": return { text: `Compliance Counsel calls ${who}${f.topic ? ` about ${f.topic}` : ""}`, href: f.ref ? `/app/conversations?call=${encodeURIComponent(f.ref)}` : null, label: f.ref ? "The call" : null };
     case "callback": return { text: `Calls ${who} back${f.details ? `, ${f.details}` : ""}`, href: null, label: null };

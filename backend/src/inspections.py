@@ -44,6 +44,7 @@ from .errors import RealityError
 from .maintenance_planner import LEAD_HOURS, OPEN, WORK_KINDS, city, is_working_day, obligation_kind, slot_on, tz_for
 from .patrol import COMPLIANCE_ISSUE_KINDS, reading_words
 from .sites import SITE_IDS
+from .frame_labels import labelled_bytes
 from .store import now, uid
 from .verify import iso, parse_time
 
@@ -255,6 +256,9 @@ class InspectionService:
         self.close_stale(moment)
         if not self.switched_on():
             self.state, self.reason = "off", "STEWARD_INSPECTIONS=false."
+            return None
+        sequence = getattr(self.service, "sequence", None)
+        if sequence is not None and sequence.active():  # the live sequence has the line and the inbox for now
             return None
         due = parse_time(self.store.meta(NEXT_META))
         if due is None:
@@ -731,7 +735,7 @@ class InspectionService:
         attachments, notes = [], []
         for index, stop in enumerate(stops[:MAX_FRAMES], 1):
             try:
-                data = self.service.eye.frame_path(stop["frameId"]).read_bytes()
+                data = labelled_bytes(self.service, stop["frameId"])
             except (RealityError, OSError):
                 continue
             cid = f"{prefix}-{index}-{record['id'][-8:]}"
@@ -996,7 +1000,9 @@ class InspectionService:
             return window if window and window.get("status") in OPEN else None
         return next((w for w in windows if w.get("obligationId") == obligation_id and w.get("status") in OPEN), None)
 
-    def step_contractor_call(self, record: dict, realtime: bool) -> None:
+    def step_contractor_call(self, record: dict, realtime: bool, priority: int = 3, not_before: str | None = None,
+                             extra_context: dict | None = None) -> None:
+        """`priority`, `not_before` and `extra_context` let the live sequence (demo_sequence.py) place this call first, on time."""
         c = self.context(record)
         site = c["site"]
         existing = self.covering_window(record)
@@ -1026,9 +1032,9 @@ class InspectionService:
             call = self.service.voice_calls.request(purpose="contractor_schedule", caller=c["manager"], callee_role="contractor", callee_name=c["contractor"],
                                                     site_id=site, goal=goal, facts=facts, options=[dict(id=s["id"], label=s["label"]) for s in slots],
                                                     can_do=["book_slot", "email_file", "counsel_call", "note"], file=file,
-                                                    context=dict(inspectionId=record["id"], slots=slots, contractor=c["contractor"]),
+                                                    context=dict(inspectionId=record["id"], slots=slots, contractor=c["contractor"], **(extra_context or {})),
                                                     refs=dict(inspectionId=record["id"], issueId=record.get("issueId"), obligationId=c["alert"].get("obligationId")),
-                                                    priority=3, dedupe_key=f"inspection:{record['id']}:contractor")
+                                                    priority=priority, dedupe_key=f"inspection:{record['id']}:contractor", not_before=not_before)
         except Exception as error:
             reason = f"{type(error).__name__}: {str(error)[:160]}"
             self._step(record["id"], "contractor_call", f"{c['manager_name']} could not place the call to {c['contractor']} ({reason}).", mode="failed")
@@ -1039,7 +1045,7 @@ class InspectionService:
         status = call.get("status") or "queued"
         self._step(record["id"], "contractor_call", f"{c['manager_name']} is calling {c['contractor']} ({status}) to agree a slot: "
                                                     + "; ".join(s["label"] for s in slots) + ".", callId=call["id"], mode=status)
-        if status in NOT_CALLED:
+        if status in NOT_CALLED and not (extra_context or {}).get("liveSequenceRunId"):  # the live sequence books through its own handler
             self.finish_booking(record["id"], dict(call, attempt=99, outcome=call.get("outcome") or dict(result=status, decision="", summary=call.get("reason") or "",
                                                                                                          chosenOptionId=None, followUps=[])))
 
@@ -1050,6 +1056,9 @@ class InspectionService:
         inspection_id = (call.get("refs") or {}).get("inspectionId") or (call.get("context") or {}).get("inspectionId")
         if not inspection_id or not self.store.get("inspection", inspection_id):
             return None
+        sequence = getattr(self.service, "sequence", None)
+        if sequence is not None and (call.get("context") or {}).get("liveSequenceRunId"):
+            return sequence.on_contractor_call(call, inspection_id)
         outcome = call.get("outcome") or {}
         result = outcome.get("result") or call.get("status") or "undecided"
         if result in ("voicemail", "no_answer") and int(call.get("attempt") or 1) <= self.call_retries():
@@ -1058,7 +1067,8 @@ class InspectionService:
             return dict(handled=[], notes=[note], refs={})
         return self.finish_booking(inspection_id, call)
 
-    def finish_booking(self, inspection_id: str, call: dict, timed_out: bool = False) -> dict | None:
+    def finish_booking(self, inspection_id: str, call: dict, timed_out: bool = False, confirm: bool = True) -> dict | None:
+        """Book (or move) the window, tell the team and, unless `confirm` is false (the live sequence sends it later), confirm."""
         with self.lock:
             record = self.get(inspection_id)
             if any(step["name"] == "booking" for step in record["steps"]):
@@ -1076,7 +1086,7 @@ class InspectionService:
             raise RealityError("No slot to book.", "INVALID_REQUEST", "The site has no working-hours slot in the next 60 days.")
         window, action = self.book(record, c, slot, agreed, call)
         conversation_ids = self.tell_team(record, c, window, agreed)
-        item_id, mode = self.confirm(record, c, window, slot, agreed, result, call)
+        item_id, mode = self.confirm(record, c, window, slot, agreed, result, call) if confirm else (None, "later")
         self._update(inspection_id, windowId=window["id"], conversationIds=conversation_ids, outboxIds=[item_id] if item_id else [],
                      booking=dict(windowId=window["id"], slotId=slot["id"], startAt=window["startAt"], label=slot["label"].replace(" (currently booked)", ""),
                                   agreed=agreed, action=action, callResult=result, callId=call.get("id"), confirmationOutboxId=item_id, at=now()))
@@ -1166,7 +1176,8 @@ class InspectionService:
         self.service.maintenance._put(window)
         return ids
 
-    def confirm(self, record: dict, c: dict, window: dict, slot: dict, agreed: bool, result: str, call: dict) -> tuple[str | None, str]:
+    def confirm(self, record: dict, c: dict, window: dict, slot: dict, agreed: bool, result: str, call: dict,
+                attachments: list[dict] | None = None) -> tuple[str | None, str]:
         site = c["site"]
         when = f"{window['localStart']}–{window['localEnd']} {city(site)} time"
         if agreed:
@@ -1192,8 +1203,8 @@ class InspectionService:
                 "<p><b>What the work must deliver.</b></p><ul style=\"padding-left:18px\">" + "".join(f"<li>{esc(item)}</li>" for item in c["requirements"]) + "</ul>"
                 f"<p>Compliance Counsel's email has the legal requirements and the official links.</p><p>{esc(ask)}</p><p>{esc(c['manager_name'])}</p></div>")
         try:
-            item = self.service.outbox.email(sender=c["manager"], to_role="contractor", subject=subject[:300], text=text, html=html, attachments=[],
-                                             cc=["owner", COUNSEL], site_id=site, purpose="inspection_booking",
+            item = self.service.outbox.email(sender=c["manager"], to_role="contractor", subject=subject[:300], text=text, html=html,
+                                             attachments=list(attachments or []), cc=["owner", COUNSEL], site_id=site, purpose="inspection_booking",
                                              refs=dict(inspectionId=record["id"], windowId=window["id"], callId=call.get("id")),
                                              dedupe_key=f"inspection:{record['id']}:booking", priority=4)
             return item.get("id"), item.get("status") or "queued"

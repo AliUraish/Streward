@@ -16,9 +16,11 @@ import { SITES3, rn, site3, type Site3 } from "@/lib/sites-3";
 import type { LiveKpis, SiteOverview, SiteSummary } from "@/lib/types-3";
 import { callStatusWord, purposeWord, roleWord } from "@/lib/api-10";
 import AgentView from "./agent-view";
+import LogsPage from "./logs";
 import { ConnectPanel, SiteAgentEnvironment, SiteTours } from "./agent-env";
 import { LatestInspection } from "./inspections";
 import { Kpis, totalOf } from "./kpis";
+import { averageOf } from "./portfolio";
 import { useShared } from "./shell";
 import { Btn, PageHead, Reveal, SiteTitle, State, ago } from "./ui3";
 
@@ -32,6 +34,8 @@ function HumanOverview() {
   const summary = useMetricsSummary();
   const live = useMetricsLive();
   const liveAverage = useMemo<LiveKpis | null>(() => live.data ? { ...live.data.average, checkedIn: totalOf(live.data.sites.map(x => x.kpis.checkedIn)) } : null, [live.data]);
+  const covered = summary.data?.sites.map(x => x.siteId) ?? [];
+  const average = covered.length === SITES3.length ? summary.data?.average ?? averageOf(summary.data?.sites ?? []) : averageOf(summary.data?.sites ?? []) ?? summary.data?.average ?? null;
   return <div className="page3">
     <PageHead id="overview" title="Overview" sub="Three environments, their agent teams and what happened last, live." />
     <div className="envs11">
@@ -39,19 +43,16 @@ function HumanOverview() {
     </div>
     <Reveal as="section" className="p3 avg3" i={1} aria-labelledby="avg-h">
       <div className="p-head"><h2 id="avg-h">All three together</h2>{live.data ? <span className="meta">live, every 5 s</span> : null}</div>
-      <Kpis s={summary.data?.average ?? null} live={liveAverage} liveAt={live.data?.at} remote={summary as Remote<unknown>} />
+      <Kpis s={average} live={liveAverage} liveAt={live.data?.at} remote={summary as Remote<unknown>} />
     </Reveal>
-    <div className="grid11">
-      <LiveLog i={2} />
-      <div className="page3" style={{ gap: 8 }}>
-        <LatestCalls i={2} />
-        <LatestChats i={3} />
-      </div>
-    </div>
-    <div className="grid11">
-      <div className="page3" style={{ gap: 8 }}>{SITES3.map((s, i) => <LatestInspection key={s.id} siteId={s.id} compact i={3 + i} />)}</div>
+    {/* One column, no sidebar (owner, Oct 18): the log across the width, then three equal cards. */}
+    <LiveLog i={2} />
+    <div className="envs11">
+      <LatestCalls i={2} />
+      <LatestChats i={3} />
       <UpcomingMaintenance i={4} />
     </div>
+    <div className="envs11">{SITES3.map((s, i) => <LatestInspection key={s.id} siteId={s.id} compact i={3 + i} title={`Latest inspection, ${s.short}`} />)}</div>
   </div>;
 }
 
@@ -93,12 +94,22 @@ const clock = (at: string) => { const d = new Date(at); return Number.isNaN(d.ge
 
 /* What happened last, across the sites (or at one site), newest first, without the raw sensor feed. */
 export function LiveLog({ siteId, i = 0, lines = 12 }: { siteId?: string; i?: number; lines?: number }) {
+  const { overview } = useShared();
   const logs = useLogs(siteId ? 80 : 50, 5_000);
   const [shown, setShown] = useState(lines);
+  const [all, setAll] = useState(false);
   const items = (logs.data ?? []).filter(e => !READING_TYPES.has(e.type) && (!siteId || e.siteId === siteId));
-  return <Reveal as="section" className="p3" i={i} aria-labelledby={`log-${siteId ?? "all"}-h`} id="logs">
-    <div className="p-head"><h2 id={`log-${siteId ?? "all"}-h`}>What happened last</h2>{logs.data ? <span className="meta">live, every 5 s</span> : null}</div>
-    <State remote={logs} what="the log" isEmpty={() => items.length === 0} empty="Nothing logged yet.">
+  const hid = `log-${siteId ?? "all"}-h`;
+  /* "See all": the full log with its filters and search, in place. */
+  if (all) return <section className="logs11-all" aria-labelledby={hid} id="logs">
+    <div className="p-head"><h2 id={hid}>What happened last</h2><button type="button" className="lnk" onClick={() => setAll(false)}>Show less</button></div>
+    <div className="embed11"><LogsPage initialSite={siteId ?? ""} /></div>
+  </section>;
+  /* The site log reads every site's changes and keeps going when one fails, so "nothing yet" waits for the backend. */
+  const offline = !items.length && overview.readiness !== "ready";
+  return <Reveal as="section" className="p3" i={i} aria-labelledby={hid} id="logs">
+    <div className="p-head"><h2 id={hid}>What happened last</h2><span className="p-tools11">{logs.data && !offline ? <span className="meta">live, every 5 s</span> : null}<button type="button" className="lnk" onClick={() => setAll(true)}>See all</button></span></div>
+    {offline ? <div className="st3 not-ready" role="status"><strong>Not available yet</strong><span>The log appears when the sites report.</span></div> : <State remote={logs} what="the log" isEmpty={() => items.length === 0} empty="Nothing logged yet.">
       {() => <>
         <ol className={`loglist11 ${siteId ? "site" : ""}`} role="log" aria-live="off">{items.slice(0, shown).map(e => { const href = logHref(e); return <li key={e.id}>
           <span className="tm">{clock(e.at)}</span>
@@ -108,7 +119,7 @@ export function LiveLog({ siteId, i = 0, lines = 12 }: { siteId?: string; i?: nu
         </li>; })}</ol>
         {items.length > shown ? <div style={{ marginTop: 10 }}><Btn small quiet onClick={() => setShown(n => n + 30)}>Show more</Btn></div> : null}
       </>}
-    </State>
+    </State>}
   </Reveal>;
 }
 

@@ -14,7 +14,8 @@
 .sitecrumb11 { position: relative; }
 .sitecrumb11 > button { display: inline-flex; align-items: center; gap: 6px; font-size: var(--f-t); color: var(--ink); padding: 4px 6px; margin: -4px -6px; }
 .sitecrumb11 > button:hover { background: var(--s2); }
-.sitecrumb11 .chev { font-size: 11px; color: var(--muted); }
+.sitecrumb11 .chev { color: var(--muted); transition: transform var(--t-ui) var(--ease-out); }
+.sitecrumb11 > button[aria-expanded="true"] .chev { transform: rotate(180deg); }
 .menu11 { position: absolute; top: calc(100% + 8px); left: -6px; z-index: 60; min-width: 280px; list-style: none; margin: 0; padding: 4px; background: var(--s2); box-shadow: 0 12px 32px rgba(0, 0, 0, .5); }
 .menu11 a { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
 .menu11 a:hover, .menu11 a[aria-current="page"] { background: var(--s3); }
@@ -34,10 +35,6 @@
 .bell-list .bs { font-size: var(--f-s); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bell-list .bm, .bell-note { font-size: var(--f-s); color: var(--muted); }
 .main11 { flex: 1; width: 100%; max-width: 1480px; margin: 0 auto; }
-.foot11 { padding: 16px clamp(16px, 2.6vw, 40px) 28px; }
-.foot11 nav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--f-s); }
-.foot11 a { color: var(--muted); }
-.foot11 a:hover, .foot11 a[aria-current="page"] { color: var(--ink); }
 
 /* ---- the overview's three environments ---- */
 .envs11 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -55,6 +52,10 @@
 .env11 .open { margin-top: auto; font-size: var(--f-s); color: var(--ink-2); }
 .grid11 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .grid11 > * { min-width: 0; }
+.grid11 { align-items: start; }
+.col11 { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.p-tools11 { display: inline-flex; align-items: baseline; gap: 14px; }
+.logs11-all > .p-head { padding: 0 2px; }
 .rows11 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rows11 li > a, .rows11 li > div { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; background: var(--s2); }
 .rows11 li > a:hover { background: var(--s3); }
@@ -77,7 +78,9 @@
 .win11 .side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .win11 .side .p3 { padding: 16px; }
 .winbar11 { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 8px; }
-.winbar11 .now { display: flex; align-items: center; gap: 8px; font-size: var(--f-t); min-width: 0; }
+.winbar11 .now { display: block; flex: 1 1 420px; font-size: var(--f-t); line-height: 1.45; min-width: 0; }
+.winbar11 .now .sig { display: inline-block; margin-right: 8px; vertical-align: middle; }
+.winbar11 .now .r3 { display: block; margin-top: 2px; font-size: var(--f-s); }
 .chip11 { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: var(--f-s); background: var(--s3); color: var(--ink); white-space: nowrap; }
 .chip11.on { background: #ffffff; color: #000000; }
 .lbl11 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow-y: auto; }
@@ -93,9 +96,9 @@
 .tabs11 button { padding: 8px 14px; font-size: var(--f-t); color: var(--muted); }
 .tabs11 button:hover { color: var(--ink); }
 .tabs11 button[aria-selected="true"] { background: #ffffff; color: #000000; }
-.embed11 > .page3 > .sh3.page .say { display: none; }
-.embed11 > .page3 > .sh3.page:not(:has(.tools)) { display: none; }
-.embed11 > .page3 > .sitehd7 { display: none; }
+.embed11 .page3 > .sh3.page .say { display: none; }
+.embed11 .page3 > .sh3.page:not(:has(.tools)) { display: none; }
+.embed11 .page3 > .sitehd7 { display: none; }
 .marks11 { position: absolute; inset: 0; pointer-events: none; }
 .marks11 .mk { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .marks11 .mk i { width: 14px; height: 14px; border: 2px solid currentColor; display: block; }
@@ -135,3 +138,98 @@
   .loglist11 .st, .loglist11 .ty { display: none; }
   .env11 dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+
+/* The left sidebar in human mode (owner, Oct 18: "these options in a left sidebar, in the overview for all sites; hovering
+   any option makes that option pixelate", "it should pixelate and be white, toggleable with an options button at the bottom
+   left, and the options big"): Overview, the three environments, the open environment's sections and the all-sites pages.
+   On hover an option fills with white squares one by one in a shuffled order until it is white with black text, and empties
+   the same way when the pointer leaves. */
+.frame11 { flex: 1; display: grid; grid-template-columns: 300px minmax(0, 1fr); align-items: start; overflow-x: clip; transition: grid-template-columns 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.frame11.closed { grid-template-columns: 0px minmax(0, 1fr); }
+.frame11.agent { grid-template-columns: minmax(0, 1fr); transition: none; }
+.frame11 > .main11 { min-width: 0; }
+.nav11 { position: sticky; top: 60px; width: 300px; height: calc(100dvh - 60px); overflow-y: auto; padding: 16px 12px 96px; background: var(--s1); scrollbar-width: thin;
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease, visibility 0s linear 0s; }
+.frame11.closed .nav11 { transform: translateX(-100%); opacity: 0; visibility: hidden; transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease, visibility 0s linear 360ms; }
+.nav11 h4 { margin: 22px 14px 8px; font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--before); }
+.nav11 h4:first-child { margin-top: 6px; }
+.nav11 ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.nav11 a, .opt11 { position: relative; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; overflow: hidden; font-size: 18px; font-weight: 500; line-height: 1.25; color: var(--ink); background: transparent; }
+.nav11 a .lbl, .opt11 .lbl { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 0s linear 120ms; }
+.nav11 a .dot { position: relative; z-index: 1; flex: none; width: 8px; height: 8px; background: var(--before); transition: background-color 0s linear 120ms; }
+.nav11 a[aria-current] { background: var(--s3); }
+.nav11 a[aria-current] .dot { background: var(--accent); }
+.nav11 .sub a { min-height: 44px; padding-left: 36px; font-size: 16px; color: var(--muted); }
+.nav11 .sub a[aria-current] { color: var(--ink); }
+.px11 { position: absolute; inset: 0; z-index: 0; display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); pointer-events: none; }
+.px11 i { background: #ffffff; opacity: 0; transition: opacity 0s linear; }
+.nav11 a:hover .px11 i, .nav11 a:focus-visible .px11 i, .opt11:hover .px11 i, .opt11:focus-visible .px11 i { opacity: 1; }
+.nav11 a:hover .lbl, .nav11 a:focus-visible .lbl, .nav11 .sub a:hover .lbl, .opt11:hover .lbl, .opt11:focus-visible .lbl { color: #000000; }
+.nav11 a:hover .dot, .nav11 a:focus-visible .dot { background: #000000; }
+@media (prefers-reduced-motion: reduce) { .px11 i { transition: none !important; } .nav11 a .lbl, .opt11 .lbl, .nav11 a .dot { transition: none; } }
+/* The sidebar button, fixed at the bottom left of the screen: always the three-line menu icon; while the sidebar is open it
+   widens with the sidebar and reads "Options", and it shrinks back to the icon when the sidebar closes. */
+.opt11 { position: fixed; left: 16px; bottom: 16px; z-index: 60; display: flex; align-items: center; gap: 14px; width: 56px; height: 56px; min-height: 56px; padding: 0 16px; border: 0;
+  cursor: pointer; overflow: hidden; background: var(--s3); color: var(--ink); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); transition: width 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.opt11.open { width: 268px; }
+.opt11 .burger { position: relative; z-index: 1; flex: none; display: block; width: 24px; height: 18px; }
+.opt11 .burger i { position: absolute; left: 0; width: 24px; height: 2px; background: currentColor; transition: background-color 0s linear 120ms; }
+.opt11 .burger i:nth-child(1) { top: 0; }
+.opt11 .burger i:nth-child(2) { top: 8px; }
+.opt11 .burger i:nth-child(3) { top: 16px; }
+.opt11 .lbl { opacity: 0; transform: translateX(-8px); font-size: 18px; font-weight: 500; white-space: nowrap;
+  transition: opacity 160ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1), color 0s linear 120ms; }
+.opt11.open .lbl { opacity: 1; transform: none; transition: opacity 220ms ease 140ms, transform 300ms cubic-bezier(0.22, 1, 0.36, 1) 100ms, color 0s linear 120ms; }
+.opt11:hover .burger i, .opt11:focus-visible .burger i { background: #000000; }
+@media (prefers-reduced-motion: reduce) { .frame11, .nav11, .frame11.closed .nav11, .opt11, .opt11 .lbl, .opt11.open .lbl, .opt11 .burger i { transition: none; } }
+@media (max-width: 900px) {
+  .frame11 { grid-template-columns: minmax(0, 1fr); }
+  .nav11 { position: fixed; left: 0; top: 60px; bottom: 0; z-index: 55; width: min(320px, 86vw); height: auto; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.55); }
+}
+
+.ci-taker { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: var(--f-s); color: var(--muted); }
+.ci-taker strong { color: var(--ink); }
+
+/* An environment's Today page (owner, Oct 18): the agent's view and the 3-D scan side by side as the page opens, the walk and
+   what the agent marked underneath. */
+.duo12 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pane12 { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pane12 > figcaption { font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--before); }
+.pane12 .eyebox { position: relative; background: #000000; min-width: 0; }
+.pane12 .eyebox .eye3 { margin: 0; }
+.pane12 .eyebox .eye3 .frame { aspect-ratio: 16 / 10; }
+.scan12 .page3 { gap: 0; }
+.scan12 .fac3.compact12 { display: block; }
+.scan12 .viewer3 { margin: 0; }
+.scan12 .vw-box { aspect-ratio: 16 / 10; height: auto; min-height: 0; }
+.below12 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px; margin-top: 8px; }
+.below12 > .p3:only-child { grid-column: 1 / -1; }
+.below12 .lbl11 { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 20px; }
+@media (max-width: 1100px) { .duo12, .below12 { grid-template-columns: minmax(0, 1fr); } }
+
+/* Evals: model usage today and the latest tool calls (usage-live.tsx). */
+.mu12 { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.mu12 li { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; background: var(--s2); }
+.mu12 b { font-size: var(--f-l); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.mu12 span { font-size: var(--f-s); color: var(--muted); }
+.tbl12 { width: 100%; border-collapse: collapse; font-size: var(--f-s); }
+.tbl12 th, .tbl12 td { padding: 8px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--s3); font-variant-numeric: tabular-nums; }
+.tbl12 thead th { font-weight: 500; color: var(--muted); }
+.tbl12 tbody th { font-weight: 500; }
+.cap12 { display: inline-block; width: 64px; height: 6px; margin-right: 10px; vertical-align: middle; background: var(--s3); }
+.cap12 i { display: block; height: 100%; background: var(--accent); }
+.bad12 { color: var(--issue); }
+.top12 { margin: 0 0 10px; }
+@media (max-width: 900px) { .mu12 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Agent mode: the minimal guide (agent-guide.tsx). */
+.guide12 { max-width: 1100px; }
+.guide12 h2 { margin: 0 0 10px; font-size: var(--f-m); }
+.guide12 h3 { margin: 14px 0 6px; font-size: var(--f-s); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.guide12 p { margin: 0 0 8px; }
+.g12 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.g12 code { font-size: 13px; }
+.t12 li { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 4px 16px; align-items: baseline; }
+.t12 li span { color: var(--muted); font-size: var(--f-s); }
+@media (max-width: 700px) { .t12 li { grid-template-columns: minmax(0, 1fr); } }

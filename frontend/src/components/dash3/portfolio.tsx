@@ -38,7 +38,7 @@ export default function PortfolioPage() {
 }
 
 /* The averages when the backend's own row is missing or covers fewer sites than the page shows. */
-function averageOf(sites: SiteSummary[]): SiteSummary | null {
+export function averageOf(sites: SiteSummary[]): SiteSummary | null {
   if (sites.length < 2) return null;
   const avg = (k: keyof SiteSummary) => { const v = sites.map(s => s[k]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const sum = (k: keyof SiteSummary) => { const v = sites.map(s => s[k]).filter((x): x is number => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) : null; };

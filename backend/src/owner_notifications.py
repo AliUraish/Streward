@@ -72,6 +72,7 @@ from .errors import RealityError
 from .providers import EMAIL_RE, PHONE_RE, clean_env, owner_channel_blockers
 from .real_only import hidden_origins, notification_origin
 from .sites import SITE_BY_ID, SITE_IDS
+from .frame_labels import labelled_bytes
 from .store import now, uid
 from .verify import parse_time
 
@@ -1671,7 +1672,7 @@ class OwnerNotifications:
         files = []
         for index, stop in enumerate([s for s in bad if s.get("frameId")][:3] if build else [], 1):
             try:
-                data = self.service.eye.frame_path(stop["frameId"]).read_bytes()
+                data = labelled_bytes(self.service, stop["frameId"])
             except (RealityError, OSError):
                 continue
             files.append(dict(filename=f"{str(stop.get('assetTag') or 'asset').lower()}-{index}.jpg", content_type="image/jpeg",

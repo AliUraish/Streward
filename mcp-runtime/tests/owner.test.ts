@@ -29,7 +29,7 @@ test('owner tools: the feed of what the owner got and the compliance snapshot, f
     await client.connect(new StreamableHTTPClientTransport(new URL(allUrl!)));
     await narrow.connect(new StreamableHTTPClientTransport(new URL(scopedUrl!)));
     const tools = (await client.listTools()).tools;
-    assert.equal(tools.length, 73, 'an ordinary client sees the owner tools (75 less the two harness tools)');
+    assert.equal(tools.length, 76, 'an ordinary client sees the owner tools (78 less the two harness tools)');
     for (const name of ['get_owner_notifications', 'get_compliance_snapshot']) {
       const tool = tools.find(t => t.name === name)!;
       assert(tool && tool.outputSchema, name);

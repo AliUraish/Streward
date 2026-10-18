@@ -73,20 +73,32 @@ export function frameUrlOnBackend(config: RuntimeConfig, url: string | null): st
   return absolute.startsWith(config.backendUrl) ? absolute : null;
 }
 
-/** Fetch one eye frame as MCP image content; only the backend's own origin is fetched (frame URLs from the backend are relative
- *  to it). Null when the frame cannot be had (missing, not an image, too large, unreachable). */
+/** The labelled copy of a backend frame URL (/api/eye/frames/<id>.jpg → /api/eye/frames/<id>/labelled.jpg): the same picture
+ *  with the asset tags in view and every judgement on it (ring, verdict, reason) burned in. Null for any other URL. */
+export function labelledFrameUrl(url: string): string | null {
+  const match = url.match(/^(.*\/api\/eye\/frames\/)(eyf-[A-Za-z0-9-]+)\.jpg(?:\?.*)?$/);
+  return match ? `${match[1]}${match[2]}/labelled.jpg` : null;
+}
+
+/** Fetch one eye frame as MCP image content, labelled when the backend can label it (owner, Oct 18: "the image provided to MCP
+ *  can also be labelled so it's known what the issue is"), else the plain frame; only the backend's own origin is fetched (frame
+ *  URLs from the backend are relative to it). Null when the frame cannot be had (missing, not an image, too large, unreachable). */
 export async function fetchFrameImage(config: RuntimeConfig, backend: Backend, frameUrl: string | null): Promise<ContentBlock | null> {
   const url = frameUrlOnBackend(config, frameUrl);
   if (!url) return null;
-  try {
-    const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(15_000), headers: { Accept: 'image/jpeg,image/*', 'X-Steward-Actor': backend.actor, ...(config.backendToken ? { Authorization: `Bearer ${config.backendToken}` } : {}) } });
-    if (!response.ok) return null;
-    const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0]!.trim();
-    if (!type.startsWith('image/')) return null;
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) return null;
-    return { type: 'image', data: bytes.toString('base64'), mimeType: type === 'image/jpg' ? 'image/jpeg' : type };
-  } catch { return null; }
+  for (const candidate of [labelledFrameUrl(url), url]) {
+    if (!candidate) continue;
+    try {
+      const response = await fetch(candidate, { redirect: 'error', signal: AbortSignal.timeout(15_000), headers: { Accept: 'image/jpeg,image/*', 'X-Steward-Actor': backend.actor, ...(config.backendToken ? { Authorization: `Bearer ${config.backendToken}` } : {}) } });
+      if (!response.ok) continue;
+      const type = (response.headers.get('content-type') || 'image/jpeg').split(';')[0]!.trim();
+      if (!type.startsWith('image/')) continue;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) continue;
+      return { type: 'image', data: bytes.toString('base64'), mimeType: type === 'image/jpg' ? 'image/jpeg' : type };
+    } catch { continue; }
+  }
+  return null;
 }
 
 export interface EyeDeps { tool: ToolFn; backend: Backend; config: RuntimeConfig; siteId: z.ZodType<PropertyId> }

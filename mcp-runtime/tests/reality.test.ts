@@ -269,7 +269,7 @@ test('reality tools against a fake upstream: resolve/attest/check, requester, er
     const resources = await client.listResources();
     assert.deepEqual(resources.resources.map(resource => resource.uri).sort(), [AGENTS_URI, GUIDE_URI, SCHEMA_URI, 'ui://views/steward-factory.html'].sort());
     const templates = await client.listResourceTemplates();
-    assert.deepEqual(templates.resourceTemplates.map(t => t.uriTemplate).sort(), ['steward://sites/{siteId}/context.min', 'steward://sites/{siteId}/overview', 'steward://sites/{siteId}/specs']);
+    assert.deepEqual(templates.resourceTemplates.map(t => t.uriTemplate).sort(), ['steward://sites/{siteId}/context.min', 'steward://sites/{siteId}/environment', 'steward://sites/{siteId}/overview', 'steward://sites/{siteId}/specs']);
     const contextMin = JSON.parse((await client.readResource({ uri: 'steward://sites/myer-plant/context.min' })).contents.map(item => ('text' in item ? item.text : '')).join('')) as { propertyId: string; blockers: unknown[]; sensors: unknown[] };
     assert.equal(contextMin.propertyId, 'myer-plant'); assert.equal(contextMin.blockers.length, 1); assert.equal(contextMin.sensors.length, 2);
     const specs = JSON.parse((await client.readResource({ uri: 'steward://sites/myer-plant/specs' })).contents.map(item => ('text' in item ? item.text : '')).join('')) as Record<string, Record<string, unknown>>;

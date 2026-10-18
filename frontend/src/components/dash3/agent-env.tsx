@@ -43,7 +43,7 @@ export function ConnectPanel({ i = 0 }: { i?: number }) {
 }
 
 /* One site as an agent reads it: the latest eye frame beside the text an MCP client gets, with the JSON behind it. */
-export function SiteAgentEnvironment({ siteId, i = 0, heading = true }: { siteId: SiteId3; i?: number; heading?: boolean }) {
+export function SiteAgentEnvironment({ siteId, i = 0, heading = true, title }: { siteId: SiteId3; i?: number; heading?: boolean; title?: string }) {
   const s = site3(siteId);
   const env = useAgentEnvironment(siteId);
   const text = useAgentEnvironmentText(siteId);
@@ -52,7 +52,7 @@ export function SiteAgentEnvironment({ siteId, i = 0, heading = true }: { siteId
   const frame: { url: string; at: string | null; who: string | null } | null = env.data?.frames[0] ? { url: env.data.frames[0].url, at: env.data.frames[0].at, who: env.data.frames[0].actorName }
     : latest ? { url: latest.frameUrl, at: latest.at, who: null } : null;
   return <Reveal as="section" className="p3" i={i} aria-labelledby={`env-${siteId}-h`}>
-    {heading ? <div className="p-head"><h2 id={`env-${siteId}-h`}>{s.name}</h2><span className="meta">{env.data?.at ? `as of ${ago(env.data.at)}` : ""}</span></div> : null}
+    {heading ? <div className="p-head"><h2 id={`env-${siteId}-h`}>{title ?? s.name}</h2><span className="meta">{env.data?.at ? `as of ${ago(env.data.at)}` : ""}</span></div> : null}
     <div className="envtext11">
       <figure style={{ margin: 0 }}>
         <img src={frame?.url ?? s.thumbnailUrl} alt={frame ? `${s.name}: the agent eye's latest frame` : `${s.name}: the capture's thumbnail`} />
@@ -79,7 +79,7 @@ export function AgentEye({ siteId, i = 0 }: { siteId: SiteId3; i?: number }) {
   const marks = marksOf(first, env.data?.labels ?? []);
   const labels = env.data?.labels ?? [];
   return <Reveal as="section" className="p3" i={i} aria-labelledby={`sees-${siteId}-h`}>
-    <div className="p-head"><h2 id={`sees-${siteId}-h`}>How the agent sees {s.short}</h2>{env.data?.walk ? <span className="chip11 on">{env.data.walk.agentName ?? "Agent"} · {env.data.walk.moving ? "moving" : "still"}{env.data.walk.stopIndex && env.data.walk.stops ? ` · stop ${env.data.walk.stopIndex} of ${env.data.walk.stops}` : ""}{env.data.walk.assetTag ? ` · ${env.data.walk.assetTag}` : ""}</span> : null}</div>
+    <div className="p-head"><h2 id={`sees-${siteId}-h`}>The agent&apos;s eye at {s.short}</h2>{env.data?.walk ? <span className="chip11 on">{env.data.walk.agentName ?? "Agent"} · {env.data.walk.moving ? "moving" : "still"}{env.data.walk.stopIndex && env.data.walk.stops ? ` · stop ${env.data.walk.stopIndex} of ${env.data.walk.stops}` : ""}{env.data.walk.assetTag ? ` · ${env.data.walk.assetTag}` : ""}</span> : null}</div>
     <div className="win11">
       <div className="eyebox">
         <EyePanel siteId={siteId} frames={eye.data?.frames ?? []} readiness={eye.readiness} renderers={eye.data?.renderers ? eye.data.renderers.filter(r => !r.stale).length : null} />

@@ -17,10 +17,14 @@ conversationId, validation?, rejection?, previousVersionId?, supersededBy?}`.
   keeps its type; anything else is string interpolation. Conditions (`filter.where`, a map field starting `if:`) are
   `path op value` terms joined by all-`and` or all-`or`; ops `== != > >= < <= in contains exists missing`; values are
   numbers, quoted strings, true/false/null, `[a, b]` lists or `item.<path>`.
-- Lifecycle: request (gap and considered tools recorded; the matching hand-seeded draft is used in build mode, otherwise
-  the request waits for `scripts/synth/forge.py --live`) → validate → test (live local data; write ops are previewed,
-  never executed) → approve (the site's manager for read-only tools, the Operations Director for any write; a refusal is
-  recorded) → publish → call (`POST /api/tools/{id}/call` with the caller's actor; usage and telemetry) → retire. A new
+- Lifecycle: request (gap and considered tools recorded; the matching hand-seeded draft, else a live Claude draft,
+  forge_drafter.py) → validate → test (live local data; write ops are previewed, never executed) → approve (the site's
+  manager for read-only tools, the Operations Director for any write; a refusal is recorded) → publish → call
+  (`POST /api/tools/{id}/call` with the caller's actor; usage and telemetry) → retire. Automatic since Oct 18
+  (`STEWARD_FORGE_AUTO`, default true): every draft goes through validate → test on its own (a failing Claude draft is
+  revised once with the errors, else rejected); a read-only tool that passed is reviewed in a short chat between the
+  builder and the site's manager, approved by the manager and published by the builder; a tool with any write step stops
+  at `tested`, awaiting the Operations Director. It runs in a background thread with the workers, inline without. A new
   version of a name keeps the old one's usage history and supersedes it when published. Every step is a Change of type
   `tool` (wait events `tool.changed`, `tool.published`) and a line in the request's conversation (so it shows in both
   agents' transcripts).
@@ -35,7 +39,9 @@ from datetime import datetime, timedelta, timezone
 
 from .agents import (DIRECTOR, OPERATOR, OWNER, authorize, compliance_id, display_name, engineer_id, is_known, manager_id, message_allowed,
                      site_of)
+from .env import env
 from .errors import RealityError
+from .forge_drafter import MODEL as DRAFT_MODEL, ForgeDrafter
 from .sites import SITE_BY_ID, SITE_IDS
 from .store import now, uid
 from .synthetic import load_family
@@ -65,13 +71,15 @@ OPS = {
     "metrics.series": ("read", "read", ("series", "days", "step"), ("series",), "series [{key, assetTag, unit, label, spec, points}]"),
     "metrics.samples": ("read", "read", ("series", "days"), ("series",), "one row per 5-minute point [{assetTag, series, label, unit, at, value, min, max}]"),
     "issues.list": ("read", "read", ("status",), (), "issues [{id, assetTag, kind, severity, status, summary, ownerId, obligationId, regulationIds, regulation, source}]"),
-    "obligations.list": ("read", "read", ("status",), (), "obligations [{id, assetTag, title, status, dueAt, ownerId, regulationIds, regulation}]"),
+    "obligations.list": ("read", "read", ("status",), (), "obligations [{id, assetTag, title, status, dueAt, ownerId, regulationIds, regulation}]; "
+                                                        "status ok | due_soon (due within 14 days) | overdue | blocked; ownerId is a crew id"),
     "crew.list": ("read", "read", (), (), "crew [{id, name, role, onShift, owns}] (no contact details)"),
     "crew.responsible": ("read", "read", ("issueKind",), ("issueKind",), "{issueKind, owner: {id, name, role, onShift} | null, agent, agentName, fallback}"),
     "components.list": ("read", "read", (), (), "assets [{tag, id, name, kind, system, subsystem, description, status}]"),
     "regulations.list": ("read", "read", (), (), "binding regulations [{id, instrument, provision, title, appliesTo}]"),
     "conversations.list": ("read", "read", ("kind", "limit"), (), "conversations [{id, kind, topic, participants, status, startedAt, headline}]"),
-    "maintenance.list": ("read", "read", (), (), "maintenance windows [{id, date, scope, status, siteIds, examiner}]"),
+    "maintenance.list": ("read", "read", (), (), "maintenance windows [{id, date, scope, status, siteIds, examiner, obligationId, assetTag}]; "
+                                                    "status proposed | approved | done; obligationId is null for a window not booked for an obligation"),
     "resolve": ("read", "resolve", ("assetTag", "attribute", "budget"), ("assetTag", "attribute"),
                 "{status, value, unit, attestationId, observedAt}; a budget above 0 dispatches a person (an act)"),
     "eye.go_to": ("act", "eye", ("assetTag",), ("assetTag",), "{frameId, frameUrl, visiblePins}: moves the agent eye"),
@@ -368,6 +376,27 @@ class ForgeService:
         self.service = service
         self.store = service.store
         self.lock = threading.RLock()
+        self.drafter = ForgeDrafter(service)  # live Claude drafts and revisions (forge_drafter.py)
+        self._advancing: set[str] = set()
+
+    @staticmethod
+    def auto_enabled() -> bool:
+        """STEWARD_FORGE_AUTO (default true): drafts move through validate, test, approve and publish on their own."""
+        return (env("STEWARD_FORGE_AUTO", "true") or "true").strip().lower() == "true"
+
+    def _spawn(self, fn, *args) -> None:
+        """A background thread with the workers; inline without (tests), so a call returns with the outcome."""
+        if self.service.start_workers:
+            threading.Thread(target=self._safely, args=(fn, *args), name="steward-forge", daemon=True).start()
+        else:
+            self._safely(fn, *args)
+
+    def _safely(self, fn, *args) -> None:
+        try:
+            fn(*args)
+        except Exception as error:  # noqa: BLE001 - a broken pipeline step is recorded, never raised into the caller
+            site = next((a for a in args if isinstance(a, str) and a in SITE_BY_ID), None) or SITE_IDS[0]
+            self.store.event(site, "director", "forge.error", "Tool Forge pipeline stopped", f"{type(error).__name__}: {str(error)[:200]}")
 
     # ---- records ---------------------------------------------------------------------------------------------
 
@@ -566,14 +595,32 @@ class ForgeService:
                 if prepared:
                     source, generator = prepared, "hand-seed"
             if source is None:
-                request.update(status="awaiting_draft", gap=f"No existing tool answers: {task[:200]}")
+                blocked = self.drafter.unavailable() if self.auto_enabled() else "automatic drafting is off (STEWARD_FORGE_AUTO=false)"
+                status = "drafting" if not blocked else "awaiting_draft"
+                request.update(status=status, gap=f"No existing tool answers: {task[:200]}", draftError=blocked)
                 self.store.put("tool_request", request, site_id)
-                self._say(request["id"], agent_id, f"I don't have a tool for this. Recorded the gap; a draft is needed "
-                                                   f"(run scripts/synth/forge.py --request {request['id']} --live to draft it with Claude).")
-                fields = dict(toolRequestId=request["id"], status="awaiting_draft", step="request", actor=agent_id)
+                if blocked:
+                    self._say(request["id"], agent_id, f"I don't have a tool for this. Recorded the gap; a draft is needed ({blocked}; "
+                                                       f"scripts/synth/forge.py --request {request['id']} --live drafts it by hand).")
+                else:
+                    self._say(request["id"], agent_id, "I don't have a tool for this. Drafting one now from Steward's own operations with Claude; "
+                                                       "it is checked, tested, reviewed by the site manager and published in a minute or two.")
+                fields = dict(toolRequestId=request["id"], requestId=request["id"], status=status, step="request", actor=agent_id)
                 self.service.reality.emit_change(site_id, "tool", request["id"], f"{display_name(agent_id)} recorded a tool gap: {task[:200]}",
                                                  extra=fields, fields=fields)
-                return dict(request=request, tool=None)
+                drafting = not blocked
+                result = dict(request=request, tool=None)
+            else:
+                drafting = False
+                result = None
+        if result is not None:
+            if drafting:
+                self._spawn(self._draft_then_advance, request["id"])
+                request = self.request_record(request["id"])
+                tool = self.store.get("forged_tool", request["toolId"]) if request.get("toolId") else None
+                return dict(request=request, tool=self.public(tool) if tool else None)
+            return result
+        with self.lock:
             tool = self._from_draft(source, request, generator)
             request.update(status="drafted", toolId=tool["id"], gap=tool["why"]["gap"], consideredTools=tool["why"]["consideredTools"],
                            synthetic=tool["synthetic"])
@@ -583,7 +630,10 @@ class ForgeService:
         self._change(tool, f"{display_name(agent_id)} drafted {self.mcp_name(tool)} v{tool['version']} ({generator}) for: {task[:160]}", "draft", agent_id)
         self.service.memory.write(agent_id, f"Drafted {self.mcp_name(tool)} because {tool['why']['gap'][:200]}", "decision", dict(toolId=tool["id"]),
                                   site_id, synthetic=tool["synthetic"])
-        return dict(request=request, tool=self.public(tool))
+        if tool.get("auto"):
+            self._spawn(self.advance, tool["id"])
+            tool = self.get(tool["id"])  # inline (no workers): already published, rejected or awaiting the Director
+        return dict(request=self.request_record(request["id"]), tool=self.public(tool))
 
     def _from_draft(self, source: dict, request: dict, generator: str) -> dict:
         name = str(source.get("name") or "").strip()
@@ -604,16 +654,22 @@ class ForgeService:
                          history=list(old.get("history") or []) + [dict(version=previous["version"], toolId=previous["id"], calls=int(old.get("calls") or 0),
                                                                        tokensSavedEstimate=int(old.get("tokensSavedEstimate") or 0))])
         tool = dict(id=uid("tool"), name=name, version=(previous["version"] + 1) if previous else 1, status="draft", siteId=site, createdBy=request["agentId"],
-                    createdAt=now(), approvedBy=None, approvedAt=None, why=why, description=str(source.get("description") or "")[:1200],
+                    createdAt=now(), approvedBy=None, approvedAt=None, why=why, **self.definition_fields(source),
+                    usage=usage, generator=generator, synthetic=generator == "hand-seed" or bool(source.get("synthetic")), requestId=request["id"],
+                    conversationId=request.get("conversationId"), previousVersionId=previous["id"] if previous else None, validation=None, rejection=None,
+                    auto=self.auto_enabled(), revisions=0, drafting=source.get("drafting"))
+        tool["readOnly"] = self.read_only(tool)
+        return self._save(tool)
+
+    @staticmethod
+    def definition_fields(source: dict) -> dict:
+        """The parts of a draft the builder writes (and a revision replaces): description, input schema, steps, output, test input."""
+        return dict(description=str(source.get("description") or "")[:1200],
                     inputSchema=source.get("inputSchema") or {"type": "object", "properties": {}, "additionalProperties": False},
                     steps=[dict(id=str(s.get("id")), op=str(s.get("op")), args={str(k): (v if isinstance(v, str) else json.dumps(v)) for k, v in (s.get("args") or {}).items()})
                            for s in (source.get("steps") or []) if isinstance(s, dict)],
                     output=dict(template=str((source.get("output") or {}).get("template") or ""), schema=(source.get("output") or {}).get("schema") or {}),
-                    readOnly=True, test=dict(input=(source.get("test") or {}).get("input") or {}, output=None, passed=False, ms=0, at=None, notes=[]),
-                    usage=usage, generator=generator, synthetic=generator == "hand-seed" or bool(source.get("synthetic")), requestId=request["id"],
-                    conversationId=request.get("conversationId"), previousVersionId=previous["id"] if previous else None, validation=None, rejection=None)
-        tool["readOnly"] = self.read_only(tool)
-        return self._save(tool)
+                    readOnly=True, test=dict(input=(source.get("test") or {}).get("input") or {}, output=None, passed=False, ms=0, at=None, notes=[]))
 
     # ---- step 3: validate ------------------------------------------------------------------------------------
 
@@ -716,6 +772,8 @@ class ForgeService:
     def validate(self, tool_id: str, actor: str) -> dict:
         actor = authorize(actor, "read")
         tool = self.get(tool_id)
+        if tool.get("auto") and tool["status"] in ("validated", "tested", "approved", "published"):
+            return self.public(tool)  # the automatic pipeline already validated it
         if tool["status"] not in ("draft", "validated", "tested", "rejected"):
             raise RealityError(f"{self.mcp_name(tool)} is {tool['status']}.", "INVALID_REQUEST", "Only drafts are validated; version a published tool.", 409)
         errors = self.check(tool)
@@ -743,6 +801,8 @@ class ForgeService:
     def test(self, tool_id: str, actor: str, sample: dict | None = None) -> dict:
         actor = authorize(actor, "read")
         tool = self.get(tool_id)
+        if tool.get("auto") and tool["status"] in ("tested", "approved", "published") and sample is None:
+            return self.public(tool)  # the automatic pipeline already tested it
         if tool["status"] not in ("validated", "tested"):
             raise RealityError(f"{self.mcp_name(tool)} is {tool['status']}; validate it first.", "INVALID_REQUEST", "POST /api/tools/{id}/validate.", 409)
         given = sample if sample is not None else (tool.get("test") or {}).get("input") or self.default_input(tool)
@@ -751,12 +811,13 @@ class ForgeService:
         started = time.monotonic()
         try:
             output, trace, _ = self.execute(tool, args, dry_run=True)
-            errors = schema_errors(output, tool["output"]["schema"])
+            # A previewed write has no real output to check; the schema is checked on read-only output only.
+            errors = [] if any(t.get("preview") for t in trace) else schema_errors(output, tool["output"]["schema"])
         except RealityError as error:
             output, trace, errors = None, [], [error.detail]
         ms = int((time.monotonic() - started) * 1000)
         if any(t.get("preview") for t in trace):
-            notes.append("write steps were previewed, not executed, during the test")
+            notes.append("write steps were previewed, not executed, during the test; the output schema is checked when it runs")
         rows = len(output) if isinstance(output, list) else len(output.get("items", [])) if isinstance(output, dict) and isinstance(output.get("items"), list) else None
         notes.append(f"{len(trace)} step(s) ran on live local data" + (f"; {rows} row(s)" if rows is not None else ""))
         notes += errors[:5]
@@ -775,6 +836,8 @@ class ForgeService:
     def approve(self, tool_id: str, actor: str, approve: bool, reason: str = "") -> dict:
         actor = authorize(actor, "read")
         tool = self.get(tool_id)
+        if approve and tool.get("auto") and tool["status"] in ("approved", "published"):
+            return self.public(tool)  # the site manager already approved it in the automatic pipeline
         if tool["status"] != "tested":
             raise RealityError(f"{self.mcp_name(tool)} is {tool['status']}; only a tested tool is approved.", "INVALID_REQUEST", "Validate and test it first.", 409)
         self._approver_ok(tool, actor)
@@ -795,6 +858,8 @@ class ForgeService:
     def publish(self, tool_id: str, actor: str) -> dict:
         actor = authorize(actor, "read")
         tool = self.get(tool_id)
+        if tool.get("auto") and tool["status"] == "published":
+            return self.public(tool)  # already published by the automatic pipeline
         if tool["status"] != "approved":
             raise RealityError(f"{self.mcp_name(tool)} is {tool['status']}; only an approved tool is published.", "INVALID_REQUEST", "Approve it first.", 409)
         if actor not in (OPERATOR, DIRECTOR, manager_id(tool["siteId"]), tool["createdBy"]):
@@ -826,6 +891,132 @@ class ForgeService:
         self._say(tool.get("requestId"), actor, summary, final=True)
         self._change(tool, summary, "retire", actor)
         return self.public(tool)
+
+    # ---- the automatic pipeline (Oct 18): draft → validate → test → the manager's review → approve → publish --------------
+
+    def _draft_then_advance(self, request_id: str) -> None:
+        """Live drafting with Claude for a recorded gap, then the pipeline (through `request`, which starts it)."""
+        request = self.request_record(request_id)
+        site, agent = request["siteId"], request["agentId"]
+        definition, reason, meta = self.drafter.draft(site, agent, request["task"])
+        if definition is None:
+            request.update(status="awaiting_draft", draftError=reason)
+            self.store.put("tool_request", request, site)
+            self._say(request_id, agent, f"I could not draft the tool ({reason}); the gap stays recorded and a draft can still be added.")
+            fields = dict(toolRequestId=request_id, requestId=request_id, status="awaiting_draft", step="draft", actor=agent)
+            self.service.reality.emit_change(site, "tool", request_id, f"{display_name(agent)} could not draft a tool: {reason}", extra=fields, fields=fields)
+            return
+        definition["drafting"] = meta
+        self.request(agent, site, request["task"], agent, request.get("requestedBy"), definition, DRAFT_MODEL, None, request_id)
+
+    def advance(self, tool_id: str) -> dict:
+        """Move one tool through the pipeline as far as it may go on its own; safe to call again."""
+        with self.lock:
+            if tool_id in self._advancing:
+                return self.public(self.get(tool_id))
+            self._advancing.add(tool_id)
+        try:
+            return self._advance(tool_id)
+        finally:
+            with self.lock:
+                self._advancing.discard(tool_id)
+
+    def _advance(self, tool_id: str) -> dict:
+        tool = self.get(tool_id)
+        builder = tool["createdBy"]
+        for _attempt in range(2):
+            tool = self.get(tool_id)
+            if tool["status"] == "draft":
+                tool = self.validate(tool_id, builder)
+                if not tool["validation"]["ok"]:
+                    if self._revise(tool_id, tool["validation"]["errors"], "validation"):
+                        continue
+                    return self._reject(tool_id, f"validation failed: {'; '.join(tool['validation']['errors'])[:300]}")
+            if tool["status"] == "validated":
+                tool = self.test(tool_id, builder)
+                if not tool["test"]["passed"]:
+                    problems = [n for n in tool["test"]["notes"] if "step(s) ran" not in n and "previewed" not in n] or ["the test failed"]
+                    if self._revise(tool_id, problems, "test"):
+                        continue
+                    return self._reject(tool_id, f"the test failed: {'; '.join(problems)[:300]}")
+            break
+        tool = self.get(tool_id)
+        if tool["status"] != "tested":
+            return self.public(tool)
+        if not tool["readOnly"]:
+            self._say(tool.get("requestId"), builder, f"{self.mcp_name(tool)} has a write step, so it waits for the Operations Director's approval; "
+                                                     "a tool that writes is never approved automatically.")
+            self._change(tool, f"{self.mcp_name(tool)} is tested and awaits the Operations Director (it has a write step).", "await_approval", builder)
+            return self.public(tool)
+        manager = manager_id(tool["siteId"])
+        reason = self._review(tool, builder, manager)
+        self.approve(tool_id, manager, True, reason)
+        return self.publish(tool_id, builder)
+
+    def _revise(self, tool_id: str, errors: list[str], stage: str) -> bool:
+        """One Claude revision for a Claude draft that failed validation or its test; prepared drafts are not revised."""
+        tool = self.get(tool_id)
+        if tool.get("generator") != DRAFT_MODEL or int(tool.get("revisions") or 0) >= 1:
+            return False
+        current = dict(name=tool["name"], description=tool["description"], inputSchema=tool["inputSchema"], steps=tool["steps"], output=tool["output"])
+        definition, reason, meta = self.drafter.revise(tool["siteId"], tool["createdBy"], tool["why"]["task"], current, errors)
+        if definition is None:
+            self._say(tool.get("requestId"), tool["createdBy"], f"I could not revise {self.mcp_name(tool)} ({reason}).")
+            return False
+        tool = self.get(tool_id)
+        tool.update(**self.definition_fields(definition), status="draft", revisions=int(tool.get("revisions") or 0) + 1, validation=None)
+        tool["readOnly"] = self.read_only(tool)
+        self._save(tool)
+        self._say(tool.get("requestId"), tool["createdBy"], f"The {stage} of {self.mcp_name(tool)} failed ({str(errors[0])[:160]}); revised the recipe and checking it again.")
+        self._change(tool, f"{display_name(tool['createdBy'])} revised {self.mcp_name(tool)} after the {stage} failed.", "revise", tool["createdBy"])
+        return True
+
+    def _reject(self, tool_id: str, reason: str) -> dict:
+        tool = self.get(tool_id)
+        tool.update(status="rejected", rejection=dict(by=tool["createdBy"], reason=reason[:500], at=now()))
+        self._save(tool)
+        self._say(tool.get("requestId"), tool["createdBy"], f"{self.mcp_name(tool)} cannot be published: {reason[:300]}", final=True)
+        self._change(tool, f"{self.mcp_name(tool)} was rejected: {reason[:300]}", "reject", tool["createdBy"])
+        return self.public(tool)
+
+    def _review(self, tool: dict, builder: str, manager: str) -> str:
+        """The site manager reviews the recipe and the test in a short chat with the builder; returns the approval reason."""
+        name, site = self.mcp_name(tool), SITE_BY_ID.get(tool["siteId"], {}).get("name", tool["siteId"])
+        test = tool.get("test") or {}
+        output = test.get("output")
+        rows = len(output) if isinstance(output, list) else None
+        sample = json.dumps(output[:2] if isinstance(output, list) else output, ensure_ascii=False, default=str)[:500]
+        recipe = "; ".join(self.recipe(tool))[:900]
+        reason = f"Read-only, scoped to {site}, tested on live data" + (f" ({rows} row(s))" if rows is not None else "") + "."
+        shared = (f"Tool {name} at {site}, built by {display_name(builder)} for the task: {tool['why']['task'][:300]} Gap: {tool['why']['gap'][:200]} "
+                  f"Recipe: {recipe}. Every step only reads {site}'s own records. Test on live local data: passed in {test.get('ms', 0)} ms"
+                  + (f", {rows} row(s)" if rows is not None else "") + f". Sample output: {sample}")
+        briefs = {builder: "You built this tool because no existing tool answered the task. Say in plain words what it does and what the test "
+                           "returned, and ask the manager to approve it.",
+                  manager: "You approve read-only tools for your site. Check the recipe only reads your own site's records, that the test passed "
+                           "on live data and that the output answers the task, then approve it in one sentence."}
+        fallback = [
+            dict(speaker=builder, text=f"I built {name} for: {tool['why']['task'][:160]} It only reads our own records; the test on live data passed"
+                                       + (f" with {rows} row(s)." if rows is not None else ".") + " Can you approve it?"),
+            dict(speaker=manager, text=f"Reading the recipe: {len(tool['steps'])} step(s), all reads at {site}. What did the test return?"),
+            dict(speaker=builder, text=f"It matched its output schema in {test.get('ms', 0)} ms" + (f", {rows} row(s)." if rows is not None else ".")),
+            dict(speaker=manager, text=f"Approved: read-only, scoped to {site} and tested on live data. Publish it."),
+        ]
+        summary = dict(headline=f"{display_name(manager)} approved {name}", points=[f"{len(tool['steps'])} read step(s) at {site}", "test passed on live data"],
+                       decisions=[f"Approve and publish {name}"], actions=[dict(owner=display_name(builder), task=f"Publish {name}", due="now")])
+        try:
+            chat = self.service.chats.run(convener=builder, participants=[builder, manager], topic=f"Review of {name}", site_ids=[tool["siteId"]],
+                                          briefs=briefs, shared=shared, goal="the manager reviews the recipe and the test result and approves the tool",
+                                          min_turns=4, max_turns=4, refs=dict(toolId=tool["id"], requestId=tool.get("requestId")), fallback=fallback,
+                                          fallback_summary=summary, realtime=self.service.start_workers, origin="workflow", source="forge")
+            tool = self.get(tool["id"])
+            tool["reviewConversationId"] = chat.get("id")
+            self._save(tool)
+            headline = ((chat.get("summary") or {}).get("headline") or "").strip()
+            return f"{reason} {headline}"[:400] if headline else reason
+        except Exception as error:  # noqa: BLE001 - the review chat is a record; the approval stands on the checks
+            self.store.event(tool["siteId"], manager, "forge.review", "The review chat could not run", f"{type(error).__name__}: {str(error)[:160]}")
+            return reason
 
     # ---- step 7: call --------------------------------------------------------------------------------------
 
@@ -962,8 +1153,8 @@ class ForgeService:
                          startedAt=c.get("startedAt"), headline=(c.get("summary") or {}).get("headline"))
                     for c in svc.conversations.list(site, None, args.get("kind") or None, limit)]
         if op == "maintenance.list":
-            return [dict(id=w["id"], date=w["date"], scope=w["scope"], status=w["status"], siteIds=w["siteIds"], examiner=w.get("examiner"))
-                    for w in svc.maintenance.list(site)]
+            return [dict(id=w["id"], date=w["date"], scope=w["scope"], status=w["status"], siteIds=w["siteIds"], examiner=w.get("examiner"),
+                         obligationId=w.get("obligationId"), assetTag=w.get("assetTag")) for w in svc.maintenance.list(site)]
         if op == "resolve":
             result = svc.reality.resolve(site, str(args["assetTag"]), str(args["attribute"]), budget=float(args.get("budget") or 0),
                                          requester=f"{agent}/forge:{tool['id']}")

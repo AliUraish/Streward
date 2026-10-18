@@ -279,24 +279,28 @@ export function registerForgeTools({ tool, backend, config, server, hub, siteId,
   });
 
   // 3. the stable tools
-  tool('request_tool', 'Ask a site\'s agent team to build a tool you need when no existing tool answers your task (Tool Forge). The builder (agentId, default the site engineer) records the gap and the tools it considered, drafts a declarative tool from allow-listed Steward operations (no generated code), Steward validates it and tests it on local data, the site\'s manager (read-only tools) or the Operations Director (any write) approves it, and it is published as forge_<name> for every connected client (notifications/tools/list_changed). Costs nothing to ask; drafting uses prepared drafts unless live generation is on. Not idempotent: each call files a request and a draft. NEXT: wait_for(event "any", siteId, filter {type: "tool", toolId, status: "published"}) without polling; then call forge_<name>, or call_forged_tool(toolId, args) from a client that does not re-list tools.',
+  tool('request_tool', 'Ask a site\'s agent team to build a tool you need when no existing tool answers your task (Tool Forge). The builder (agentId, default the site engineer) records the gap and the tools it considered, drafts a declarative tool from allow-listed Steward operations (no generated code), Steward validates it and tests it on local data, the site\'s manager reviews a read-only tool and approves it on its own (any write waits for the Operations Director), and it is published as forge_<name> for every connected client (notifications/tools/list_changed). All automatic: a prepared draft is published in about 30 seconds, a task with no prepared draft is drafted live with Claude and published in 1 to 2 minutes. Costs nothing to ask. Not idempotent: each call files a request and a draft. NEXT: wait_for(event "any", siteId, filter {type: "tool", toolId, status: "published"}) without polling; then call forge_<name>, or call_forged_tool(toolId, args) from a client that does not re-list tools.',
     z.strictObject({
       siteId, task: z.string().min(10).max(1000).describe('The question the tool must answer, in plain words, e.g. "Which pumps went over their pressure spec more than three times in the last 7 days, and who is responsible for each?"'),
       agentId: agentId.optional().describe('Who builds it: one of the site\'s own agents (manager, engineer, compliance, technician). Omit for the site engineer.'),
     }), RequestOutSchema, async ({ siteId: site, task, agentId: builderArg }, call) => {
-      const builder = builderArg ?? agentOf(site, 'engineer');
+      // The backend's default builder too: compliance-flavoured tasks go to the Compliance Officer, everything else to the engineer.
+      const builder = builderArg ?? agentOf(site, /obligation|regulation|permit|certificate|compliance|visitor route|notice/i.test(task) ? 'compliance' : 'engineer');
       if (siteOfAgent(builder) !== site) throw new AdapterError('INVALID_ARGUMENT', `${builder} is not on ${site}'s team; a tool for ${site} is built by one of its own agents.`, `Pass agentId ${(['manager', 'engineer', 'compliance', 'technician'] as const).map(role => agentOf(site, role)).join(', ')}, or omit it for the site engineer.`);
       const raw = obj(await backend.json('/api/tools/requests', ANY, { method: 'POST', body: { agentId: builder, siteId: site, task, requestedBy: call.actor, requester: call.requester } }));
+      const filed = obj(raw.request);
       const forged = normaliseForgedTool(obj(raw.tool)) ?? (raw.name ? normaliseForgedTool(raw) : null);
       if (forged?.siteId && !inScope(forged.siteId)) throw new AdapterError('PROPERTY_SCOPE', 'The backend drafted the tool for a site outside this endpoint’s scope.', 'Check backend scope isolation; call list_forged_tools.');
       const toolId = str(raw.toolId) ?? forged?.id ?? null;
       const why = obj(raw.why);
       const considered = list(raw.consideredTools ?? why.consideredTools).map(item => ({ name: str(item.name) ?? 'tool', whyNot: str(item.whyNot) ?? '' }));
       return {
-        requestId: str(raw.requestId) ?? (forged ? str(raw.id) : null), toolId, name: forged?.name ?? null, mcpName: forged?.mcpName ?? null, status: str(raw.status) ?? forged?.status ?? 'requested',
+        requestId: str(raw.requestId) ?? str(filed.id) ?? (forged ? str(raw.id) : null), toolId, name: forged?.name ?? null, mcpName: forged?.mcpName ?? null, status: forged?.status ?? str(raw.status) ?? str(filed.status) ?? 'requested',
         siteId: site, agentId: builder, requestedBy: call.actor, gap: str(raw.gap) ?? str(why.gap) ?? forged?.why.gap ?? null,
         consideredTools: considered.length ? considered : forged?.why.consideredTools ?? [], generator: forged?.generator ?? str(raw.generator),
-        nextStep: toolId ? `${waitFor(site, toolId)} holds without tokens while ${display(builder)} validates and tests it and the approver decides; then call ${forged?.mcpName ?? 'forge_<name>'} (or call_forged_tool(toolId="${toolId}", args)).` : `wait_for(event="any", siteId="${site}", filter={type:"tool"}) for the draft; list_forged_tools(siteId="${site}") shows it.`,
+        nextStep: forged?.status === 'published' ? `Published: call ${forged.mcpName} now (or call_forged_tool(toolId="${toolId}", args)).`
+          : toolId ? `${waitFor(site, toolId)} holds without tokens while ${display(builder)} validates and tests it and the site manager reviews and approves it (about 30 seconds; a tool that writes waits for the Operations Director); then call ${forged?.mcpName ?? 'forge_<name>'} (or call_forged_tool(toolId="${toolId}", args)).`
+          : `${display(builder)} is drafting it with Claude, then it is checked, tested, approved and published on its own (1 to 2 minutes). wait_for(event="any", siteId="${site}", filter={type:"tool", ${str(filed.id) ? `requestId:"${str(filed.id)}", ` : ''}status:"published"}) holds without tokens until then; list_forged_tools(siteId="${site}") shows it.`,
       };
     }, LOCAL_WRITE);
 

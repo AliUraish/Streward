@@ -613,6 +613,9 @@ class AttendanceService:
 
     def tick(self, moment: datetime | None = None) -> dict:
         moment = moment or utcnow()
+        sequence = getattr(self.service, "sequence", None)
+        if sequence is not None and sequence.active():  # the live sequence has the line and the inbox for now
+            return dict(entries=0, opened=[], handling=[], at=now(), skipped="live sequence running")
         written = self.generate(moment)
         opened = self.rule(moment)
         handled = []

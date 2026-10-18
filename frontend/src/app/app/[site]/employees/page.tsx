@@ -1,7 +1,12 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import SitePage from "@/components/dash3/site-page";
+import { isSite3 } from "@/lib/sites-3";
 
-/* The environment's pages are tabs on its one page now (owner, Oct 18: no sidebar, one page per environment). */
+/* The environment's Employees page (owner, Oct 18: each sidebar option has its own page). */
+export const metadata: Metadata = { title: "Employees" };
 export default async function Page({ params }: { params: Promise<{ site: string }> }) {
   const { site } = await params;
-  redirect(`/app/${site}#employees`);
+  if (!isSite3(site)) notFound();
+  return <SitePage siteId={site} section="employees" />;
 }

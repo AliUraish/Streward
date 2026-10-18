@@ -55,6 +55,7 @@ from .env import env
 from .errors import RealityError
 from .providers import InkboxAdapter, clean_env, owner_channel_blockers
 from .sites import SITE_BY_ID, SITE_IDS
+from .frame_labels import labelled_bytes
 from .store import now, uid
 from .verify import parse_time
 
@@ -962,7 +963,7 @@ class ComplianceAlertService:
         frames = []
         for index, frame in enumerate(c["frames"][:MAX_FRAMES], 1):
             try:
-                data = self.service.eye.frame_path(frame["id"]).read_bytes()
+                data = labelled_bytes(self.service, frame["id"])
             except (RealityError, OSError):
                 continue
             cid = f"evidence-{index}-{alert['id'][-8:]}"

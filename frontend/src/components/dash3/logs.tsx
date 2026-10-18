@@ -1,9 +1,10 @@
 "use client";
 
-/* /app/logs: what happened, across the three sites, newest first, with what happened since your last visit. */
+/* The full log: what happened, across the three sites, newest first, with what happened since your last visit, with
+   filters and search. The overview and each environment show it compactly and open this with "See all". */
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { SITES3, site3 } from "@/lib/sites-3";
+import { site3 } from "@/lib/sites-3";
 import { READING_TYPES, logHref, typeWord, useLogs } from "@/lib/logs-9";
 import { Btn, PageHead, Reveal, State, ago } from "./ui3";
 import s from "./logs.module.css";
@@ -13,9 +14,9 @@ const read = () => { try { return window.localStorage.getItem(VISIT_KEY); } catc
 const write = (v: string) => { try { window.localStorage.setItem(VISIT_KEY, v); } catch { /* storage off */ } };
 const clock = (at: string) => { const d = new Date(at); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); };
 
-export default function LogsPage() {
+export default function LogsPage({ initialSite = "" }: { initialSite?: string } = {}) {
   const logs = useLogs(150, 5_000);
-  const [site, setSite] = useState<string>("");
+  const site: string = initialSite;
   const [type, setType] = useState<string>("");
   const [query, setQuery] = useState("");
   const [readings, setReadings] = useState(false);
@@ -33,7 +34,6 @@ export default function LogsPage() {
   const firstOld = lastVisit && fresh.length ? items.findIndex(e => e.at <= lastVisit) : -1;
   return <div className="page3">
     <PageHead id="logs" title="Logs">
-      <div className="tabs3" role="group" aria-label="Filter by site">{[{ id: "", short: "All sites" }, ...SITES3].map(x => <button key={x.id || "all"} type="button" aria-pressed={site === x.id} className={site === x.id ? "on" : ""} onClick={() => setSite(x.id)}>{x.short}</button>)}</div>
     </PageHead>
     <Reveal as="section" className="p3" i={1} aria-label="Log">
       <div className={s.bar}>
