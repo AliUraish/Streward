@@ -14,3 +14,24 @@ export interface Memory { id:string; propertyId:string; content:string; source:s
 export interface Integration { id:string; name:string; description:string; status:'connected'|'local'|'not_configured'|'error'; detail:string; capabilities?:Record<string,boolean>; }
 export interface Purchase { id:string; componentId:string; description:string; amount:number; currency:string; status:string; createdAt:string; }
 export interface Workspace { property:Property; components:Component[]; requirements:Requirement[]; agents:Agent[]; events:ActivityEvent[]; activeJob:Job|null; stats:{verified:number;pending:number;issue:number;unknown:number;total:number;}; }
+
+// ---- Reality layer (see REALITY-CONTRACT.md) ----
+export type AttributeClass = 'reading' | 'condition' | 'document' | 'identity';
+export type SourceKind = 'scan' | 'camera' | 'sensor' | 'patrol' | 'human' | 'agent' | 'owner';
+export type FactStatus = 'known' | 'stale' | 'unknown' | 'conflict';
+export type Verdict = 'accepted' | 'rejected' | 'needs_clarification';
+export type WorkState = 'open' | 'dispatched' | 'waiting' | 'needs_clarification' | 'escalated' | 'resolved' | 'rejected' | 'expired';
+export type Channel = 'local' | 'email' | 'sms' | 'imessage' | 'call';
+export interface Source { kind: SourceKind; ref: string; }
+export interface Check { name: 'scope'|'identity'|'geometry'|'plausibility'|'time'|'integrity'; passed: boolean; reason: string; }
+export interface Fact { id: string; propertyId: string; assetTag: string; componentId: string; attribute: string; attributeClass: AttributeClass; value: string | number | boolean; unit?: string | null; observedAt: string; ttlSeconds: number | null; expiresAt: string | null; source: Source; attestationId: string; version: number; createdAt: string; }
+export interface Attestation { id: string; propertyId: string; assetTag: string; componentId: string; attribute: string; value: string | number | boolean; unit?: string | null; observedAt: string; evidenceHashes: string[]; checks: Check[]; verdict: Verdict; source: Source; verifierVersion: string; signedAt: string; publicKey: string; signature: string; }
+export interface Dispatch { id: string; channel: Channel; to: string; reference: string; sentAt: string; providerRef?: string | null; body: string; }
+export interface Receipt { waitedSeconds: number; tokensWhileWaiting: 0; estimatedPollingTokens: number; dispatches: number; cost: number; currency: 'USD'; }
+export interface WorkItem { id: string; propertyId: string; assetTag: string; componentId: string; attribute: string; attributeClass: AttributeClass; reference: string; state: WorkState; requester: string; budget: number; deadlineAt: string | null; dispatches: Dispatch[]; verdicts: { attestationId: string; verdict: Verdict; reasons: string[]; at: string }[]; factId?: string | null; attestationId?: string | null; receipt?: Receipt | null; createdAt: string; updatedAt: string; }
+export interface Change { version: number; type: 'fact'|'work_item'|'attestation'|'dispatch'|'escalation'|'owner_decision'; propertyId: string; assetTag?: string; refId: string; summary: string; at: string; }
+export interface ResolveResult { status: FactStatus; propertyId: string; assetTag: string; attribute: string; value?: string | number | boolean; unit?: string | null; observedAt?: string; ageSeconds?: number; attestationId?: string; conflicts?: { attestationId: string; value: string | number | boolean; observedAt: string }[]; workItemId?: string; workState?: WorkState; reference?: string; dispatchedVia?: Channel; expiresAt?: string; cost?: number; nextStep: string; }
+export interface AttestResult { verdict: Verdict; reasons: string[]; checks: Check[]; attestationId?: string; factId?: string; workItemId?: string; nextStep: string; }
+export interface Subscription { id: string; propertyId: string; callbackUrl: string; requester: string; createdAt: string; }
+export interface ClearanceResult { clear: boolean; widthM: number; blockingAssetTag?: string | null; blockingComponentId?: string | null; path: [number, number][]; }
+export interface ContextMin { propertyId: string; name: string; version: number; assets: number; facts: { known: number; stale: number; unknown: number }; blockers: { assetTag: string; attribute: string; state: WorkState; reference: string }[]; sensors: { assetTag: string; attribute: string; value: string|number|boolean; ageSeconds: number }[]; }
