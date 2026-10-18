@@ -115,8 +115,12 @@ class PropertyService:
             self.missions.recover()
             self.simulator.start()
             self.autoplay.start()
+            self.compliance_gaps.start()
+            self.maintenance_planner.start()
 
     def close(self):
+        self.maintenance_planner.close()
+        self.compliance_gaps.close()
         self.simulator.stop()
         self.autoplay.close()
         self.scenarios.close()
